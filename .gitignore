@@ -1,0 +1,17 @@
+# Virtual Environment
+venv312/
+venv/
+
+# Python Cache
+__pycache__/
+*.pyc
+
+# Generated Reports
+reporte_silvina_*.txt
+
+# Temporary Files
+agent_2025*.py
+test_hf*.py
+Exercise
+rutina_diaria.py
+tips.py
