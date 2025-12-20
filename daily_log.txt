@@ -1,0 +1,75 @@
+=== SESSION: Dec 13, 2025 - v0.4 Reference Class ===
+
+MILESTONE: First OOP class for Silvina - Reference class working!
+
+COMPLETED:
+- Created silvina_editorial_v0.4.py
+- Built Reference class with:
+  * __init__ stores citation text
+  * validate_author() checks format
+  * validate_year() checks format
+  * is_valid() combines all checks
+  * get_validation_report() returns detailed results
+- Tested with 7 different references
+- All validations working correctly
+
+LEARNED:
+- How to create a class with __init__
+- self references the current object instance
+- Objects carry their own data
+- Methods operate on object's own data
+- Testing shows: 5/7 validated correctly
+
+KEY INSIGHT:
+OOP makes code cleaner:
+- v0.3: validate_author_pattern(text) - pass data
+- v0.4: reference.validate_author() - object knows its data
+
+WORKING:
+- Multiple authors with "y"
+- Compound surnames (Pérez-Sánchez)
+- Spanish characters (á, é, ñ)
+- Year extraction from (YYYY)
+
+NEXT SESSION:
+- Build Document class (loads from Word)
+- Build APAValidator class (validation rules)
+- Integrate all classes together
+- Start NEW CHAT with updated course prompt
+
+THINKPAD: C:\00 PY\Course - venv312 active
+STATUS: Reference class complete, committed to GitHub
+
+=== SESSION: Dec 19, 2025 - v0.4 Reference Class Testing ===
+
+COMPLETED:
+- Successfully tested Reference class on ThinkPad
+- Validated with 7 different references (5 valid, 2 invalid)
+- Regex patterns working perfectly:
+  * Multiple authors with "y"
+  * Compound surnames (Pérez-Sánchez)
+  * Spanish characters (á, é, ñ)
+  * Year extraction from (YYYY)
+- Committed v0.4 Reference class to GitHub
+
+LEARNED:
+- OOP in practice - objects carry their own data
+- Each Reference validates itself
+- Methods like validate_author() work on self.text
+- get_validation_report() returns structured data
+
+WORKING ON THINKPAD:
+- Location: C:\00 PY\Course\silvina-editorial
+- venv312 active and working
+- Git synced with GitHub
+
+ISSUES RESOLVED:
+- VS Code Explorer not showing files → Fixed by opening folder with "code ."
+- daily_log.txt visibility → Was in wrong directory
+
+NEXT SESSION:
+- Build Document class (loads from Word)
+- Build APAValidator class (validation rules)
+- Start NEW CHAT with updated course prompt
+
+STATUS: Reference class complete ✅, ready for Document class
