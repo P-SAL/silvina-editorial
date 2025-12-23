@@ -152,7 +152,7 @@ $ python silvina_editorial_v02.py
 
 ## 🤝 Contributing
 
-This is currently a learning project and personal portfolio piece. Feedback and suggestions are welcome via GitHub Issues!
+Feedback and suggestions are welcome via GitHub Issues. If you're working on similar editorial workflows or academic journal automation, feel free to reach out!
 
 ---
 
@@ -174,8 +174,8 @@ Associate Dean for Research | AI Agent Developer
 
 ## 🙏 Acknowledgments
 
-- Developed as part of an intensive Python and AI Agent development course
 - Built for **Revista Visión Conjunta** academic journal
+- Designed for editorial teams requiring Spanish-language APA 7 compliance
 - Powered by [Ollama](https://ollama.ai/) for local LLM processing
 
 ---
