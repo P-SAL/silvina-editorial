@@ -5,7 +5,6 @@ Object-Oriented Refactor with Classes
 NEW in v0.4:
 - Reference class (encapsulates one citation)
 - Document class (manages Word document)
-- APAValidator class (validation rules)
 - Cleaner, more maintainable code structure
 
 Author: Pablo Salonio
@@ -16,6 +15,182 @@ from datetime import datetime
 import re
 import win32com.client
 import pythoncom
+import time
+import os
+
+
+# === DOCUMENT CLASS ===
+class Document:
+    """Manages Word document loading and reference extraction."""
+    
+    def __init__(self, filepath):
+        """Initialize with filepath only."""
+        self.filepath = filepath
+        self.word = None
+        self.doc = None
+        self.text = ""
+        self.references = []
+    
+    def load(self):
+        """Load document and extract references."""
+        self._connect_to_word()
+        self._extract_referencias()
+        self._create_reference_objects()
+    
+    def _connect_to_word(self):
+        """Open Word document."""
+        pythoncom.CoInitialize()
+        
+        try:
+            self.word = win32com.client.Dispatch("Word.Application")
+            self.word.Visible = True
+            abs_path = os.path.abspath(self.filepath)
+            self.doc = self.word.Documents.Open(abs_path)
+            self.word.Visible = False
+            time.sleep(1.0)
+            print(f"✅ Connected: {abs_path}")
+        except Exception as e:
+            print(f"❌ Error: {e}")
+            self.word = None
+            self.doc = None
+    
+    def _extract_referencias(self):
+        """Extract Referencias section using paragraphs (no truncation)."""
+        
+        if not self.doc:
+            return
+        
+        try:
+            time.sleep(1.0)
+            char_count = self.get_character_count()
+            print(f"🔍 Characters: {char_count:,}")
+            
+            # Find the paragraph with referencias heading
+            found_start = False
+            referencias_paras = []
+            
+            for para in self.doc.Paragraphs:
+                para_text = para.Range.Text.strip()
+                
+                # Check if this is the heading
+                if not found_start:
+                    if "Fuentes bibliográficas" in para_text or "Referencias" in para_text or "Bibliografía" in para_text:
+                        found_start = True
+                        continue  # Skip heading itself
+                
+                # After heading, collect all remaining paragraphs
+                if found_start and para_text:
+                    referencias_paras.append(para_text)
+            
+            # Join paragraphs with newlines
+            self.text = '\n'.join(referencias_paras)
+                            
+        except Exception as e:
+            print(f"❌ Extract error: {e}")
+            self.text = ""
+    
+    def _create_reference_objects(self):
+        """Create Reference objects from extracted paragraphs."""
+        if not self.text:
+            return
+        
+        # Split by newlines - each paragraph is a reference
+        paragraphs = self.text.split('\n')
+        
+        for para in paragraphs:
+            para = para.strip()
+            if len(para) < 30:
+                continue
+            
+            # Special case: check if paragraph has TWO years (two merged refs)
+            years = re.findall(r'\(\d{4}\)', para)
+            
+            if len(years) >= 2:
+                # Split at period before capital letter pattern
+                split_pattern = r'\.(?=[A-Z][a-z]+,\s+[A-Z]\.)'
+                parts = re.split(split_pattern, para, maxsplit=1)
+                
+                for part in parts:
+                    part = part.strip()
+                    if len(part) > 30:
+                        if not part.endswith('.'):
+                            part += '.'
+                        self.references.append(Reference(part))
+            else:
+                # Single reference - add as is
+                self.references.append(Reference(para))
+        
+        print(f"✅ Created {len(self.references)} Reference objects")
+    
+    def get_character_count(self):
+        """Get accurate Word character count."""
+        if not self.doc:
+            return 0
+        
+        try:
+            total = self.doc.Characters.Count
+            for fn in self.doc.Footnotes:
+                total += len(fn.Range.Text)
+            for en in self.doc.Endnotes:
+                total += len(en.Range.Text)
+            return total
+        except:
+            return 0
+    
+    def close(self):
+        """Clean up Word connection."""
+        try:
+            if self.doc:
+                self.doc.Close(SaveChanges=False)
+            if self.word:
+                self.word.Quit()
+        except:
+            pass
+
+
+    def generate_report(self):
+        """Generate formatted validation report."""
+        if not self.references:
+            return "No references found."
+        
+        report = []
+        report.append("=" * 70)
+        report.append("SILVINA - VALIDACIÓN DE REFERENCIAS APA")
+        report.append("=" * 70)
+        report.append(f"\nDocumento: {os.path.basename(self.filepath)}")
+        report.append(f"Caracteres totales: {self.get_character_count():,}")
+        report.append(f"Referencias encontradas: {len(self.references)}")
+        
+        # Count valid/invalid
+        valid_count = sum(1 for ref in self.references if ref.is_valid())
+        invalid_count = len(self.references) - valid_count
+        
+        report.append(f"\n✅ Válidas: {valid_count}")
+        report.append(f"❌ Con problemas: {invalid_count}")
+        
+        report.append("\n" + "-" * 70)
+        report.append("DETALLE DE VALIDACIÓN")
+        report.append("-" * 70 + "\n")
+        
+        for i, ref in enumerate(self.references, 1):
+            rep = ref.get_validation_report()
+            status = "✅ VÁLIDA" if rep['is_valid'] else "❌ REQUIERE REVISIÓN"
+            
+            report.append(f"{i}. {status}")
+            report.append(f"   Texto: {rep['text']}")
+            
+            if not rep['valid_author']:
+                report.append("   ⚠️ Formato de autor incorrecto (debe ser: Apellido, I.)")
+            if not rep['valid_year']:
+                report.append("   ⚠️ Año no encontrado o formato incorrecto (debe ser: (YYYY))")
+            
+            report.append("")
+        
+        report.append("=" * 70)
+        report.append(f"Reporte generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+        report.append("=" * 70)
+        
+        return '\n'.join(report)
 
 
 # === REFERENCE CLASS ===
@@ -61,52 +236,26 @@ class Reference:
 
 # === MAIN EXECUTION ===
 if __name__ == "__main__":
-    print("╔════════════════════════════════════════════════════════════════╗")
-    print("║              SILVINA - ASISTENTE EDITORIAL v0.4                ║")
-    print("║              Refactor con Programación Orientada a Objetos    ║")
-    print("╚════════════════════════════════════════════════════════════════╝\n")
-    
-    # Test the Reference class
-    print("🧪 Testing Reference class...\n")
-    
-    # Test reference 1 (valid)
-    ref1 = Reference("García, M. (2023). Inteligencia artificial en educación. Revista Tech, 15(2), 45-67.")
-    report1 = ref1.get_validation_report()
-    
-    print(f"Reference 1: {report1['text']}")
-    print(f"  ✓ Author valid: {report1['valid_author']}")
-    print(f"  ✓ Year valid: {report1['valid_year']} ({report1['year']})")
-    print(f"  ✓ Overall valid: {report1['is_valid']}\n")
-    
-    # Test reference 2 (invalid - no year)
-    ref2 = Reference("López, J. Title without year. Journal Name.")
-    report2 = ref2.get_validation_report()
-    
-    print(f"Reference 2: {report2['text']}")
-    print(f"  ✓ Author valid: {report2['valid_author']}")
-    print(f"  ✓ Year valid: {report2['valid_year']}")
-    print(f"  ✓ Overall valid: {report2['is_valid']}\n")
-    
-    print("✅ Reference class working!")
-
     print("\n" + "="*70)
-    print("🧪 Testing with Real APA References...\n")
+    print("SILVINA v0.4 - ASISTENTE EDITORIAL")
+    print("="*70 + "\n")
     
-    # Test real references from APA guide
-    real_refs = [
-        "Herrera Cáceres, C. y Rosillo Peña, M. (2019). Confort y eficiencia energética en el diseño de edificaciones. Universidad del Valle.",
-        "Castañeda Naranjo, L. A. y Palacios Neri, J. (2015). Nanotecnología: fuente de nuevos paradigmas. Mundo Nano, 7(12), 45-49.",
-        "Invalid reference without proper format",
-        "García M (2023) Missing comma after surname.",
-        "Pérez-Sánchez, C. (2020). Compound surname test. Journal, 5(1), 10-20."
-    ]
+    # UPDATE THIS PATH
+    filepath = r"C:\Users\usuario\Desktop\Escudo cuantico_AB_25092025.docx"
     
-    for i, ref_text in enumerate(real_refs, 1):
-        ref = Reference(ref_text)
-        report = ref.get_validation_report()
-        
-        symbol = "✅" if report['is_valid'] else "❌"
-        print(f"{symbol} Reference {i}:")
-        print(f"   Text: {report['text']}")
-        print(f"   Author: {report['valid_author']}, Year: {report['valid_year']}")
-        print()
+    doc = Document(filepath)
+    doc.load()
+    
+    # Generate and display report
+    report = doc.generate_report()
+    print(report)
+
+    # Save report to file
+    report_filename = f"reporte_silvina_v04_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+    with open(report_filename, 'w', encoding='utf-8') as f:
+        f.write(report)
+
+    print(f"\n💾 Reporte guardado: {report_filename}")
+    doc.close()
+
+    
