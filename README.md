@@ -41,7 +41,7 @@ This project is actively under development and focuses on enhancing editorial pr
 - Batch processing capabilities
 
 ### 📋 In progress (v0.4)
-- ABuilt Reference class with:
+- Built Reference class with:
   * __init__ stores citation text
   * validate_author() checks format
   * validate_year() checks format
