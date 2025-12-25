@@ -73,3 +73,61 @@ NEXT SESSION:
 - Start NEW CHAT with updated course prompt
 
 STATUS: Reference class complete ✅, ready for Document class
+
+
+Dec 24, 2025 - v0.4 COMPLETE
+- ✅ Document class: loads Word files, extracts Referencias section
+- ✅ Reference class: validates APA format (author, year)
+- ✅ Accurate character counting (matches Word within 0.5%)
+- ✅ Handles multiple heading formats (Referencias, Bibliografía, Fuentes bibliográficas)
+- ✅ Professional Spanish report generation
+- ✅ Report saved to timestamped file
+- 📊 Tested with real document: 8/8 references found, 4 valid, 4 flagged for review
+- NEXT: Integrate LLM review from v0.2 for complete editorial assistant
+
+
+Dec 25, 2025 - v0.4 Complete & v1.0 Planning
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ COMPLETED TODAY:
+- v0.4 with LLM integration COMPLETE
+- Tested with real document (8/8 references found)
+- Professional Spanish reporting working
+- Committed to GitHub
+- README updated with EUMIC collaboration context
+- Reviewed EUMIC Editorial Guidelines + APA 7 Spanish rules
+
+📊 STRATEGIC DECISIONS:
+- v1.0 Target: March 2026 (aspirational) / June 2026 (hard deadline)
+- Development pace: Limited by Claude free tier availability
+- Focus: MUST HAVE features only for v1.0
+- v2.0: Positioned as ambitious expansion project
+
+🎯 v1.0 MUST HAVE FEATURES (Confirmed):
+1. Article type detection (divulgación/científica)
+2. Character count validation by type
+3. Spanish APA 7 author validation (complete rules)
+4. "et al." handling (3+ authors)
+5. Organizational authors with acronyms
+6. Multiple authors with "y" not "&"
+7. References alphabetical order check
+8. DOI/URL presence validation
+9. Spanish quote validation « »
+10. Duplicate reference detection
+11. **Bibliography vs. References detection** (NEW - critical for EUMIC)
+12. LLM grammar/style review
+13. Comprehensive Spanish EUMIC-format report
+
+📚 KEY DOCUMENTS FOR v0.5+:
+- EUMIC Editorial Guidelines (Normas de edición EUMIC 2026)
+- APA 7 Spanish Guide (Guía Normas APA 7ma edición)
+
+🎓 LEARNING OUTCOMES (v0.4):
+- Deep OOP architecture understanding
+- COM automation mastery
+- Regex pattern matching for citations
+- Spanish APA validation logic
+- LLM integration with Ollama
+- Professional reporting generation
+
+NEXT SESSION: Start v0.5 in NEW CHAT with EUMIC compliance focus
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
