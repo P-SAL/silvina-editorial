@@ -28,18 +28,27 @@ This project is actively under development and focuses on enhancing editorial pr
 - **Professional Spanish Reports:** Generates formatted editorial review reports
 - **Multi-computer Support:** Works across different Windows environments
 
-### 🚧 In Progress (v0.2)
+### 🚧 Implemented (v0.2)
 - **LLM-Powered Grammar Review:** Integration with Ollama for AI-driven grammar and style analysis
 - **Local Processing:** Privacy-focused design using local LLM models (llama3.2:1b / llama3.1:8b)
 - **Intelligent Feedback:** Structured editorial recommendations in Spanish
 
-### 📋 Planned (v0.3+)
+### 📋 Implemented (v0.3)
 - APA citation format validation
 - Content structure analysis
 - Reference list verification
 - PDF report export
 - Batch processing capabilities
 
+### 📋 In progress (v0.4)
+- ABuilt Reference class with:
+  * __init__ stores citation text
+  * validate_author() checks format
+  * validate_year() checks format
+  * is_valid() combines all checks
+  * get_validation_report() returns detailed results
+- Tested with 7 different references
+- All validations working correctly
 ---
 
 ## 🛠️ Technical Stack
