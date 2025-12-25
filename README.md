@@ -12,7 +12,9 @@
 
 Silvina is an intelligent editorial assistant developed for **Revista Visión Conjunta**, designed to streamline the manuscript review process for academic journals. It combines traditional document analysis with modern AI capabilities to provide comprehensive editorial feedback in Spanish.
 
-**Current Version:** v0.2 (In Development)  
+This project is actively under development and focuses on enhancing editorial practices with AI technology, supported by contemporary project management principles. The editorial team and subject matter experts are collaborating to ensure high-quality deliverables, refined through rigorous reviews and professional input.
+
+**Current Version:** v0.4 (In Development)  
 **Target Release:** v1.0 by June 2026
 
 ---
