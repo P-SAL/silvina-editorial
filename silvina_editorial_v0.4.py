@@ -148,24 +148,43 @@ class Document:
             pass
 
 
-    def generate_report(self):
-        """Generate formatted validation report."""
+
+    def generate_report(self, include_llm=True):
+        """Generate formatted validation report with optional LLM review."""
         if not self.references:
             return "No references found."
         
         report = []
         report.append("=" * 70)
-        report.append("SILVINA - VALIDACIÓN DE REFERENCIAS APA")
+        report.append("SILVINA - ASISTENTE EDITORIAL v0.4")
         report.append("=" * 70)
         report.append(f"\nDocumento: {os.path.basename(self.filepath)}")
+        report.append(f"Fecha: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
         report.append(f"Caracteres totales: {self.get_character_count():,}")
+        
+        # LLM REVIEW SECTION (NEW)
+        if include_llm:
+            report.append("\n" + "=" * 70)
+            report.append("REVISIÓN DE GRAMÁTICA Y ESTILO (LLM)")
+            report.append("=" * 70)
+            print("\n🤖 Analizando con LLM...")
+            llm_review, llm_error = self.review_with_llm()
+            if llm_error:
+                report.append(f"\n⚠️ {llm_error}")
+            else:
+                report.append(f"\n{llm_review}")
+        
+        # REFERENCES VALIDATION SECTION
+        report.append("\n" + "=" * 70)
+        report.append("VALIDACIÓN DE REFERENCIAS APA")
+        report.append("=" * 70)
         report.append(f"Referencias encontradas: {len(self.references)}")
         
         # Count valid/invalid
         valid_count = sum(1 for ref in self.references if ref.is_valid())
         invalid_count = len(self.references) - valid_count
         
-        report.append(f"\n✅ Válidas: {valid_count}")
+        report.append(f"✅ Válidas: {valid_count}")
         report.append(f"❌ Con problemas: {invalid_count}")
         
         report.append("\n" + "-" * 70)
@@ -187,10 +206,49 @@ class Document:
             report.append("")
         
         report.append("=" * 70)
-        report.append(f"Reporte generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
-        report.append("=" * 70)
         
         return '\n'.join(report)
+
+    
+    def review_with_llm(self, max_chars=3000):  # Integrate LLM Review
+        """
+        Use local LLM to review grammar and style.
+        Uses first portion of document to avoid overwhelming model.
+        """
+        try:
+            import ollama           
+            # Get document text (not just referencias)
+            full_text = self.doc.Content.Text if self.doc else ""
+            
+            # Truncate if too long
+            sample = full_text[:max_chars]
+            if len(full_text) > max_chars:
+                sample += "\n\n[...texto truncado para análisis...]"
+            
+            prompt = f"""Eres un revisor editorial de textos académicos en español para una revista científica.
+
+Analiza este fragmento y proporciona:
+1. Principales errores gramaticales (máximo 3)
+2. Sugerencias de estilo académico (máximo 3)
+3. Calificación: Excelente/Bueno/Necesita revisión
+
+Sé conciso y profesional.
+
+TEXTO:
+{sample}"""
+
+            # Use llama3.1:8b on ThinkPad (better quality)
+            response = ollama.chat(
+                model='llama3.1:8b',
+                messages=[{'role': 'user', 'content': prompt}]
+            )
+            
+            return response['message']['content'], None
+        
+        except ImportError:
+            return None, "Módulo 'ollama' no instalado (pip install ollama)"
+        except Exception as e:
+            return None, f"Error LLM: {str(e)}"
 
 
 # === REFERENCE CLASS ===
@@ -233,29 +291,28 @@ class Reference:
             'is_valid': has_author and has_year
         }
 
-
 # === MAIN EXECUTION ===
+
 if __name__ == "__main__":
     print("\n" + "="*70)
     print("SILVINA v0.4 - ASISTENTE EDITORIAL")
     print("="*70 + "\n")
     
-    # UPDATE THIS PATH
     filepath = r"C:\Users\usuario\Desktop\Escudo cuantico_AB_25092025.docx"
     
     doc = Document(filepath)
     doc.load()
     
-    # Generate and display report
-    report = doc.generate_report()
+    # Generate report with LLM review
+    report = doc.generate_report(include_llm=True)
     print(report)
-
+    
     # Save report to file
     report_filename = f"reporte_silvina_v04_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
     with open(report_filename, 'w', encoding='utf-8') as f:
         f.write(report)
-
+    
     print(f"\n💾 Reporte guardado: {report_filename}")
+    
     doc.close()
 
-    
