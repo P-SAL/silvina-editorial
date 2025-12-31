@@ -1,13 +1,11 @@
 """
-Silvina Editorial Assistant v0.5
+Silvina Editorial Assistant v0.5 - Session 3
 Object-Oriented Refactor with Classes
 
-NEW in v0.5:
-- Article type detection (Divulgación/Científica)
-- Enhanced Spanish APA 7 author validation (personal, organizational, et al.)
-- Token calculator for LLM context management
-- RAE grammar rules context for focused review
-- Improved COM stability with HomeKey fix
+NEW in v0.5 Session 3:
+- Alphabetical order validation for references
+- Spanish "y" vs "&" conjunction validation
+- Enhanced reference detail reporting
 
 Author: Pablo Salonio
 Repository: https://github.com/P-SAL/silvina-editorial
@@ -75,18 +73,11 @@ class Document:
             self.doc = self.word.Documents.Open(abs_path)
             
             # CRITICAL: Force Word to fully load document
-            # Multiple techniques to ensure COM object is ready
             time.sleep(2.0)  # Initial wait
-            
-            # Force document activation
             self.doc.Activate()
             time.sleep(1.0)
-            
-            # Access a property to force full initialization
             _ = self.doc.Characters.Count
             time.sleep(0.5)
-            
-            # Verify we can access paragraphs
             _ = len(self.doc.Paragraphs)
             
             print(f"✅ Connected: {abs_path}")
@@ -107,7 +98,6 @@ class Document:
         try:
             time.sleep(1.0)
             
-            # Verify document is accessible
             char_count = self.get_character_count()
             if char_count == 0:
                 print("⚠️ Document shows 0 characters - COM not ready")
@@ -115,7 +105,6 @@ class Document:
                 
             print(f"🔍 Characters: {char_count:,}")
             
-            # Check if Paragraphs is accessible
             try:
                 total_paras = len(self.doc.Paragraphs)
                 print(f"🔍 Total paragraphs: {total_paras}")
@@ -123,7 +112,6 @@ class Document:
                 print(f"❌ Cannot access Paragraphs: {para_error}")
                 return
             
-            # Find the paragraph with referencias heading
             found_start = False
             referencias_paras = []
             
@@ -131,20 +119,17 @@ class Document:
                 try:
                     para_text = para.Range.Text.strip()
                 except:
-                    continue  # Skip problematic paragraphs
+                    continue
                 
-                # Check if this is the heading
                 if not found_start:
                     if "Fuentes bibliográficas" in para_text or "Referencias" in para_text or "Bibliografía" in para_text:
                         found_start = True
                         print(f"✅ Found Referencias section")
-                        continue  # Skip heading itself
+                        continue
                 
-                # After heading, collect all remaining paragraphs
                 if found_start and para_text:
                     referencias_paras.append(para_text)
             
-            # Join paragraphs with newlines
             self.text = '\n'.join(referencias_paras)
             print(f"✅ Extracted {len(referencias_paras)} reference paragraphs")
                             
@@ -153,15 +138,12 @@ class Document:
             import traceback
             traceback.print_exc()
             self.text = ""
-        
-   
     
     def _create_reference_objects(self):
         """Create Reference objects from extracted paragraphs."""
         if not self.text:
             return
         
-        # Split by newlines - each paragraph is a reference
         paragraphs = self.text.split('\n')
         
         for para in paragraphs:
@@ -169,11 +151,9 @@ class Document:
             if len(para) < 30:
                 continue
             
-            # Special case: check if paragraph has TWO years (two merged refs)
             years = re.findall(r'\(\d{4}\)', para)
             
             if len(years) >= 2:
-                # Split at period before capital letter pattern
                 split_pattern = r'\.(?=[A-Z][a-z]+,\s+[A-Z]\.)'
                 parts = re.split(split_pattern, para, maxsplit=1)
                 
@@ -184,7 +164,6 @@ class Document:
                             part += '.'
                         self.references.append(Reference(part))
             else:
-                # Single reference - add as is
                 self.references.append(Reference(para))
         
         print(f"✅ Created {len(self.references)} Reference objects")
@@ -205,21 +184,7 @@ class Document:
             return 0
     
     def detectar_tipo_articulo(self):
-        """
-        Detecta el tipo de artículo según caracteres y estructura.
-        
-        Tipos EUMIC:
-        - Divulgación: ~30,000 caracteres
-        - Científica: 30,000-50,000 caracteres con estructura IMRyD
-        
-        Returns:
-            dict: {
-                'tipo': 'Divulgación'/'Científica'/'Indeterminado',
-                'caracteres': int,
-                'cumple_limite': bool,
-                'mensaje': str
-            }
-        """
+        """Detecta el tipo de artículo según caracteres y estructura."""
         if not self.doc:
             return {
                 'tipo': 'Indeterminado',
@@ -229,36 +194,29 @@ class Document:
             }
         
         caracteres = self.get_character_count()
-        
-        # Check for IMRyD structure (Científica indicator)
         texto_completo = self.doc.Content.Text.lower()
         palabras_imryd = ['introducción', 'método', 'resultados', 'discusión', 'conclusión']
         tiene_imryd = sum(1 for palabra in palabras_imryd if palabra in texto_completo) >= 4
         
-        # Determine type
         if tiene_imryd and 30000 <= caracteres <= 50000:
             tipo = 'Científica'
             cumple = True
             mensaje = f'Artículo científico con {caracteres:,} caracteres (rango válido: 30,000-50,000)'
-        
         elif tiene_imryd and caracteres > 50000:
             tipo = 'Científica'
             cumple = False
             mensaje = f'Excede límite científico: {caracteres:,} caracteres (máximo: 50,000)'
-        
         elif tiene_imryd and caracteres < 30000:
             tipo = 'Científica'
             cumple = False
             mensaje = f'Debajo del mínimo científico: {caracteres:,} caracteres (mínimo: 30,000)'
-        
-        elif caracteres <= 35000:  # Likely Divulgación
+        elif caracteres <= 35000:
             tipo = 'Divulgación'
-            cumple = abs(caracteres - 30000) <= 5000  # ±5k tolerance
+            cumple = abs(caracteres - 30000) <= 5000
             if cumple:
                 mensaje = f'Artículo de divulgación con {caracteres:,} caracteres (objetivo: ~30,000)'
             else:
                 mensaje = f'Divulgación con {caracteres:,} caracteres (objetivo: ~30,000 ± 5,000)'
-        
         else:
             tipo = 'Indeterminado'
             cumple = False
@@ -272,31 +230,16 @@ class Document:
         }
     
     def calcular_tokens(self, texto=None):
-        """
-        Estima tokens para validar si documento cabe en contexto LLM.
-        
-        Regla aproximada: 1 token ≈ 4 caracteres en español
-        llama3 context: 8,192 tokens (máximo seguro)
-        
-        Returns:
-            dict: {
-                'caracteres': int,
-                'tokens_estimados': int,
-                'cabe_en_contexto': bool,
-                'contexto_disponible': int,
-                'porcentaje_uso': float
-            }
-        """
+        """Estima tokens para validar si documento cabe en contexto LLM."""
         if texto is None:
             texto = self.doc.Content.Text if self.doc else ""
         
         caracteres = len(texto)
-        tokens_estimados = caracteres // 4  # Aproximación: 4 chars = 1 token
+        tokens_estimados = caracteres // 4
         
-        # llama3/gradient context window
         MAX_CONTEXT = 8192
-        RESERVED_FOR_PROMPT = 500  # Para instrucciones + RAE rules
-        RESERVED_FOR_RESPONSE = 500  # Para respuesta del LLM
+        RESERVED_FOR_PROMPT = 500
+        RESERVED_FOR_RESPONSE = 500
         
         contexto_disponible = MAX_CONTEXT - RESERVED_FOR_PROMPT - RESERVED_FOR_RESPONSE
         cabe = tokens_estimados <= contexto_disponible
@@ -307,6 +250,48 @@ class Document:
             'cabe_en_contexto': cabe,
             'contexto_disponible': contexto_disponible,
             'porcentaje_uso': (tokens_estimados / contexto_disponible) * 100
+        }
+    
+    def validar_orden_alfabetico(self):
+        """
+        Verifica si las referencias están en orden alfabético por apellido del primer autor.
+        
+        Returns:
+            dict: {
+                'ordenadas': bool,
+                'total_referencias': int,
+                'problemas': list of dicts with 'posicion', 'texto', 'deberia_ir_antes_de'
+            }
+        """
+        if not self.references or len(self.references) < 2:
+            return {
+                'ordenadas': True,
+                'total_referencias': len(self.references),
+                'problemas': []
+            }
+        
+        problemas = []
+        
+        for i in range(len(self.references) - 1):
+            ref_actual = self.references[i].text
+            ref_siguiente = self.references[i + 1].text
+            
+            # Extract first word (usually the first author's last name)
+            primera_palabra_actual = ref_actual.split()[0].rstrip('.,').lower()
+            primera_palabra_siguiente = ref_siguiente.split()[0].rstrip('.,').lower()
+            
+            # Check alphabetical order
+            if primera_palabra_actual > primera_palabra_siguiente:
+                problemas.append({
+                    'posicion': i + 1,
+                    'texto': ref_actual[:60] + '...' if len(ref_actual) > 60 else ref_actual,
+                    'deberia_ir_antes_de': ref_siguiente[:60] + '...' if len(ref_siguiente) > 60 else ref_siguiente
+                })
+        
+        return {
+            'ordenadas': len(problemas) == 0,
+            'total_referencias': len(self.references),
+            'problemas': problemas
         }
     
     def close(self):
@@ -326,13 +311,13 @@ class Document:
         
         report = []
         report.append("=" * 70)
-        report.append("SILVINA - ASISTENTE EDITORIAL v0.5")
+        report.append("SILVINA - ASISTENTE EDITORIAL v0.5 - SESSION 3")
         report.append("=" * 70)
         report.append(f"\nDocumento: {os.path.basename(self.filepath)}")
         report.append(f"Fecha: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
         report.append(f"Caracteres totales: {self.get_character_count():,}")
         
-        # ARTICLE TYPE SECTION (NEW IN V0.5)
+        # ARTICLE TYPE SECTION
         info_tipo = self.detectar_tipo_articulo()
         report.append("\n" + "=" * 70)
         report.append("TIPO DE ARTÍCULO Y CUMPLIMIENTO EUMIC")
@@ -341,14 +326,13 @@ class Document:
         report.append(f"Caracteres: {info_tipo['caracteres']:,}")
         report.append(f"{'✅' if info_tipo['cumple_limite'] else '⚠️'} {info_tipo['mensaje']}")
 
-        # LLM REVIEW SECTION (IMPROVED IN V0.5)
+        # LLM REVIEW SECTION
         if include_llm:
             report.append("\n" + "=" * 70)
             report.append("REVISIÓN DE GRAMÁTICA Y ESTILO (LLM)")
             report.append("=" * 70)
             
             try:
-                # Token analysis
                 info_tokens = self.calcular_tokens()
                 report.append(f"\n📊 Análisis de tokens:")
                 report.append(f"   Caracteres: {info_tokens['caracteres']:,}")
@@ -361,7 +345,6 @@ class Document:
                 else:
                     report.append(f"   ✅ Documento cabe en contexto LLM\n")
                 
-                # LLM analysis
                 print("\n🤖 Analizando con LLM...")
                 llm_review, llm_error = self.review_with_llm(info_tokens)
                 if llm_error:
@@ -372,7 +355,7 @@ class Document:
             except Exception as e:
                 report.append(f"\n❌ Error en análisis LLM: {str(e)}")
         
-        # REFERENCES VALIDATION SECTION
+        # REFERENCES VALIDATION SECTION (ENHANCED IN SESSION 3)
         report.append("\n" + "=" * 70)
         report.append("VALIDACIÓN DE REFERENCIAS APA")
         report.append("=" * 70)
@@ -385,88 +368,90 @@ class Document:
         report.append(f"✅ Válidas: {valid_count}")
         report.append(f"❌ Con problemas: {invalid_count}")
         
+        # ALPHABETICAL ORDER CHECK (NEW IN SESSION 3)
+        orden_info = self.validar_orden_alfabetico()
+        if orden_info['ordenadas']:
+            report.append(f"✅ Referencias en orden alfabético")
+        else:
+            report.append(f"⚠️ Referencias NO están en orden alfabético")
+            report.append(f"   Problemas encontrados: {len(orden_info['problemas'])}")
+        
         report.append("\n" + "-" * 70)
         report.append("DETALLE DE VALIDACIÓN")
         report.append("-" * 70 + "\n")
         
         for i, ref in enumerate(self.references, 1):
             rep = ref.get_validation_report()
-
-            if rep['is_valid']:
-                # ✅ Valid reference: status only
-                report.append(f"{i}. ✅ VÁLIDA")
-            else:
-                # ❌ Invalid reference: show details
-                report.append(f"{i}. ❌ REQUIERE REVISIÓN")
-                report.append(f"   Texto: {rep['text']}")
-
-                if not rep['valid_author']:
-                    report.append("   ⚠️ Formato de autor incorrecto (debe ser: Apellido, I.)")
-                if not rep['valid_year']:
-                    report.append("   ⚠️ Año no encontrado o formato incorrecto (debe ser: (YYYY))")
-
-        report.append("" * 70)
-           
+            status = "✅ VÁLIDA" if rep['is_valid'] else "❌ REQUIERE REVISIÓN"
+            
+            report.append(f"{i}. {status}")
+            report.append(f"   Texto: {rep['text']}")
+            
+            if not rep['valid_author']:
+                report.append("   ⚠️ Formato de autor incorrecto (debe ser: Apellido, I.)")
+            if not rep['valid_year']:
+                report.append("   ⚠️ Año no encontrado o formato incorrecto (debe ser: (YYYY))")
+            if not rep['valid_conjuncion']:
+                report.append(f"   ⚠️ {rep['error_conjuncion']}")
+            
+            report.append("")
+        
+        # ALPHABETICAL ORDER PROBLEMS DETAIL (NEW)
+        if not orden_info['ordenadas']:
+            report.append("\n" + "-" * 70)
+            report.append("PROBLEMAS DE ORDEN ALFABÉTICO")
+            report.append("-" * 70 + "\n")
+            
+            for problema in orden_info['problemas']:
+                report.append(f"⚠️ Referencia #{problema['posicion']}:")
+                report.append(f"   {problema['texto']}")
+                report.append(f"   Debería ir ANTES de: {problema['deberia_ir_antes_de']}\n")
+        
+        report.append("=" * 70)
+        
         return '\n'.join(report)
 
     def review_with_llm(self, info_tokens):
-        """
-        Revisión gramatical con contexto RAE (DIAGNOSTIC VERSION).
-        """
+        """Revisión gramatical con contexto RAE."""
         try:
             import ollama
             
-            print("   🔍 DEBUG: Starting LLM review...")
-            
-            # Get document text
             full_text = self.doc.Content.Text if self.doc else ""
-            print(f"   🔍 DEBUG: Full text length: {len(full_text)} chars")
-            
-            # AGGRESSIVE TRUNCATION for testing
-            MAX_SAMPLE = 2000  # Much smaller for testing
+            MAX_SAMPLE = 2000
             sample = full_text[:MAX_SAMPLE]
-            print(f"   🔍 DEBUG: Sample length: {len(sample)} chars")
             
-            # SIMPLIFIED PROMPT (no RAE context for now)
             prompt = f"""Eres un corrector de textos académicos en español.
 
-    INSTRUCCIÓN ÚNICA: Revisa este texto y lista SOLO errores gramaticales EVIDENTES.
+INSTRUCCIÓN ÚNICA: Revisa este texto y lista SOLO errores gramaticales EVIDENTES.
 
-    PROHIBIDO:
-    - NO sugieras cambios de estilo
-    - NO comentes sobre estructura
-    - NO menciones títulos o keywords
-    - NO des consejos generales
+PROHIBIDO:
+- NO sugieras cambios de estilo
+- NO comentes sobre estructura
+- NO menciones títulos o keywords
+- NO des consejos generales
 
-    Si NO HAY ERRORES, escribe EXACTAMENTE: "No se detectaron errores gramaticales."
+Si NO HAY ERRORES, escribe EXACTAMENTE: "No se detectaron errores gramaticales."
 
-    TEXTO:
-    {sample}"""
-               
-       
-            print(f"   🔍 DEBUG: Prompt length: {len(prompt)} chars")
-            print("   🔍 DEBUG: Calling Ollama...")
+TEXTO:
+{sample}"""
             
-            # Call with minimal options
             response = ollama.chat(
                 model='llama3-gradient:8b',
                 messages=[{'role': 'user', 'content': prompt}],
                 options={
-                    'num_predict': 500,  # Very short response
+                    'num_predict': 500,
                     'temperature': 0.1
                 }
             )
             
-            print("   ✅ DEBUG: LLM responded!")
             return response['message']['content'], None
         
         except ImportError:
             return None, "Módulo 'ollama' no instalado"
         except Exception as e:
-            print(f"   ❌ DEBUG: Exception caught: {type(e).__name__}")
             return None, f"Error LLM: {str(e)}"
-        
-            
+
+
 # === REFERENCE CLASS ===
 class Reference:
     """Represents a single bibliographic reference"""
@@ -476,31 +461,15 @@ class Reference:
         self.text = text
     
     def validate_author(self):
-        """
-        Check if reference has valid APA 7 Spanish author format.
-        
-        Accepts:
-        - Personal: Apellido, I.
-        - Multiple: Apellido, I. y Apellido, J.
-        - Et al: Apellido, I. et al.
-        - Organizational: Google, IBM Research, National Institute...
-        """
-        # Pattern 1: Personal author (Apellido, I.)
+        """Check if reference has valid APA 7 Spanish author format."""
         personal = r'[A-ZÁ-ÚÑ][a-zá-úñ]+(?:-[A-ZÁ-ÚÑ][a-zá-úñ]+)?,\s+[A-Z]\.'
-        
-        # Pattern 2: Et al. format
         et_al = r'et\s+al\.'
-        
-        # Pattern 3: Organizational author
-        # Starts with capital, has multiple words, ends with period
         organizational = r'^[A-Z][A-Za-z\s&,\-]{10,}\.\s'
         
-        # Check matches
         has_personal = bool(re.search(personal, self.text))
         has_et_al = bool(re.search(et_al, self.text, re.IGNORECASE))
         has_organizational = bool(re.search(organizational, self.text))
         
-        # Organizational is valid ONLY if no personal author format found
         if has_organizational and not has_personal:
             return True
         
@@ -514,30 +483,50 @@ class Reference:
             return True, match.group(1)
         return False, None
     
+    def validar_conjuncion_espanola(self):
+        """
+        Verifica uso de 'y' en vez de '&' para referencias en español APA 7.
+        
+        Returns:
+            tuple: (is_valid, error_message or None)
+        """
+        # Check if reference has '&' between author names
+        patron_ampersand = r'[A-ZÁ-ÚÑ][a-zá-úñ]+,\s+[A-Z]\.\s+&\s+[A-ZÁ-ÚÑ]'
+        
+        if re.search(patron_ampersand, self.text):
+            return False, "Uso incorrecto de '&' (debe ser 'y' en español APA 7)"
+        
+        return True, None
+    
     def is_valid(self):
-        """Check if reference meets all APA requirements"""
+        """Check if reference meets all APA 7 Spanish requirements"""
         has_author = self.validate_author()
         has_year, _ = self.validate_year()
-        return has_author and has_year
+        conjuncion_valida, _ = self.validar_conjuncion_espanola()
+        
+        return has_author and has_year and conjuncion_valida
     
     def get_validation_report(self):
         """Return detailed validation results"""
         has_author = self.validate_author()
         has_year, year = self.validate_year()
+        conjuncion_valida, error_conjuncion = self.validar_conjuncion_espanola()
         
         return {
             'text': self.text[:80] + '...' if len(self.text) > 80 else self.text,
             'valid_author': has_author,
             'valid_year': has_year,
+            'valid_conjuncion': conjuncion_valida,
+            'error_conjuncion': error_conjuncion,
             'year': year,
-            'is_valid': has_author and has_year
+            'is_valid': has_author and has_year and conjuncion_valida
         }
 
 
 # === MAIN EXECUTION ===
 if __name__ == "__main__":
     print("\n" + "="*70)
-    print("SILVINA v0.5 - ASISTENTE EDITORIAL")
+    print("SILVINA v0.5 - ASISTENTE EDITORIAL - SESSION 3")
     print("="*70 + "\n")
     
     filepath = r"C:\Users\usuario\Desktop\Escudo cuantico_AB_25092025.docx"
@@ -545,12 +534,10 @@ if __name__ == "__main__":
     doc = Document(filepath)
     doc.load()
     
-    # Generate report WITH LLM review (Session 1 testing)
     report = doc.generate_report(include_llm=True)
     print(report)
     
-    # Save report to file
-    report_filename = f"reporte_silvina_v05_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+    report_filename = f"reporte_silvina_v05_session3_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
     with open(report_filename, 'w', encoding='utf-8') as f:
         f.write(report)
     
