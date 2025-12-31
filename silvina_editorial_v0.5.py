@@ -391,20 +391,22 @@ class Document:
         
         for i, ref in enumerate(self.references, 1):
             rep = ref.get_validation_report()
-            status = "✅ VÁLIDA" if rep['is_valid'] else "❌ REQUIERE REVISIÓN"
-            
-            report.append(f"{i}. {status}")
-            report.append(f"   Texto: {rep['text']}")
-            
-            if not rep['valid_author']:
-                report.append("   ⚠️ Formato de autor incorrecto (debe ser: Apellido, I.)")
-            if not rep['valid_year']:
-                report.append("   ⚠️ Año no encontrado o formato incorrecto (debe ser: (YYYY))")
-            
-            report.append("")
-        
-        report.append("=" * 70)
-        
+
+            if rep['is_valid']:
+                # ✅ Valid reference: status only
+                report.append(f"{i}. ✅ VÁLIDA")
+            else:
+                # ❌ Invalid reference: show details
+                report.append(f"{i}. ❌ REQUIERE REVISIÓN")
+                report.append(f"   Texto: {rep['text']}")
+
+                if not rep['valid_author']:
+                    report.append("   ⚠️ Formato de autor incorrecto (debe ser: Apellido, I.)")
+                if not rep['valid_year']:
+                    report.append("   ⚠️ Año no encontrado o formato incorrecto (debe ser: (YYYY))")
+
+        report.append("" * 70)
+           
         return '\n'.join(report)
 
     def review_with_llm(self, info_tokens):
