@@ -426,12 +426,22 @@ class Document:
             print(f"   🔍 DEBUG: Sample length: {len(sample)} chars")
             
             # SIMPLIFIED PROMPT (no RAE context for now)
-            prompt = f"""Revisa este texto académico en español y lista máximo 2 errores gramaticales evidentes.
-    Si no hay errores, responde: "No se detectaron errores"
+            prompt = f"""Eres un corrector de textos académicos en español.
+
+    INSTRUCCIÓN ÚNICA: Revisa este texto y lista SOLO errores gramaticales EVIDENTES.
+
+    PROHIBIDO:
+    - NO sugieras cambios de estilo
+    - NO comentes sobre estructura
+    - NO menciones títulos o keywords
+    - NO des consejos generales
+
+    Si NO HAY ERRORES, escribe EXACTAMENTE: "No se detectaron errores gramaticales."
 
     TEXTO:
     {sample}"""
-
+               
+       
             print(f"   🔍 DEBUG: Prompt length: {len(prompt)} chars")
             print("   🔍 DEBUG: Calling Ollama...")
             
@@ -440,7 +450,7 @@ class Document:
                 model='llama3-gradient:8b',
                 messages=[{'role': 'user', 'content': prompt}],
                 options={
-                    'num_predict': 200,  # Very short response
+                    'num_predict': 500,  # Very short response
                     'temperature': 0.1
                 }
             )
