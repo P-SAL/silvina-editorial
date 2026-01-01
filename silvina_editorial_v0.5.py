@@ -482,21 +482,17 @@ class Reference:
         if match:
             return True, match.group(1)
         return False, None
-    
+
     def validar_conjuncion_espanola(self):
-        """
-        Verifica uso de 'y' en vez de '&' para referencias en español APA 7.
-        
-        Returns:
-            tuple: (is_valid, error_message or None)
-        """
-        # Check if reference has '&' between author names
-        patron_ampersand = r'[A-ZÁ-ÚÑ][a-zá-úñ]+,\s+[A-Z]\.\s+&\s+[A-ZÁ-ÚÑ]'
+        """Verifica uso de 'y' en vez de '&' para referencias en español APA 7."""
+        # Improved pattern: catches both "I. &" and "I., &"
+        patron_ampersand = r'[A-Z]\.(?:,)?\s+&\s+[A-Z]'
         
         if re.search(patron_ampersand, self.text):
             return False, "Uso incorrecto de '&' (debe ser 'y' en español APA 7)"
         
         return True, None
+
     
     def is_valid(self):
         """Check if reference meets all APA 7 Spanish requirements"""
