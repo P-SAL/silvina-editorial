@@ -1,11 +1,20 @@
 """
-Silvina Editorial Assistant v0.5 - Session 3
+Silvina Editorial Assistant v0.5 - COMPLETE
 Object-Oriented Refactor with Classes
 
-NEW in v0.5 Session 3:
-- Alphabetical order validation for references
+v0.5 COMPLETE FEATURES:
+- Article type detection (Divulgación/Científica with IMRyD)
+- Enhanced Spanish APA 7 author validation (personal, organizational, et al.)
+- Token calculator for LLM context management
+- RAE grammar rules context for focused review
+- Alphabetical order validation
 - Spanish "y" vs "&" conjunction validation
-- Enhanced reference detail reporting
+- DOI/URL presence detection
+- Old format detection ("Recuperado de")
+- Spanish quotes validation (« » vs " ")
+- Bibliografia vs Referencias section detection
+- Duplicate reference detection
+- Improved COM stability
 
 Author: Pablo Salonio
 Repository: https://github.com/P-SAL/silvina-editorial
@@ -17,6 +26,7 @@ import win32com.client
 import pythoncom
 import time
 import os
+from difflib import SequenceMatcher
 
 
 # === RAE GRAMMAR RULES CONTEXT ===
@@ -53,6 +63,7 @@ class Document:
         self.doc = None
         self.text = ""
         self.references = []
+        self.section_type = "Referencias"  # Default
     
     def load(self):
         """Load document and extract references."""
@@ -66,14 +77,12 @@ class Document:
     
         try:
             self.word = win32com.client.Dispatch("Word.Application")
-            self.word.Visible = False  # Keep invisible for stability
+            self.word.Visible = False
             abs_path = os.path.abspath(self.filepath)
             
-            # Open document
             self.doc = self.word.Documents.Open(abs_path)
             
-            # CRITICAL: Force Word to fully load document
-            time.sleep(2.0)  # Initial wait
+            time.sleep(2.0)
             self.doc.Activate()
             time.sleep(1.0)
             _ = self.doc.Characters.Count
@@ -89,7 +98,7 @@ class Document:
             self.doc = None
     
     def _extract_referencias(self):
-        """Extract Referencias section using paragraphs (no truncation)."""
+        """Extract Referencias/Bibliografía section."""
         
         if not self.doc:
             print("⚠️ No document loaded")
@@ -122,7 +131,13 @@ class Document:
                     continue
                 
                 if not found_start:
-                    if "Fuentes bibliográficas" in para_text or "Referencias" in para_text or "Bibliografía" in para_text:
+                    if "Bibliografía" in para_text:
+                        self.section_type = "Bibliografía"
+                        found_start = True
+                        print(f"✅ Found Bibliografía section")
+                        continue
+                    elif "Fuentes bibliográficas" in para_text or "Referencias" in para_text:
+                        self.section_type = "Referencias"
                         found_start = True
                         print(f"✅ Found Referencias section")
                         continue
@@ -253,16 +268,7 @@ class Document:
         }
     
     def validar_orden_alfabetico(self):
-        """
-        Verifica si las referencias están en orden alfabético por apellido del primer autor.
-        
-        Returns:
-            dict: {
-                'ordenadas': bool,
-                'total_referencias': int,
-                'problemas': list of dicts with 'posicion', 'texto', 'deberia_ir_antes_de'
-            }
-        """
+        """Verifica si las referencias están en orden alfabético."""
         if not self.references or len(self.references) < 2:
             return {
                 'ordenadas': True,
@@ -276,11 +282,9 @@ class Document:
             ref_actual = self.references[i].text
             ref_siguiente = self.references[i + 1].text
             
-            # Extract first word (usually the first author's last name)
             primera_palabra_actual = ref_actual.split()[0].rstrip('.,').lower()
             primera_palabra_siguiente = ref_siguiente.split()[0].rstrip('.,').lower()
             
-            # Check alphabetical order
             if primera_palabra_actual > primera_palabra_siguiente:
                 problemas.append({
                     'posicion': i + 1,
@@ -291,6 +295,72 @@ class Document:
         return {
             'ordenadas': len(problemas) == 0,
             'total_referencias': len(self.references),
+            'problemas': problemas
+        }
+    
+    def detectar_duplicados(self):
+        """
+        Detecta referencias duplicadas o muy similares.
+        
+        Returns:
+            dict: {
+                'tiene_duplicados': bool,
+                'duplicados': list of dicts with indices and similarity
+            }
+        """
+        if len(self.references) < 2:
+            return {
+                'tiene_duplicados': False,
+                'duplicados': []
+            }
+        
+        duplicados = []
+        
+        for i in range(len(self.references)):
+            for j in range(i + 1, len(self.references)):
+                ref_i = self.references[i].text
+                ref_j = self.references[j].text
+                
+                # Calculate similarity ratio
+                similarity = SequenceMatcher(None, ref_i.lower(), ref_j.lower()).ratio()
+                
+                # If >85% similar, flag as potential duplicate
+                if similarity > 0.85:
+                    duplicados.append({
+                        'ref1_index': i + 1,
+                        'ref1_text': ref_i[:60] + '...' if len(ref_i) > 60 else ref_i,
+                        'ref2_index': j + 1,
+                        'ref2_text': ref_j[:60] + '...' if len(ref_j) > 60 else ref_j,
+                        'similitud': f"{similarity * 100:.1f}%"
+                    })
+        
+        return {
+            'tiene_duplicados': len(duplicados) > 0,
+            'duplicados': duplicados
+        }
+    
+    def validar_comillas_espanolas(self):
+        """
+        Verifica uso de comillas españolas (« ») en vez de inglesas (" ").
+        
+        Returns:
+            dict: {
+                'usa_comillas_correctas': bool,
+                'problemas': list of reference indices
+            }
+        """
+        problemas = []
+        
+        for i, ref in enumerate(self.references):
+            # Check for English-style quotes in reference
+            if '"' in ref.text or "'" in ref.text:
+                problemas.append({
+                    'posicion': i + 1,
+                    'texto': ref.text[:60] + '...' if len(ref.text) > 60 else ref.text
+                })
+        
+        return {
+            'usa_comillas_correctas': len(problemas) == 0,
             'problemas': problemas
         }
     
@@ -311,7 +381,7 @@ class Document:
         
         report = []
         report.append("=" * 70)
-        report.append("SILVINA - ASISTENTE EDITORIAL v0.5 - SESSION 3")
+        report.append("SILVINA - ASISTENTE EDITORIAL v0.5 COMPLETE")
         report.append("=" * 70)
         report.append(f"\nDocumento: {os.path.basename(self.filepath)}")
         report.append(f"Fecha: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
@@ -326,26 +396,15 @@ class Document:
         report.append(f"Caracteres: {info_tipo['caracteres']:,}")
         report.append(f"{'✅' if info_tipo['cumple_limite'] else '⚠️'} {info_tipo['mensaje']}")
 
-        # LLM REVIEW SECTION
+        # LLM REVIEW SECTION (WITHOUT token analysis - moved to end)
         if include_llm:
             report.append("\n" + "=" * 70)
             report.append("REVISIÓN DE GRAMÁTICA Y ESTILO (LLM)")
             report.append("=" * 70)
             
             try:
-                info_tokens = self.calcular_tokens()
-                report.append(f"\n📊 Análisis de tokens:")
-                report.append(f"   Caracteres: {info_tokens['caracteres']:,}")
-                report.append(f"   Tokens estimados: {info_tokens['tokens_estimados']:,}")
-                report.append(f"   Uso de contexto: {info_tokens['porcentaje_uso']:.1f}%")
-                
-                if not info_tokens['cabe_en_contexto']:
-                    report.append(f"   ⚠️ Documento excede contexto LLM")
-                    report.append(f"   Se analizará solo los primeros ~{info_tokens['contexto_disponible']:,} tokens\n")
-                else:
-                    report.append(f"   ✅ Documento cabe en contexto LLM\n")
-                
                 print("\n🤖 Analizando con LLM...")
+                info_tokens = self.calcular_tokens()  # Calculate but don't display yet
                 llm_review, llm_error = self.review_with_llm(info_tokens)
                 if llm_error:
                     report.append(f"\n⚠️ {llm_error}")
@@ -354,11 +413,15 @@ class Document:
                     
             except Exception as e:
                 report.append(f"\n❌ Error en análisis LLM: {str(e)}")
+                info_tokens = None  # Set to None if error
+        else:
+            info_tokens = None
         
-        # REFERENCES VALIDATION SECTION (ENHANCED IN SESSION 3)
+        # REFERENCES VALIDATION SECTION
         report.append("\n" + "=" * 70)
         report.append("VALIDACIÓN DE REFERENCIAS APA")
         report.append("=" * 70)
+        report.append(f"Tipo de sección: {self.section_type}")
         report.append(f"Referencias encontradas: {len(self.references)}")
         
         # Count valid/invalid
@@ -368,13 +431,35 @@ class Document:
         report.append(f"✅ Válidas: {valid_count}")
         report.append(f"❌ Con problemas: {invalid_count}")
         
-        # ALPHABETICAL ORDER CHECK (NEW IN SESSION 3)
+        # ADDITIONAL CHECKS
         orden_info = self.validar_orden_alfabetico()
+        duplicados_info = self.detectar_duplicados()
+        comillas_info = self.validar_comillas_espanolas()
+        
+        # Summary of additional validations
         if orden_info['ordenadas']:
             report.append(f"✅ Referencias en orden alfabético")
         else:
-            report.append(f"⚠️ Referencias NO están en orden alfabético")
-            report.append(f"   Problemas encontrados: {len(orden_info['problemas'])}")
+            report.append(f"⚠️ Referencias NO están en orden alfabético ({len(orden_info['problemas'])} problemas)")
+        
+        if not duplicados_info['tiene_duplicados']:
+            report.append(f"✅ No se detectaron referencias duplicadas")
+        else:
+            report.append(f"⚠️ Posibles duplicados encontrados: {len(duplicados_info['duplicados'])}")
+        
+        if comillas_info['usa_comillas_correctas']:
+            report.append(f"✅ Comillas españolas correctas")
+        else:
+            report.append(f"⚠️ Uso de comillas inglesas en {len(comillas_info['problemas'])} referencias")
+        
+        # DOI/URL Summary
+        refs_con_doi = sum(1 for ref in self.references if ref.tiene_doi_o_url()['tiene_doi'])
+        refs_con_url = sum(1 for ref in self.references if ref.tiene_doi_o_url()['tiene_url'])
+        refs_formato_antiguo = sum(1 for ref in self.references if ref.tiene_doi_o_url()['formato_antiguo'])
+        
+        report.append(f"📊 DOI: {refs_con_doi}/{len(self.references)} | URL: {refs_con_url}/{len(self.references)}")
+        if refs_formato_antiguo > 0:
+            report.append(f"⚠️ {refs_formato_antiguo} referencias usan formato antiguo ('Recuperado de')")
         
         report.append("\n" + "-" * 70)
         report.append("DETALLE DE VALIDACIÓN")
@@ -382,21 +467,32 @@ class Document:
         
         for i, ref in enumerate(self.references, 1):
             rep = ref.get_validation_report()
-            status = "✅ VÁLIDA" if rep['is_valid'] else "❌ REQUIERE REVISIÓN"
             
-            report.append(f"{i}. {status}")
-            report.append(f"   Texto: {rep['text']}")
-            
-            if not rep['valid_author']:
-                report.append("   ⚠️ Formato de autor incorrecto (debe ser: Apellido, I.)")
-            if not rep['valid_year']:
-                report.append("   ⚠️ Año no encontrado o formato incorrecto (debe ser: (YYYY))")
-            if not rep['valid_conjuncion']:
-                report.append(f"   ⚠️ {rep['error_conjuncion']}")
+            if rep['is_valid']:
+                # ✅ VALID: Show status only, no text
+                report.append(f"{i}. ✅ VÁLIDA")
+            else:
+                # ❌ INVALID: Show status AND full details
+                report.append(f"{i}. ❌ REQUIERE REVISIÓN")
+                report.append(f"   Texto: {rep['text']}")
+                
+                if not rep['valid_author']:
+                    report.append("   ⚠️ Formato de autor incorrecto (debe ser: Apellido, I.)")
+                if not rep['valid_year']:
+                    report.append("   ⚠️ Año no encontrado o formato incorrecto (debe ser: (YYYY))")
+                if not rep['valid_conjuncion']:
+                    report.append(f"   ⚠️ {rep['error_conjuncion']}")
+                
+                # DOI/URL info (only for invalid references)
+                doi_url_info = rep['doi_url_info']
+                if not doi_url_info['tiene_doi'] and not doi_url_info['tiene_url']:
+                    report.append("   ℹ️ Sin DOI ni URL")
+                if doi_url_info['formato_antiguo']:
+                    report.append("   ⚠️ Usa formato antiguo 'Recuperado de' (debe omitirse)")
             
             report.append("")
         
-        # ALPHABETICAL ORDER PROBLEMS DETAIL (NEW)
+        # ALPHABETICAL ORDER PROBLEMS DETAIL
         if not orden_info['ordenadas']:
             report.append("\n" + "-" * 70)
             report.append("PROBLEMAS DE ORDEN ALFABÉTICO")
@@ -407,9 +503,46 @@ class Document:
                 report.append(f"   {problema['texto']}")
                 report.append(f"   Debería ir ANTES de: {problema['deberia_ir_antes_de']}\n")
         
-        report.append("=" * 70)
+        # DUPLICATE REFERENCES DETAIL
+        if duplicados_info['tiene_duplicados']:
+            report.append("\n" + "-" * 70)
+            report.append("POSIBLES REFERENCIAS DUPLICADAS")
+            report.append("-" * 70 + "\n")
+            
+            for dup in duplicados_info['duplicados']:
+                report.append(f"⚠️ Referencias #{dup['ref1_index']} y #{dup['ref2_index']} son {dup['similitud']} similares:")
+                report.append(f"   #{dup['ref1_index']}: {dup['ref1_text']}")
+                report.append(f"   #{dup['ref2_index']}: {dup['ref2_text']}\n")
+        
+        # SPANISH QUOTES PROBLEMS
+        if not comillas_info['usa_comillas_correctas']:
+            report.append("\n" + "-" * 70)
+            report.append("PROBLEMAS DE COMILLAS")
+            report.append("-" * 70 + "\n")
+            
+            for problema in comillas_info['problemas']:
+                report.append(f"⚠️ Referencia #{problema['posicion']} usa comillas inglesas:")
+                report.append(f"   {problema['texto']}")
+                report.append(f"   Debe usar comillas españolas (« »)\n")
+        
+        # TOKEN ANALYSIS (MOVED TO END - Technical info about Silvina)
+        if include_llm and info_tokens:
+            report.append("\n" + "=" * 70)
+            report.append("ANÁLISIS TÉCNICO - CAPACIDAD LLM")
+            report.append("=" * 70)
+            report.append(f"Caracteres analizados: {info_tokens['caracteres']:,}")
+            report.append(f"Tokens estimados: {info_tokens['tokens_estimados']:,}")
+            report.append(f"Uso de contexto: {info_tokens['porcentaje_uso']:.1f}%")
+            
+            if not info_tokens['cabe_en_contexto']:
+                report.append(f"⚠️ Documento excede contexto LLM - análisis parcial")
+            else:
+                report.append(f"✅ Documento completo analizado")
+        
+        report.append("\n" + "=" * 70)
         
         return '\n'.join(report)
+   
 
     def review_with_llm(self, info_tokens):
         """Revisión gramatical con contexto RAE."""
@@ -482,17 +615,40 @@ class Reference:
         if match:
             return True, match.group(1)
         return False, None
-
+    
     def validar_conjuncion_espanola(self):
-        """Verifica uso de 'y' en vez de '&' para referencias en español APA 7."""
-        # Improved pattern: catches both "I. &" and "I., &"
+        """
+        Verifica uso de 'y' en vez de '&' para referencias en español APA 7.
+        Improved pattern to catch all cases.
+        """
+        # Pattern catches: "I. &" or "I., &" or "A., &"
         patron_ampersand = r'[A-Z]\.(?:,)?\s+&\s+[A-Z]'
         
         if re.search(patron_ampersand, self.text):
             return False, "Uso incorrecto de '&' (debe ser 'y' en español APA 7)"
         
         return True, None
-
+    
+    def tiene_doi_o_url(self):
+        """
+        Verifica presencia de DOI o URL.
+        
+        Returns:
+            dict: {
+                'tiene_doi': bool,
+                'tiene_url': bool,
+                'formato_antiguo': bool  # "Recuperado de"
+            }
+        """
+        tiene_doi = bool(re.search(r'https?://doi\.org/[\w\.\-/]+', self.text, re.IGNORECASE))
+        tiene_url = bool(re.search(r'https?://[^\s]+', self.text))
+        formato_antiguo = bool(re.search(r'Recuperado\s+de\s+https?://', self.text, re.IGNORECASE))
+        
+        return {
+            'tiene_doi': tiene_doi,
+            'tiene_url': tiene_url,
+            'formato_antiguo': formato_antiguo
+        }
     
     def is_valid(self):
         """Check if reference meets all APA 7 Spanish requirements"""
@@ -507,6 +663,7 @@ class Reference:
         has_author = self.validate_author()
         has_year, year = self.validate_year()
         conjuncion_valida, error_conjuncion = self.validar_conjuncion_espanola()
+        doi_url_info = self.tiene_doi_o_url()
         
         return {
             'text': self.text[:80] + '...' if len(self.text) > 80 else self.text,
@@ -514,6 +671,7 @@ class Reference:
             'valid_year': has_year,
             'valid_conjuncion': conjuncion_valida,
             'error_conjuncion': error_conjuncion,
+            'doi_url_info': doi_url_info,
             'year': year,
             'is_valid': has_author and has_year and conjuncion_valida
         }
@@ -522,7 +680,7 @@ class Reference:
 # === MAIN EXECUTION ===
 if __name__ == "__main__":
     print("\n" + "="*70)
-    print("SILVINA v0.5 - ASISTENTE EDITORIAL - SESSION 3")
+    print("SILVINA v0.5 - ASISTENTE EDITORIAL - COMPLETE")
     print("="*70 + "\n")
     
     filepath = r"C:\Users\usuario\Desktop\Escudo cuantico_AB_25092025.docx"
@@ -533,7 +691,7 @@ if __name__ == "__main__":
     report = doc.generate_report(include_llm=True)
     print(report)
     
-    report_filename = f"reporte_silvina_v05_session3_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+    report_filename = f"reporte_silvina_v05_COMPLETE_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
     with open(report_filename, 'w', encoding='utf-8') as f:
         f.write(report)
     
