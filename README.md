@@ -10,7 +10,7 @@
 
 ## 📖 Overview
 
-Silvina is an intelligent editorial assistant developed for **Revista Visión Conjunta** at Universidad de la Defensa Nacional, Argentina. It automates the manuscript review process by combining traditional document analysis with modern AI capabilities, providing comprehensive editorial feedback entirely in Spanish.
+Silvina is an intelligent editorial assistant developed for **Revista Visión Conjunta** at Facultad Militar Conjunta - Universidad de la Defensa Nacional, Argentina. It automates the manuscript review process by combining traditional document analysis with modern AI capabilities, providing comprehensive editorial feedback entirely in Spanish.
 
 **Current Version:** v0.5 COMPLETE (January 2026)  
 **Target Release:** v1.0 by June 2026  
