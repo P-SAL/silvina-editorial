@@ -1,0 +1,41 @@
+cff-version: 1.2.0
+message: "If you use this software in academic work, please cite it as below."
+title: "Silvina: AI-Powered Editorial Assistant for Spanish Academic Journals"
+version: "0.5"
+date-released: 2026-01-01
+license: MIT
+
+authors:
+  - family-names: Salonio
+    given-names: Pablo
+    affiliation: "Facultad Militar Conjunta, Universidad de la Defensa Nacional, Argentina"
+    email: plsalonio@gmail.com
+    orcid: "https://orcid.org/0000-0000-0000-0000"
+
+repository-code: "https://github.com/P-SAL/silvina-editorial"
+
+keywords:
+  - academic publishing
+  - editorial automation
+  - APA 7
+  - Spanish NLP
+  - AI agents
+  - reference validation
+  - academic journals
+
+abstract: >
+  Silvina is an AI-powered editorial assistant designed to automate manuscript validation
+  for Spanish-language academic journals. The system integrates document structure analysis,
+  Spanish APA 7 reference validation, EUMIC guideline compliance, and local large language
+  model (LLM) support for grammar and style review, enabling accurate, privacy-preserving
+  editorial workflows.
+
+preferred-citation:
+  type: software
+  authors:
+    - family-names: Salonio
+      given-names: Pablo
+  title: "Silvina: AI-Powered Editorial Assistant for Spanish Academic Journals"
+  version: "0.5"
+  year: 2026
+  url: "https://github.com/P-SAL/silvina-editorial"

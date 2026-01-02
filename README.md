@@ -368,7 +368,12 @@ This is an educational project developed as part of academic coursework. While d
 
 **Feel free to reach out for collaboration discussions!**
 
----
+## 📑 How to Cite
+
+If you use **Silvina** in academic work, please cite the software using the metadata
+provided in the `CITATION.cff` file. GitHub will automatically generate citation formats
+(BibTeX, APA, Chicago) via the **“Cite this repository”** button.
+
 
 ## 📚 References & Resources
 
@@ -382,7 +387,22 @@ This is an educational project developed as part of academic coursework. While d
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License.  
+You are free to use, modify, and distribute this software, provided that the original copyright
+and license notice are included.
+
+This software is provided **“as is”**, without warranty of any kind.  
+See the [LICENSE](LICENSE) file for full details.
+
+---
+
+### Institutional Disclaimer
+
+This project is an independent academic software tool developed in an educational and research context.  
+Its use does **not** imply official endorsement, certification, or institutional responsibility by
+Universidad de la Defensa Nacional or *Revista Visión Conjunta*, except where explicitly stated for
+pilot or internal evaluation purposes.
+
 
 ---
 
