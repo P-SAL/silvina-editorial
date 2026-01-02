@@ -389,8 +389,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 👤 Author
 
 **Pablo Salonio**  
-Associate Dean for Research, Universidad de la Defensa Nacional  
-AI Agent Developer | Python Specialist
+Associate Dean for Research, Facultad Militar Conjunta - Universidad de la Defensa Nacional (Bs.As., Argentina)  
+AI Agent Orchestration & Governance Lead | Python-Literate
 
 📧 plsalonio@gmail.com  
 🔗 [LinkedIn](https://www.linkedin.com/in/pablosalonio)  
