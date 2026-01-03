@@ -43,6 +43,49 @@ class Citation:
         type_marker = "📖" if self.citation_type == "narrativa" else "📎"
         return f"{type_marker} {authors_text} ({self.year}{page_text}) [¶{self.paragraph_index}]"
 
+@dataclass
+class Reference:
+    """Stores one bibliographic reference with parsed metadata."""
+    
+    authors: List[str]        # ["García", "López"] or ["IBM Research"]
+    year: str                 # "2020" or "2020a"
+    title: str                # Article/book title
+    raw_text: str            # Full reference text
+    paragraph_index: int     # Which paragraph it appears in
+    
+    def __post_init__(self):
+        """Normalize author names (remove extra whitespace)."""
+        self.authors = [a.strip() for a in self.authors if a.strip()]
+    
+    @property
+    def reference_key(self) -> str:
+        """Generate unique key for matching (first_author_year)."""
+        if not self.authors:
+            return "unknown_unknown"
+        
+        # Get first author's last name
+        first_author = self.authors[0]
+        # Remove initials like "García, A." → "García"
+        last_name = first_author.split(',')[0].strip()
+        
+        return f"{last_name}_{self.year}".lower()
+    
+    @property
+    def display_text(self) -> str:
+        """Human-readable reference for reports."""
+        if len(self.authors) == 1:
+            author_text = self.authors[0]
+        elif len(self.authors) == 2:
+            author_text = f"{self.authors[0]} y {self.authors[1]}"
+        else:
+            author_text = f"{self.authors[0]} et al."
+        
+        return f"{author_text} ({self.year})"
+    
+    def __repr__(self):
+        return f"Reference({self.display_text} @ ¶{self.paragraph_index})"
+
+
 
 # ============================================================
 # CITATION EXTRACTOR
@@ -123,6 +166,267 @@ class CitationExtractor:
         return citations
 
 
+class ReferenceExtractor:
+    """Extracts APA references from bibliography section."""
+    
+    def __init__(self):
+        # Pattern for APA reference: Author, I. (Year). Title...
+        # Examples:
+        #   García, A. (2020). Title...
+        #   García, A. & López, B. (2019). Title...
+        #   IBM Research. (2024). Title...
+        
+        self.pattern_reference = re.compile(
+            r'^([A-ZÁÉÍÓÚÑ][^\(]+?)'     # Authors (up to year parenthesis)
+            r'\s*\((\d{4}[a-z]?)\)\.'    # Year in parentheses with dot
+            r'\s*(.+?)(?:\.|$)',          # Title (up to first period or end)
+            re.MULTILINE | re.IGNORECASE
+        )
+    
+    def detect_section_type(self, paragraphs: List[str]) -> tuple:
+        """
+        Detect if the list is 'Referencias' or 'Bibliografía'.
+        
+        Returns:
+            (section_type, paragraph_index) where section_type is:
+            - "referencias" = strict APA (must cite everything)
+            - "bibliografia" = consulted sources (citation optional)
+            - "unknown" = couldn't determine
+        """
+        # Look for section headers in last 20 paragraphs
+        search_start = max(0, len(paragraphs) - 20)
+        
+        for i in range(search_start, len(paragraphs)):
+            para_lower = paragraphs[i].lower().strip()
+            
+            # Check for "Referencias" variations
+            if para_lower in ['referencias', 'referencias bibliográficas', 'references']:
+                return ("referencias", i)
+            
+            # Check for "Bibliografía" variations
+            if any(keyword in para_lower for keyword in [
+                'bibliografía',
+                'bibliografia',
+                'fuentes bibliográficas',
+                'fuentes consultadas',
+                'bibliography'
+            ]):
+                return ("bibliografia", i)
+        
+        return ("unknown", -1)
+    
+    def extract_from_paragraphs(self, paragraphs: List[str], start_index: int = 0) -> List[Reference]:
+        """
+        Extract references from paragraphs (usually the last section).
+        
+        Args:
+            paragraphs: List of paragraph texts
+            start_index: Which paragraph to start from (references are usually at end)
+        
+        Returns:
+            List of Reference objects
+        """
+        references = []
+        
+        for i in range(start_index, len(paragraphs)):
+            para_text = paragraphs[i].strip()
+            
+            # Skip empty paragraphs
+            if not para_text:
+                continue
+            
+            # Try to match APA reference pattern
+            match = self.pattern_reference.match(para_text)
+            
+            if match:
+                authors_raw = match.group(1).strip()
+                year = match.group(2)
+                title = match.group(3).strip()
+                
+                # Parse authors
+                authors = self._parse_authors(authors_raw)
+                
+                reference = Reference(
+                    authors=authors,
+                    year=year,
+                    title=title,
+                    raw_text=para_text,
+                    paragraph_index=i
+                )
+                references.append(reference)
+        
+        return references
+    
+    @staticmethod
+    def _parse_authors(authors_text: str) -> List[str]:
+        """
+        Parse author string into list.
+        Examples:
+            "García, A." → ["García, A."]
+            "García, A. & López, B." → ["García, A.", "López, B."]
+            "García, A., López, B., & Pérez, C." → ["García, A.", "López, B.", "Pérez, C."]
+        """
+        # Replace " & " with ", " for uniform splitting
+        authors_text = authors_text.replace(' & ', ', ')
+        
+        # Split by comma, but keep "Apellido, Inicial" together
+        # This is a simplified approach - we'll improve it later
+        parts = authors_text.split(', ')
+        
+        authors = []
+        i = 0
+        while i < len(parts):
+            # Each author is "Apellido, Initial"
+            if i + 1 < len(parts) and len(parts[i+1]) <= 3:  # Likely an initial
+                authors.append(f"{parts[i]}, {parts[i+1]}")
+                i += 2
+            else:
+                # Institutional author or last name only
+                authors.append(parts[i])
+                i += 1
+        
+        return authors
+
+   
+class CitationMatcher:
+    """Matches in-text citations with reference list entries."""
+    
+    def __init__(self, citations: List[Citation], references: List[Reference]):
+        self.citations = citations
+        self.references = references
+        
+        # Build lookup dictionaries for fast matching
+        self.citation_keys = {cit.citation_key for cit in citations}
+        self.reference_keys = {ref.reference_key for ref in references}
+        
+        # Build reference lookup by key
+        self.ref_lookup = {ref.reference_key: ref for ref in references}
+    
+    def find_orphaned_citations(self) -> List[Citation]:
+        """
+        Find citations that don't have matching references.
+        These are CRITICAL errors - cited but not in bibliography.
+        """
+        orphaned = []
+        
+        for citation in self.citations:
+            if citation.citation_key not in self.reference_keys:
+                orphaned.append(citation)
+        
+        return orphaned
+    
+    def find_orphaned_references(self) -> List[Reference]:
+        """
+        Find references that are never cited in text.
+        These are WARNING level - unnecessary references.
+        """
+        orphaned = []
+        
+        for reference in self.references:
+            if reference.reference_key not in self.citation_keys:
+                orphaned.append(reference)
+        
+        return orphaned
+    
+    def find_year_discrepancies(self) -> List[tuple]:
+        """
+        Find cases where citation year doesn't match reference year.
+        Example: Text says (García, 2020) but reference says (2019).
+        """
+        discrepancies = []
+        
+        for citation in self.citations:
+            # Find matching reference
+            ref = self.ref_lookup.get(citation.citation_key)
+            
+            if ref and citation.year != ref.year:
+                discrepancies.append((citation, ref))
+        
+        return discrepancies
+    
+    def generate_report(self, section_type: str = "referencias") -> str:
+        """
+        Generate comprehensive citation integrity report.
+        
+        Args:
+            section_type: "referencias" or "bibliografia" - affects severity
+        """
+        report = []
+        report.append("=" * 60)
+        report.append("SILVINA v0.6 - Reporte de Integridad de Citas")
+        report.append("=" * 60)
+        report.append("")
+        
+        # Summary statistics
+        report.append("📊 Estadísticas:")
+        report.append(f"  • Citas en texto: {len(self.citations)}")
+        report.append(f"  • Entradas bibliográficas: {len(self.references)}")
+        report.append(f"  • Tipo de sección: {section_type.upper()}")
+        report.append("")
+        
+        # Orphaned citations (ALWAYS CRITICAL)
+        orphaned_cits = self.find_orphaned_citations()
+        if orphaned_cits:
+            report.append("🔴 CRÍTICO: Citas sin Entrada Bibliográfica")
+            report.append(f"  Encontradas {len(orphaned_cits)} citas que NO aparecen en la lista:")
+            report.append("")
+            for cit in orphaned_cits[:10]:
+                report.append(f"  • {cit.display_text} [Párrafo {cit.paragraph_index}]")
+                report.append(f"    └─ Texto: {cit.raw_text}")
+            if len(orphaned_cits) > 10:
+                report.append(f"  ... y {len(orphaned_cits) - 10} más")
+            report.append("")
+        
+        # Orphaned references (severity depends on section type)
+        orphaned_refs = self.find_orphaned_references()
+        if orphaned_refs:
+            if section_type == "referencias":
+                # Strict APA - this is a WARNING (should cite everything)
+                report.append("🟡 ADVERTENCIA: Referencias sin Citar en Texto")
+                report.append(f"  En secciones 'Referencias', se espera citar todas las entradas.")
+                report.append(f"  Encontradas {len(orphaned_refs)} referencias no citadas:")
+            else:
+                # Bibliography - this is just INFORMATIONAL
+                report.append("🔵 INFORMATIVO: Entradas Bibliográficas sin Citar")
+                report.append(f"  En 'Bibliografía', es aceptable incluir fuentes consultadas.")
+                report.append(f"  Encontradas {len(orphaned_refs)} entradas no citadas:")
+            
+            report.append("")
+            for ref in orphaned_refs[:10]:
+                report.append(f"  • {ref.display_text} [Párrafo {ref.paragraph_index}]")
+                report.append(f"    └─ {ref.title[:60]}...")
+            if len(orphaned_refs) > 10:
+                report.append(f"  ... y {len(orphaned_refs) - 10} más")
+            report.append("")
+        
+        # Year discrepancies (ALWAYS CRITICAL)
+        discrepancies = self.find_year_discrepancies()
+        if discrepancies:
+            report.append("🔴 CRÍTICO: Discrepancias de Año")
+            report.append(f"  Encontradas {len(discrepancies)} inconsistencias:")
+            report.append("")
+            for cit, ref in discrepancies:
+                report.append(f"  • Cita: {cit.display_text} vs Referencia: {ref.display_text}")
+                report.append(f"    └─ [Párrafo {cit.paragraph_index}] → [Párrafo {ref.paragraph_index}]")
+            report.append("")
+        
+        # Perfect match summary
+        if not orphaned_cits and not discrepancies:
+            if section_type == "referencias" and not orphaned_refs:
+                report.append("✅ PERFECTO: Sistema de Citación Íntegro")
+                report.append("  • Todas las citas tienen referencias")
+                report.append("  • Todas las referencias son citadas")
+                report.append("  • No hay discrepancias de año")
+            elif section_type == "bibliografia":
+                report.append("✅ ACEPTABLE: Sistema de Citación Válido")
+                report.append("  • Todas las citas tienen entrada bibliográfica")
+                report.append("  • Bibliografía puede incluir fuentes consultadas")
+                report.append("  • No hay discrepancias de año")
+            report.append("")
+        
+        return "\n".join(report)
+    
+    
 # ============================================================
 # WORD DOCUMENT READER
 # ============================================================
@@ -351,6 +655,91 @@ def check_citation_integrity(docx_path: str):
         print(f"  • {len(reference_paragraphs)} referencias bibliográficas")
 
 
+def test_reference_extraction(docx_path: str):
+    """Test reference extraction from a document."""
+    print("\n" + "="*60)
+    print("SILVINA v0.6 - Test: Extracción de Referencias")
+    print("="*60)
+    
+    with WordDocumentReader(docx_path) as reader:
+        paragraphs = reader.get_paragraphs()
+    
+    print(f"\n📚 Buscando referencias en los últimos 15 párrafos...\n")
+    
+    # Extract references from last 15 paragraphs (where references usually are)
+    extractor = ReferenceExtractor()
+    start_para = max(0, len(paragraphs) - 15)
+    references = extractor.extract_from_paragraphs(paragraphs, start_index=start_para)
+    
+    print(f"✓ Referencias encontradas: {len(references)}\n")
+    
+    for ref in references:
+        print(f"  {ref}")
+        print(f"    └─ Key: {ref.reference_key}")
+        print(f"    └─ Autores: {ref.authors}")
+        print(f"    └─ Título: {ref.title[:60]}...")
+        print()
+    
+    return references
+
+def analyze_citation_reference_matching(docx_path: str):
+    """
+    Complete citation-reference integrity analysis.
+    Detects section type (Referencias vs Bibliografía) and adjusts validation.
+    """
+    print("\n" + "="*60)
+    print("SILVINA v0.6 - Análisis Completo de Citas y Referencias")
+    print("="*60)
+    
+    # Read document
+    with WordDocumentReader(docx_path) as reader:
+        paragraphs = reader.get_paragraphs()
+    
+    print(f"\n📖 Extrayendo citas del texto...")
+    
+    # Extract citations
+    cit_extractor = CitationExtractor()
+    all_citations = []
+    for i, para_text in enumerate(paragraphs):
+        citations = cit_extractor.extract_all(para_text, para_index=i)
+        all_citations.extend(citations)
+    
+    print(f"  ✓ {len(all_citations)} citas encontradas")
+    
+    print(f"\n📚 Detectando tipo de sección bibliográfica...")
+    
+    # Detect section type
+    ref_extractor = ReferenceExtractor()
+    section_type, section_para = ref_extractor.detect_section_type(paragraphs)
+    
+    if section_type == "referencias":
+        print(f"  ✓ Sección detectada: REFERENCIAS (Párrafo {section_para})")
+        print(f"    └─ Norma APA: Todas deben ser citadas")
+    elif section_type == "bibliografia":
+        print(f"  ✓ Sección detectada: BIBLIOGRAFÍA (Párrafo {section_para})")
+        print(f"    └─ Puede incluir fuentes consultadas sin citar")
+    else:
+        print(f"  ⚠️  Sección no identificada - asumiendo Referencias")
+        section_type = "referencias"  # Default to strict
+    
+    print(f"\n📚 Extrayendo entradas bibliográficas...")
+    
+    # Extract references (from last 20 paragraphs)
+    start_para = max(0, len(paragraphs) - 20)
+    all_references = ref_extractor.extract_from_paragraphs(paragraphs, start_index=start_para)
+    
+    print(f"  ✓ {len(all_references)} entradas encontradas")
+    
+    print(f"\n🔍 Verificando integridad...")
+    
+    # Match citations with references
+    matcher = CitationMatcher(all_citations, all_references)
+    
+    # Generate report with section type awareness
+    report = matcher.generate_report(section_type=section_type)
+    print("\n" + report)
+    
+    return matcher
 
 
 # ============================================================
@@ -380,13 +769,14 @@ if __name__ == "__main__":
                 for cit in found:
                     print(f"  → {cit}")
         
+        
         print("\n💡 Comandos disponibles:")
         print("   python silvina_editorial_v0.6.py documento.docx            # Analizar")
         print("   python silvina_editorial_v0.6.py documento.docx --debug    # Ver párrafos")
         print("   python silvina_editorial_v0.6.py documento.docx --search   # Buscar paréntesis")
         print("   python silvina_editorial_v0.6.py documento.docx --check    # Verificar integridad")
-        
-        
+        print("   python silvina_editorial_v0.6.py documento.docx --refs     # Extraer referencias")
+        print("   python silvina_editorial_v0.6.py documento.docx --match     # Análisis completo")
 
     # Check for flags BEFORE default analysis
     elif len(sys.argv) >= 2:
@@ -405,6 +795,7 @@ if __name__ == "__main__":
                 print(f"✗ Error: {e}")
                 sys.exit(1)
                        
+
         # Search mode (find parentheses)
         elif len(sys.argv) == 3 and sys.argv[2] == "--search":
             try:
@@ -422,6 +813,22 @@ if __name__ == "__main__":
                 print(f"✗ Error: {e}")
                 sys.exit(1)
         
+        # Test reference extraction
+        elif len(sys.argv) == 3 and sys.argv[2] == "--refs":
+            try:
+                test_reference_extraction(docx_file)
+            except ImportError as e:
+                print(f"✗ Error: {e}")
+                sys.exit(1)
+
+        # Full citation-reference matching analysis
+        elif len(sys.argv) == 3 and sys.argv[2] == "--match":
+            try:
+                analyze_citation_reference_matching(docx_file)
+            except ImportError as e:
+                print(f"✗ Error: {e}")
+                sys.exit(1)
+
         # Default: Document analysis mode (no flag)
         else:
             try:
