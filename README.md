@@ -4,7 +4,7 @@
 [![Python](https://img.shields.io/badge/python-3.12-blue)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-**Automated editorial validation for Spanish academic journals** | APA 7 compliance • EUMIC guidelines • Local LLM integration
+**Automated editorial validation for Spanish academic journals** | APA 7 compliance • EUMIC guidelines (EUMIC-EDITORIAL UNIVERSITARIA DE LA FACULTAD MILITAR CONJUNTA) • Local LLM integration
 
 ---
 
@@ -26,7 +26,7 @@ Silvina is an intelligent editorial assistant developed for **Revista Visión Co
 - EUMIC editorial guideline compliance
 - Grammar and style with RAE-contextualized LLM
 
-This project follows professional software development practices with version control, incremental releases, and comprehensive testing. Developed as part of a 7-month Python + AI Agent Development course (November 2025 - June 2026).
+This project follows professional software development practices with version control, incremental releases, and comprehensive testing. 
 
 ---
 
@@ -358,7 +358,7 @@ python silvina_editorial_v0_5.py
 
 ## 🤝 Contributing
 
-This is an educational project developed as part of academic coursework. While direct contributions are not currently accepted, feedback and suggestions are welcome via GitHub Issues.
+This project is part of an institutional initiative aimed at improving editorial performance. While direct code contributions are not currently accepted, feedback and suggestions are welcome via GitHub Issues.
 
 **If you're working on:**
 - Academic journal automation
@@ -400,7 +400,7 @@ See the [LICENSE](LICENSE) file for full details.
 
 This project is an independent academic software tool developed in an educational and research context.  
 Its use does **not** imply official endorsement, certification, or institutional responsibility by
-Universidad de la Defensa Nacional or *Revista Visión Conjunta*, except where explicitly stated for
+Facultad Militar Conjunta , Universidad de la Defensa Nacional or *Revista Visión Conjunta*, except where explicitly stated for
 pilot or internal evaluation purposes.
 
 
