@@ -140,7 +140,7 @@ This project follows professional software development practices with version co
 - **Python 3.12+**
 - **Microsoft Word** (2016 or later)
 - **Windows 10/11** (for COM automation)
-- **RAM:** 8GB minimum, 32GB recommended for full LLM features
+- **RAM:** 32GB recommended for full LLM features
 - **[Ollama](https://ollama.ai/)** (optional, for grammar review)
 
 ### Setup
