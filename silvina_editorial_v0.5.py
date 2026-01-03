@@ -58,9 +58,9 @@ class Document:
     
     def __init__(self, filepath):
         """Initialize with filepath only."""
-        self.filepath = filepath
-        self.word = None
-        self.doc = None
+        self.filepath = filepath #Stores the path to the Word file.
+        self.word = None # Stores a reference to the Word application (COM object) that allows Python to control Microsoft Word
+        self.doc = None # Stores the opened Word document object,
         self.text = ""
         self.references = []
         self.section_type = "Referencias"  # Default
