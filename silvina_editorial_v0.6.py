@@ -10,6 +10,7 @@ from typing import List, Optional
 import re
 from pathlib import Path
 import sys
+from enum import Enum
 
 # Try to import pywin32, but don't fail if not available
 try:
@@ -18,6 +19,12 @@ try:
 except ImportError:
     HAS_WIN32 = False
     print("⚠️ pywin32 no instalado - modo documento deshabilitado")
+
+class ArticleType(Enum):
+    """Types of articles according to EUMIC guidelines."""
+    CIENTIFICA = "científica"      # Scientific - requires IMRyD
+    DIVULGACION = "divulgación"    # Dissemination - flexible structure
+    UNKNOWN = "unknown"        # Cannot determine
 
 
 # ============================================================
@@ -92,7 +99,17 @@ class Reference:
     def __repr__(self):
         return f"Reference({self.display_text} @ ¶{self.paragraph_index})"
 
-
+@dataclass
+class Section:
+    """Represents a document section (e.g., Introducción, Métodos)."""
+    
+    name: str              # "Introducción", "Métodos", etc.
+    paragraph_index: int   # Where it appears
+    word_count: int        # Number of words in section
+    order: int = 0         # Expected order (1=first, 2=second, etc.)
+    
+    def __repr__(self):
+        return f"Section({self.name} @ ¶{self.paragraph_index}, {self.word_count} palabras)"
 
 # ============================================================
 # CITATION EXTRACTOR
@@ -468,6 +485,205 @@ class ReferenceExtractor:
         
         return authors
 
+class IMRyDValidator:
+    """Validates IMRyD structure in scientific articles."""
+    
+    # Expected sections for scientific articles
+    REQUIRED_SECTIONS = {
+        "introducción": {"order": 1, "min_words": 300, "aliases": ["introduccion", "marco teórico", "marco teorico"]},
+        "métodos": {"order": 2, "min_words": 200, "aliases": ["metodos", "métodos y materiales", "metodos y materiales", "metodología", "metodologia"]},
+        "resultados": {"order": 3, "min_words": 300, "aliases": ["resultados y análisis", "resultados y analisis"]},
+        "discusión": {"order": 4, "min_words": 300, "aliases": ["discusion"]},
+        "conclusiones": {"order": 5, "min_words": 150, "aliases": ["conclusión", "conclusion"]},
+    }
+    
+    def __init__(self):
+        self.sections_found = []
+    
+    def detect_article_type(self, paragraphs: List[str]) -> ArticleType:
+        """
+        Detect if document is Científica or Divulgación.
+        Scientific articles have IMRyD structure keywords.
+        """
+        # Look for IMRyD keywords in first 30 paragraphs
+        search_text = " ".join(paragraphs[:30]).lower()
+        
+        imryd_keywords = ["métodos", "metodos", "resultados", "discusión", "discusion"]
+        keyword_count = sum(1 for kw in imryd_keywords if kw in search_text)
+        
+        if keyword_count >= 3:
+            return ArticleType.CIENTIFICA
+        elif keyword_count >= 1:
+            return ArticleType.UNKNOWN
+        else:
+            return ArticleType.DIVULGACION
+    
+    def extract_sections(self, paragraphs: List[str]) -> List[Section]:
+        """
+        Extract IMRyD sections from document.
+        Looks for section headers (Introducción, Métodos, etc.)
+        """
+        sections = []
+        current_section = None
+        current_section_start = -1
+        current_section_words = 0
+        
+        for i, para in enumerate(paragraphs):
+            para_clean = para.strip().lower()
+            
+            # Skip empty paragraphs
+            if not para_clean:
+                continue
+            
+            # Check if this is a section header
+            section_found = None
+            for section_name, section_info in self.REQUIRED_SECTIONS.items():
+                # Check main name
+                if para_clean == section_name:
+                    section_found = section_name
+                    break
+                # Check aliases
+                for alias in section_info["aliases"]:
+                    if para_clean == alias:
+                        section_found = section_name
+                        break
+                if section_found:
+                    break
+            
+            if section_found:
+                # Save previous section if exists
+                if current_section:
+                    sections.append(Section(
+                        name=current_section,
+                        paragraph_index=current_section_start,
+                        word_count=current_section_words,
+                        order=self.REQUIRED_SECTIONS[current_section]["order"]
+                    ))
+                
+                # Start new section
+                current_section = section_found
+                current_section_start = i
+                current_section_words = 0
+            else:
+                # Count words in current section
+                if current_section:
+                    current_section_words += len(para.split())
+        
+        # Save last section
+        if current_section:
+            sections.append(Section(
+                name=current_section,
+                paragraph_index=current_section_start,
+                word_count=current_section_words,
+                order=self.REQUIRED_SECTIONS[current_section]["order"]
+            ))
+        
+        self.sections_found = sections
+        return sections
+    
+    def validate_structure(self, sections: List[Section], article_type: ArticleType) -> dict:
+        """
+        Validate IMRyD structure.
+        Returns dict with issues found.
+        """
+        issues = {
+            "missing_sections": [],
+            "out_of_order": [],
+            "too_short": [],
+            "warnings": []
+        }
+        
+        # Only validate structure for scientific articles OR unknown articles with some IMRyD sections
+        if article_type == ArticleType.DIVULGACION:
+            # Divulgación articles don't need IMRyD - skip validation
+            return issues
+        
+        # For CIENTIFICA or UNKNOWN with sections found, validate structure
+        if article_type == ArticleType.CIENTIFICA or (article_type == ArticleType.UNKNOWN and len(sections) > 0):
+            # Check for missing required sections
+            found_section_names = {s.name for s in sections}
+            for required_name in self.REQUIRED_SECTIONS.keys():
+                if required_name not in found_section_names:
+                    issues["missing_sections"].append(required_name)
+            
+            # Check section order
+            if len(sections) > 1:
+                for i in range(len(sections) - 1):
+                    if sections[i].order > sections[i + 1].order:
+                        issues["out_of_order"].append((sections[i].name, sections[i + 1].name))
+            
+            # Check minimum word count (only for sections that exist)
+            for section in sections:
+                min_words = self.REQUIRED_SECTIONS[section.name]["min_words"]
+                if section.word_count < min_words:
+                    issues["too_short"].append({
+                        "section": section.name,
+                        "current": section.word_count,
+                        "minimum": min_words
+                    })
+        
+        return issues
+    
+    
+   
+    def generate_report(self, article_type: ArticleType, sections: List[Section], issues: dict) -> str:
+        """Generate IMRyD validation report."""
+        report = []
+        report.append("=" * 60)
+        report.append("SILVINA v0.6 - Validación de Estructura IMRyD")
+        report.append("=" * 60)
+        report.append("")
+        
+        # Article type
+        report.append("📋 Tipo de Artículo:")
+        if article_type == ArticleType.CIENTIFICA:
+            report.append("  • CIENTÍFICA - Se requiere estructura IMRyD completa")
+        elif article_type == ArticleType.DIVULGACION:
+            report.append("  • DIVULGACIÓN - Estructura flexible")
+            report.append("  ℹ️  No se aplican validaciones de estructura IMRyD")
+            return "\n".join(report)
+        else:  # UNKNOWN
+            report.append("  • DESCONOCIDO - Detectadas algunas secciones IMRyD")
+            if len(sections) > 0:
+                report.append("  ⚠️  Se validará estructura IMRyD porque se encontraron secciones")
+            else:
+                report.append("  ℹ️  No se encontraron secciones IMRyD")
+                return "\n".join(report)
+        report.append("")
+        
+               
+                # Missing sections (CRITICAL)
+        if issues["missing_sections"]:
+            report.append("🔴 CRÍTICO: Secciones Faltantes")
+            report.append("  Las siguientes secciones son obligatorias pero no se encontraron:")
+            for missing in issues["missing_sections"]:
+                report.append(f"  • {missing.title()}")
+            report.append("")
+        
+        # Out of order (CRITICAL)
+        if issues["out_of_order"]:
+            report.append("🔴 CRÍTICO: Orden Incorrecto de Secciones")
+            report.append("  Las secciones no siguen el orden IMRyD:")
+            for sec1, sec2 in issues["out_of_order"]:
+                report.append(f"  • {sec1.title()} aparece antes de {sec2.title()}")
+            report.append("")
+        
+        # Too short (WARNING)
+        if issues["too_short"]:
+            report.append("🟡 ADVERTENCIA: Secciones Demasiado Cortas")
+            report.append("  Las siguientes secciones no cumplen el mínimo de palabras:")
+            for short in issues["too_short"]:
+                report.append(f"  • {short['section'].title()}: {short['current']} palabras (mínimo: {short['minimum']})")
+            report.append("")
+        
+        # Perfect structure
+        if not any(issues.values()):
+            report.append("✅ PERFECTO: Estructura IMRyD Completa y Correcta")
+            report.append("  • Todas las secciones presentes")
+            report.append("  • Orden correcto")
+            report.append("  • Longitud adecuada")
+        
+        return "\n".join(report)
 
 class CitationMatcher:
     """Matches in-text citations with reference list entries."""
@@ -951,6 +1167,38 @@ def analyze_citation_reference_matching(docx_path: str):
     
     return matcher
 
+def validate_imryd_structure(docx_path: str):
+    """Validate IMRyD structure of a scientific article."""
+    print("\n" + "="*60)
+    print("SILVINA v0.6 - Validación de Estructura IMRyD")
+    print("="*60)
+    
+    # Read document
+    with WordDocumentReader(docx_path) as reader:
+        paragraphs = reader.get_paragraphs()
+    
+    print(f"\n📖 Analizando estructura del documento...")
+    
+    # Create validator
+    validator = IMRyDValidator()
+    
+    # Detect article type
+    article_type = validator.detect_article_type(paragraphs)
+    print(f"  ✓ Tipo detectado: {article_type.value.upper()}")
+    
+    # Extract sections
+    sections = validator.extract_sections(paragraphs)
+    print(f"  ✓ Secciones encontradas: {len(sections)}")
+    
+    # Validate structure
+    issues = validator.validate_structure(sections, article_type)
+    
+    # Generate report
+    report = validator.generate_report(article_type, sections, issues)
+    print("\n" + report)
+    
+    return validator
+
 
 # ============================================================
 # MAIN ENTRY POINT
@@ -995,6 +1243,7 @@ if __name__ == "__main__":
         print("   python silvina_editorial_v0.6.py documento.docx --check    # Verificar integridad")
         print("   python silvina_editorial_v0.6.py documento.docx --refs     # Extraer referencias")
         print("   python silvina_editorial_v0.6.py documento.docx --match     # Análisis completo")
+        print("   python silvina_editorial_v0.6.py documento.docx --imryd     # Validar estructura")
 
     # Check for flags BEFORE default analysis
     elif len(sys.argv) >= 2:
@@ -1047,6 +1296,15 @@ if __name__ == "__main__":
                 print(f"✗ Error: {e}")
                 sys.exit(1)
 
+        # IMRyD structure validation
+        elif len(sys.argv) == 3 and sys.argv[2] == "--imryd":
+            try:
+                validate_imryd_structure(docx_file)
+            except ImportError as e:
+                print(f"✗ Error: {e}")
+                sys.exit(1)
+
+
         # Default: Document analysis mode (no flag)
         else:
             try:
@@ -1054,3 +1312,5 @@ if __name__ == "__main__":
             except ImportError as e:
                 print(f"✗ Error: {e}")
                 sys.exit(1)
+
+    
