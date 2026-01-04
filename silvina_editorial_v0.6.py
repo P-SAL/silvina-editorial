@@ -35,12 +35,19 @@ class Citation:
     raw_text: str
     page: Optional[str] = None
     start_pos: int = 0
+    is_secondary: bool = False           
+    secondary_source: Optional[str] = None  
     
     def __repr__(self):
         """Show citation in readable format."""
         authors_text = " y ".join(self.authors)
         page_text = f", p. {self.page}" if self.page else ""
         type_marker = "📖" if self.citation_type == "narrativa" else "📎"
+        
+        # Show secondary citation marker
+        if self.is_secondary:
+            return f"🔗 {authors_text} ({self.year}{page_text}) [como se cita en {self.secondary_source}] [¶{self.paragraph_index}]"
+        
         return f"{type_marker} {authors_text} ({self.year}{page_text}) [¶{self.paragraph_index}]"
 
 @dataclass
@@ -93,38 +100,56 @@ class Reference:
 
 class CitationExtractor:
     """Finds APA citations in Spanish text."""
-    
+        
     def __init__(self):
-        # Pattern 1: Parenthetical (García, 2020, p. 45)
+        # Pattern 1: Parenthetical citations
+        # Now supports:
+        #   (García, 2020)
+        #   (García et al., 2020)
+        #   (García y López, 2020)
+        #   (NIST, 2022)
+        
         self.pattern_simple = re.compile(
-            r'\('
-            r'([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\s+et\s+al\.)?)'
-            r',\s*'
-            r'(\d{4}[a-z]?)'
-            r'(?:,\s*(?:pp?\.|párr\.)\s*([\d\-]+))?'
-            r'\)'
+            r'\('                                           # Opening parenthesis
+            r'([A-ZÁÉÍÓÚÑ][a-záéíóúñA-ZÁÉÍÓÚÑ\-]+'        # First author (includes hyphens)
+            r'(?:\s+et\s+al\.)?'                            # Optional "et al."
+            r'(?:\s+y\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñA-ZÁÉÍÓÚÑ\-]+)?)'  # Optional "y Second Author"
+            r',\s*'                                         # Comma + spaces
+            r'(\d{4}[a-z]?)'                               # Year (2020 or 2020a)
+            r'(?:,\s*(?:pp?\.|párr\.)\s*([\d\-]+))?'       # Optional page/paragraph
+            r'\)'                                           # Closing parenthesis
         )
         
-        # Pattern 2: Narrative - García (2020)
+        # Pattern 2: Narrative citations
+        # Now supports:
+        #   García (2020)
+        #   García et al. (2019)
+        #   García y López (2020)
+        
         self.pattern_narrative = re.compile(
-            r'([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\s+et\s+al\.)?)'
-            r'\s+\('
-            r'(\d{4}[a-z]?)'
-            r'(?:,\s*(?:pp?\.|párr\.)\s*([\d\-]+))?'
-            r'\)'
+            r'([A-ZÁÉÍÓÚÑ][a-záéíóúñA-ZÁÉÍÓÚÑ\-]+'        # First author
+            r'(?:\s+et\s+al\.)?'                            # Optional "et al."
+            r'(?:\s+y\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñA-ZÁÉÍÓÚÑ\-]+)?)'  # Optional second author
+            r'\s+\('                                        # Space + opening paren
+            r'(\d{4}[a-z]?)'                               # Year
+            r'(?:,\s*(?:pp?\.|párr\.)\s*([\d\-]+))?'       # Optional page
+            r'\)'                                           # Closing parenthesis
         )
-    
+
     def extract_simple(self, text: str, para_index: int) -> List[Citation]:
         """Find parenthetical citations like (García, 2020, p. 45)."""
         citations = []
         
         for match in self.pattern_simple.finditer(text):
-            author = match.group(1)
+            authors_raw = match.group(1)
             year = match.group(2)
             page = match.group(3) if match.lastindex >= 3 else None
             
+            # Parse authors (handles "y" and "et al.")
+            authors = self._parse_authors(authors_raw)
+            
             citation = Citation(
-                authors=[author],
+                authors=authors,
                 year=year,
                 paragraph_index=para_index,
                 citation_type="parentética",
@@ -141,12 +166,15 @@ class CitationExtractor:
         citations = []
         
         for match in self.pattern_narrative.finditer(text):
-            author = match.group(1)
+            authors_raw = match.group(1)
             year = match.group(2)
             page = match.group(3) if match.lastindex >= 3 else None
             
+            # Parse authors
+            authors = self._parse_authors(authors_raw)
+            
             citation = Citation(
-                authors=[author],
+                authors=authors,
                 year=year,
                 paragraph_index=para_index,
                 citation_type="narrativa",
@@ -157,13 +185,166 @@ class CitationExtractor:
             citations.append(citation)
         
         return citations
-    
-    def extract_all(self, text: str, para_index: int) -> List[Citation]:
-        """Find ALL citations (parenthetical + narrative) in one paragraph."""
+  
+    def extract_multiple(self, text: str, para_index: int) -> List[Citation]:
+        """
+        Find multiple citations in one parenthesis.
+        Example: (García, 2020; López et al., 2019; Pérez y Martínez, 2018)
+        """
+        # Pattern to find parentheses containing semicolons
+        pattern_multiple = re.compile(r'\(([^)]+;[^)]+)\)')
+        
         citations = []
-        citations.extend(self.extract_simple(text, para_index))
-        citations.extend(self.extract_narrative(text, para_index))
+        
+        for match in pattern_multiple.finditer(text):
+            full_text = match.group(0)  # Full citation with parentheses
+            inner_text = match.group(1)  # Text without parentheses
+            match_start = match.start()
+            
+            # Split by semicolon to get individual citations
+            individual_cits = inner_text.split(';')
+            
+            for cit_text in individual_cits:
+                cit_text = cit_text.strip()
+                
+                # Parse each citation (Author, Year [, page])
+                # Pattern: Author [et al.] [y Author2], Year [, page]
+                cit_pattern = re.compile(
+                    r'([A-ZÁÉÍÓÚÑ][a-záéíóúñA-ZÁÉÍÓÚÑ\-]+'    # First author
+                    r'(?:\s+et\s+al\.)?'                       # Optional "et al."
+                    r'(?:\s+y\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñA-ZÁÉÍÓÚÑ\-]+)?)'  # Optional second author
+                    r',\s*'                                    # Comma
+                    r'(\d{4}[a-z]?)'                          # Year
+                    r'(?:,\s*(?:pp?\.|párr\.)\s*([\d\-]+))?'  # Optional page
+                )
+                
+                cit_match = cit_pattern.match(cit_text)
+                
+                if cit_match:
+                    authors_raw = cit_match.group(1)
+                    year = cit_match.group(2)
+                    page = cit_match.group(3) if cit_match.lastindex >= 3 else None
+                    
+                    authors = self._parse_authors(authors_raw)
+                    
+                    citation = Citation(
+                        authors=authors,
+                        year=year,
+                        paragraph_index=para_index,
+                        citation_type="parentética",
+                        raw_text=full_text,  # Keep full parenthesis for context
+                        page=page,
+                        start_pos=match_start
+                    )
+                    citations.append(citation)
+        
         return citations
+
+
+    def extract_secondary(self, text: str, para_index: int) -> List[Citation]:
+        """
+        Find secondary citations: (Author, Year, como se cita en SecondAuthor, SecondYear)
+        Example: (Saussure, 1916, como se cita en Godel, 1969)
+        """
+        # Pattern for secondary citations
+        pattern_secondary = re.compile(
+            r'\('                                           # Opening paren
+            r'([A-ZÁÉÍÓÚÑ][a-záéíóúñA-ZÁÉÍÓÚÑ\-]+'        # Primary author
+            r'(?:\s+et\s+al\.)?'
+            r'(?:\s+y\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñA-ZÁÉÍÓÚÑ\-]+)?)'
+            r',\s*'
+            r'(\d{4}[a-z]?)'                               # Primary year
+            r',\s*como\s+se\s+cita\s+en\s+'               # "como se cita en"
+            r'([A-ZÁÉÍÓÚÑ][a-záéíóúñA-ZÁÉÍÓÚÑ\-]+'        # Secondary author
+            r'(?:\s+et\s+al\.)?'
+            r'(?:\s+y\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñA-ZÁÉÍÓÚÑ\-]+)?)'
+            r',\s*'
+            r'(\d{4}[a-z]?)'                               # Secondary year
+            r'(?:,\s*(?:pp?\.|párr\.)\s*([\d\-]+))?'       # Optional page
+            r'\)'                                           # Closing paren
+        )
+        
+        citations = []
+        
+        for match in pattern_secondary.finditer(text):
+            primary_author = match.group(1)
+            primary_year = match.group(2)
+            secondary_author = match.group(3)
+            secondary_year = match.group(4)
+            page = match.group(5) if match.lastindex >= 5 else None
+            
+            authors = self._parse_authors(primary_author)
+            
+            # Create citation for primary source (the one being cited indirectly)
+            citation = Citation(
+                authors=authors,
+                year=primary_year,
+                paragraph_index=para_index,
+                citation_type="parentética",
+                raw_text=match.group(0),
+                page=page,
+                start_pos=match.start(),
+                is_secondary=True,
+                secondary_source=f"{secondary_author}, {secondary_year}"
+            )
+            citations.append(citation)
+        
+        return citations
+
+    def extract_all(self, text: str, para_index: int) -> List[Citation]:
+        """Find ALL citations in one paragraph."""
+        citations = []
+        
+        # Extract secondary citations FIRST (most specific pattern)
+        secondary_cits = self.extract_secondary(text, para_index)
+        citations.extend(secondary_cits)
+        secondary_positions = {cit.start_pos for cit in secondary_cits}
+        
+        # Extract multiple citations
+        multiple_cits = self.extract_multiple(text, para_index)
+        # Avoid positions already captured
+        for cit in multiple_cits:
+            if cit.start_pos not in secondary_positions:
+                citations.append(cit)
+        
+        multiple_positions = {cit.start_pos for cit in multiple_cits}
+        all_positions = secondary_positions | multiple_positions
+        
+        # Extract simple parenthetical citations
+        simple_cits = self.extract_simple(text, para_index)
+        for cit in simple_cits:
+            if cit.start_pos not in all_positions:
+                citations.append(cit)
+        
+        # Extract narrative citations
+        narrative_cits = self.extract_narrative(text, para_index)
+        citations.extend(narrative_cits)
+        
+        return citations
+    
+       
+    @staticmethod
+    def _parse_authors(authors_text: str) -> List[str]:
+        """
+        Parse author string into list.
+        Examples:
+            "García" → ["García"]
+            "García y López" → ["García", "López"]
+            "García et al." → ["García et al."]
+            "NIST" → ["NIST"]
+        """
+        # Handle et al. case
+        if "et al." in authors_text:
+            first_author = authors_text.split("et al.")[0].strip()
+            return [f"{first_author} et al."]
+        
+        # Handle "y" separator for two authors
+        if " y " in authors_text:
+            return [a.strip() for a in authors_text.split(" y ")]
+        
+        # Single author (could be person or institution)
+        return [authors_text.strip()]
+
 
 
 class ReferenceExtractor:
@@ -287,7 +468,7 @@ class ReferenceExtractor:
         
         return authors
 
-   
+
 class CitationMatcher:
     """Matches in-text citations with reference list entries."""
     
@@ -410,22 +591,51 @@ class CitationMatcher:
                 report.append(f"    └─ [Párrafo {cit.paragraph_index}] → [Párrafo {ref.paragraph_index}]")
             report.append("")
         
-        # Perfect match summary
+        # Final verdict - FIXED LOGIC
         if not orphaned_cits and not discrepancies:
-            if section_type == "referencias" and not orphaned_refs:
-                report.append("✅ PERFECTO: Sistema de Citación Íntegro")
-                report.append("  • Todas las citas tienen referencias")
-                report.append("  • Todas las referencias son citadas")
-                report.append("  • No hay discrepancias de año")
+            if section_type == "referencias":
+                if not orphaned_refs:
+                    report.append("✅ PERFECTO: Sistema de Citación Íntegro")
+                    report.append("  • Todas las citas tienen referencias")
+                    report.append("  • Todas las referencias son citadas")
+                    report.append("  • No hay discrepancias de año")
+                else:
+                    report.append("🟡 ADVERTENCIA: Referencias sin Citar")
+                    report.append("  • Algunas referencias no son citadas en el texto")
             elif section_type == "bibliografia":
-                report.append("✅ ACEPTABLE: Sistema de Citación Válido")
-                report.append("  • Todas las citas tienen entrada bibliográfica")
-                report.append("  • Bibliografía puede incluir fuentes consultadas")
-                report.append("  • No hay discrepancias de año")
+                if len(self.citations) > 0:
+                    # Has citations + bibliography = good
+                    report.append("✅ ACEPTABLE: Sistema de Citación Válido")
+                    report.append("  • Todas las citas tienen entrada bibliográfica")
+                    report.append("  • Bibliografía puede incluir fuentes consultadas")
+                    report.append("  • No hay discrepancias de año")
+                else:
+                    # NO citations but HAS bibliography = CRITICAL PROBLEM
+                    report.append("🔴 CRÍTICO: Documento Sin Sistema de Citación Formal")
+                    report.append("")
+                    report.append("  El documento tiene bibliografía pero NO tiene citas en formato APA.")
+                    report.append("")
+                    report.append("  📋 Problemas detectados:")
+                    report.append("     • Ninguna cita formal en el texto (0 encontradas)")
+                    report.append("     • Referencias bibliográficas presentes pero no utilizadas")
+                    report.append("     • Posibles afirmaciones sin respaldo formal")
+                    report.append("")
+                    report.append("  ⚠️  Esto significa que:")
+                    report.append("     • El lector no puede verificar las fuentes de las afirmaciones")
+                    report.append("     • No se puede evaluar la solidez del argumento")
+                    report.append("     • Viola estándares académicos básicos")
+                    report.append("")
+                    report.append("  ✅ Solución requerida:")
+                    report.append("     • Agregar citas en formato APA en el texto:")
+                    report.append("       Ejemplo parentético: (IBM Research, 2024)")
+                    report.append("       Ejemplo narrativo: Según Gidney y Ekera (2024), ...")
+                    report.append("     • Cada afirmación debe estar respaldada por una cita")
+                    report.append("     • Relacionar las citas con las entradas bibliográficas")
             report.append("")
         
         return "\n".join(report)
-    
+
+     
     
 # ============================================================
 # WORD DOCUMENT READER
@@ -752,12 +962,20 @@ if __name__ == "__main__":
         print("SILVINA v0.6 - Citation Extractor (Test Mode)")
         print("="*50)
         
+        
+       # NEW TEST DATA - Session 3 COMPLETE
         test_paragraphs = [
             "El cambio climático es real (García, 2020, p. 45).",
             "Según López et al. (2019) el problema es grave.",
-            "Varios estudios (Pérez, 2021a) y Martínez (2018) lo confirman.",
+            "Dos autores (Pérez y Martínez, 2021) confirman esto.",
+            "Institución (NIST, 2022) publicó estándares.",
+            "Apellido compuesto (García-López, 2018) analizó datos.",
+            "Narrativa con dos: Sánchez y Rodríguez (2023) proponen un modelo.",
+            "Múltiples citas (García, 2020; López et al., 2019; Pérez, 2021).",
+            "Con páginas (Martínez, 2022, p. 10; Ruiz y Soto, 2021, pp. 5-8).",
+            "Cita secundaria (Saussure, 1916, como se cita en Godel, 1969).",
         ]
-        
+                           
         extractor = CitationExtractor()
         all_citations = []
         
