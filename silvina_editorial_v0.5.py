@@ -157,6 +157,7 @@ class Document:
     def _create_reference_objects(self):
         """Create Reference objects from extracted paragraphs."""
         if not self.text:
+            print("⚠️ No reference text to process")
             return
         
         paragraphs = self.text.split('\n')
