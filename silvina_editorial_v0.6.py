@@ -485,7 +485,8 @@ class ReferenceExtractor:
         
         return authors
 
-class IMRyDValidator:
+
+class StructureValidator:
     """Validates IMRyD structure in scientific articles."""
     
     # Expected sections for scientific articles
@@ -500,29 +501,46 @@ class IMRyDValidator:
     def __init__(self):
         self.sections_found = []
     
-    def detect_article_type(self, paragraphs: List[str]) -> ArticleType:
+    def detect_article_type(self, paragraphs: List[str], citations_count: int = 0) -> ArticleType:
         """
         Detect if document is Científica or Divulgación.
-        Scientific articles have IMRyD structure keywords.
+        Uses both structure AND citation presence.
         """
-        # Look for IMRyD keywords in first 30 paragraphs
         search_text = " ".join(paragraphs[:30]).lower()
         
+        # Count IMRyD keywords
         imryd_keywords = ["métodos", "metodos", "resultados", "discusión", "discusion"]
         keyword_count = sum(1 for kw in imryd_keywords if kw in search_text)
         
-        if keyword_count >= 3:
+        # Extract sections to check completeness
+        sections = self.extract_sections(paragraphs)
+        section_names = {s.name for s in sections}
+        
+        # Core scientific sections (Métodos, Resultados, Discusión)
+        core_sections = {"métodos", "resultados", "discusión"}
+        has_core_sections = len(core_sections & section_names) >= 2
+        
+        # Decision logic:
+        # 1. If has core scientific sections + citations → CIENTIFICA
+        # 2. If has 3+ IMRyD keywords + citations → CIENTIFICA  
+        # 3. If missing core sections OR no citations → DIVULGACION
+        # 4. Otherwise → UNKNOWN
+        
+        if has_core_sections and citations_count > 0:
             return ArticleType.CIENTIFICA
-        elif keyword_count >= 1:
-            return ArticleType.UNKNOWN
-        else:
+        elif keyword_count >= 3 and citations_count > 0:
+            return ArticleType.CIENTIFICA
+        elif len(sections) >= 2 and citations_count == 0:
+            # Has some structure but no citations → Divulgación
             return ArticleType.DIVULGACION
-    
+        elif keyword_count == 0 and citations_count == 0:
+            return ArticleType.DIVULGACION
+        else:
+            return ArticleType.UNKNOWN
+
+
     def extract_sections(self, paragraphs: List[str]) -> List[Section]:
-        """
-        Extract IMRyD sections from document.
-        Looks for section headers (Introducción, Métodos, etc.)
-        """
+        """Extract IMRyD sections from document."""
         sections = []
         current_section = None
         current_section_start = -1
@@ -530,19 +548,14 @@ class IMRyDValidator:
         
         for i, para in enumerate(paragraphs):
             para_clean = para.strip().lower()
-            
-            # Skip empty paragraphs
             if not para_clean:
                 continue
             
-            # Check if this is a section header
             section_found = None
             for section_name, section_info in self.REQUIRED_SECTIONS.items():
-                # Check main name
                 if para_clean == section_name:
                     section_found = section_name
                     break
-                # Check aliases
                 for alias in section_info["aliases"]:
                     if para_clean == alias:
                         section_found = section_name
@@ -551,7 +564,6 @@ class IMRyDValidator:
                     break
             
             if section_found:
-                # Save previous section if exists
                 if current_section:
                     sections.append(Section(
                         name=current_section,
@@ -559,17 +571,13 @@ class IMRyDValidator:
                         word_count=current_section_words,
                         order=self.REQUIRED_SECTIONS[current_section]["order"]
                     ))
-                
-                # Start new section
                 current_section = section_found
                 current_section_start = i
                 current_section_words = 0
             else:
-                # Count words in current section
                 if current_section:
                     current_section_words += len(para.split())
         
-        # Save last section
         if current_section:
             sections.append(Section(
                 name=current_section,
@@ -581,6 +589,168 @@ class IMRyDValidator:
         self.sections_found = sections
         return sections
     
+    def validate_structure(self, sections: List[Section], article_type: ArticleType) -> dict:
+        """Validate IMRyD structure. Returns dict with issues found."""
+        issues = {
+            "missing_sections": [],
+            "out_of_order": [],
+            "too_short": [],
+            "warnings": []
+        }
+        
+        if article_type == ArticleType.DIVULGACION:
+            return issues
+        
+        if article_type == ArticleType.CIENTIFICA or (article_type == ArticleType.UNKNOWN and len(sections) > 0):
+            found_section_names = {s.name for s in sections}
+            for required_name in self.REQUIRED_SECTIONS.keys():
+                if required_name not in found_section_names:
+                    issues["missing_sections"].append(required_name)
+            
+            if len(sections) > 1:
+                for i in range(len(sections) - 1):
+                    if sections[i].order > sections[i + 1].order:
+                        issues["out_of_order"].append((sections[i].name, sections[i + 1].name))
+            
+            for section in sections:
+                min_words = self.REQUIRED_SECTIONS[section.name]["min_words"]
+                if section.word_count < min_words:
+                    issues["too_short"].append({
+                        "section": section.name,
+                        "current": section.word_count,
+                        "minimum": min_words
+                    })
+        
+        return issues
+    
+    def generate_report(self, article_type: ArticleType, sections: List[Section], issues: dict) -> str:
+        """Generate IMRyD validation report."""
+        report = []
+        report.append("=" * 60)
+        report.append("SILVINA v0.6 - Validación de Estructura IMRyD")
+        report.append("=" * 60)
+        report.append("")
+        
+        report.append("📋 Tipo de Artículo:")
+        if article_type == ArticleType.CIENTIFICA:
+            report.append("  • CIENTÍFICA - Se requiere estructura IMRyD completa")
+        
+        elif article_type == ArticleType.DIVULGACION:
+            report.append("  • DIVULGACIÓN - Estructura flexible")
+            report.append("")
+            report.append("  ℹ️  Clasificado como divulgación porque:")
+            
+            # Explain why
+            reasons = []
+            if len(sections) < 3:
+                reasons.append("    • Estructura simplificada (no requiere IMRyD completo)")
+            if len(sections) == 0:
+                reasons.append("    • No se detectaron secciones IMRyD formales")
+            
+            # Add citation info if available (we'll pass this in)
+            report.append("    • Enfoque comunicativo en lugar de metodológico")
+            report.append("")
+            report.append("  ✅ No se aplican validaciones de estructura IMRyD")
+            return "\n".join(report)
+                
+        else:
+            report.append("  • DESCONOCIDO - Detectadas algunas secciones IMRyD")
+            if len(sections) > 0:
+                report.append("  ⚠️  Se validará estructura IMRyD porque se encontraron secciones")
+            else:
+                report.append("  ℹ️  No se encontraron secciones IMRyD")
+                return "\n".join(report)
+        report.append("")
+        
+        report.append(f"📊 Secciones Encontradas: {len(sections)}/5")
+        if sections:
+            for section in sorted(sections, key=lambda s: s.order):
+                report.append(f"  {section.order}. {section.name.title()} [¶{section.paragraph_index}] - {section.word_count} palabras")
+        report.append("")
+        
+        if issues["missing_sections"]:
+            report.append("🔴 CRÍTICO: Secciones Faltantes")
+            report.append("  Las siguientes secciones son obligatorias pero no se encontraron:")
+            for missing in issues["missing_sections"]:
+                report.append(f"  • {missing.title()}")
+            report.append("")
+        
+        if issues["out_of_order"]:
+            report.append("🔴 CRÍTICO: Orden Incorrecto de Secciones")
+            report.append("  Las secciones no siguen el orden IMRyD:")
+            for sec1, sec2 in issues["out_of_order"]:
+                report.append(f"  • {sec1.title()} aparece antes de {sec2.title()}")
+            report.append("")
+        
+        if issues["too_short"]:
+            report.append("🟡 ADVERTENCIA: Secciones Demasiado Cortas")
+            report.append("  Las siguientes secciones no cumplen el mínimo de palabras:")
+            for short in issues["too_short"]:
+                report.append(f"  • {short['section'].title()}: {short['current']} palabras (mínimo: {short['minimum']})")
+            report.append("")
+        
+        if not any(issues.values()):
+            report.append("✅ PERFECTO: Estructura IMRyD Completa y Correcta")
+            report.append("  • Todas las secciones presentes")
+            report.append("  • Orden correcto")
+            report.append("  • Longitud adecuada")
+        
+        return "\n".join(report)
+
+   
+class ArticleLengthValidator:
+    """Validates article length according to EUMIC guidelines."""
+    
+    # EUMIC character ranges (with spaces)
+    CORTO_MIN = 16000
+    CORTO_MAX = 24000
+    LARGO_MIN = 36000
+    LARGO_MAX = 40000
+    
+    @staticmethod
+    def classify(total_chars: int) -> dict:
+        """
+        Classify article by length.
+        
+        Returns:
+            dict with 'category', 'is_valid', 'message'
+        """
+        if total_chars < ArticleLengthValidator.CORTO_MIN:
+            return {
+                "category": "demasiado corto",
+                "is_valid": False,
+                "chars": total_chars,
+                "message": f"Mínimo requerido: {ArticleLengthValidator.CORTO_MIN:,} caracteres"
+            }
+        elif total_chars <= ArticleLengthValidator.CORTO_MAX:
+            return {
+                "category": "corto",
+                "is_valid": True,
+                "chars": total_chars,
+                "message": "Longitud válida para artículo corto"
+            }
+        elif total_chars < ArticleLengthValidator.LARGO_MIN:
+            return {
+                "category": "longitud intermedia",
+                "is_valid": False,
+                "chars": total_chars,
+                "message": f"Debe ser corto (≤{ArticleLengthValidator.CORTO_MAX:,}) o largo (≥{ArticleLengthValidator.LARGO_MIN:,})"
+            }
+        elif total_chars <= ArticleLengthValidator.LARGO_MAX:
+            return {
+                "category": "largo",
+                "is_valid": True,
+                "chars": total_chars,
+                "message": "Longitud válida para artículo largo"
+            }
+        else:
+            return {
+                "category": "demasiado largo",
+                "is_valid": False,
+                "chars": total_chars,
+                "message": f"Máximo permitido: {ArticleLengthValidator.LARGO_MAX:,} caracteres"
+            }
+
     def validate_structure(self, sections: List[Section], article_type: ArticleType) -> dict:
         """
         Validate IMRyD structure.
@@ -850,9 +1020,8 @@ class CitationMatcher:
             report.append("")
         
         return "\n".join(report)
-
-     
-    
+   
+   
 # ============================================================
 # WORD DOCUMENT READER
 # ============================================================
@@ -908,6 +1077,8 @@ class WordDocumentReader:
     
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
+
+
 
 
 # ============================================================
@@ -1179,16 +1350,23 @@ def validate_imryd_structure(docx_path: str):
     
     print(f"\n📖 Analizando estructura del documento...")
     
-    # Create validator
-    validator = IMRyDValidator()
+    # Count citations first
+    cit_extractor = CitationExtractor()
+    all_citations = []
+    for i, para in enumerate(paragraphs):
+        all_citations.extend(cit_extractor.extract_all(para, i))
     
-    # Detect article type
-    article_type = validator.detect_article_type(paragraphs)
+    # Create validator
+    validator = StructureValidator()
+    
+    # Detect article type (now considers citations)
+    article_type = validator.detect_article_type(paragraphs, citations_count=len(all_citations))
     print(f"  ✓ Tipo detectado: {article_type.value.upper()}")
     
     # Extract sections
     sections = validator.extract_sections(paragraphs)
     print(f"  ✓ Secciones encontradas: {len(sections)}")
+    print(f"  ✓ Citas APA detectadas: {len(all_citations)}")
     
     # Validate structure
     issues = validator.validate_structure(sections, article_type)
@@ -1200,6 +1378,214 @@ def validate_imryd_structure(docx_path: str):
     return validator
 
 
+def recommend_article_type_with_ai(docx_path: str):
+    """
+    Use AI to recommend article type (científico vs divulgación).
+    Combines deterministic metrics with LLM judgment.
+    """
+    import ollama
+    import json
+    
+    print("\n" + "="*60)
+    print("SILVINA v0.6 - Recomendación de Tipo de Artículo (IA)")
+    print("="*60)
+    
+    # Read document
+    with WordDocumentReader(docx_path) as reader:
+        paragraphs = reader.get_paragraphs()
+    
+    print("\n📊 Recopilando métricas del documento...")
+    
+    # 1. Calculate length
+    full_text = " ".join(paragraphs)
+    total_chars = len(full_text)
+    total_words = len(full_text.split())
+    
+    length_info = ArticleLengthValidator.classify(total_chars)
+    print(f"  ✓ Longitud: {total_chars:,} caracteres ({length_info['category']})")
+    
+    # 2. Structure analysis
+    struct_validator = StructureValidator()
+    sections = struct_validator.extract_sections(paragraphs)
+    section_names = [s.name for s in sections]
+    print(f"  ✓ Estructura: {len(sections)}/5 secciones IMRyD")
+    
+    # 3. Citations
+    cit_extractor = CitationExtractor()
+    all_citations = []
+    for i, para in enumerate(paragraphs):
+        all_citations.extend(cit_extractor.extract_all(para, i))
+    citation_density = (len(all_citations) / total_words * 1000) if total_words > 0 else 0
+    print(f"  ✓ Citas: {len(all_citations)} (densidad: {citation_density:.1f} por 1000 palabras)")
+    
+    # 4. Bibliography
+    ref_extractor = ReferenceExtractor()
+    start_para = max(0, len(paragraphs) - 20)
+    refs = ref_extractor.extract_from_paragraphs(paragraphs, start_para)
+    bib_chars = sum(len(r.raw_text) for r in refs)
+    print(f"  ✓ Bibliografía: {len(refs)} entradas, {bib_chars} caracteres")
+    
+    # 5. Text sample (first 3000 chars of main content)
+    # Skip preliminaries (first 10 paragraphs often title/author/abstract)
+    main_text = " ".join(paragraphs[10:])
+    text_sample = main_text[:3000] if len(main_text) > 3000 else main_text
+
+    # Build LLM prompt - UPDATED VERSION
+    prompt = f"""Analiza este artículo académico argentino y recomiéndalo como CIENTÍFICO o DIVULGACIÓN.
+
+DATOS OBJETIVOS:
+- Longitud: {total_chars:,} caracteres ({length_info['category']})
+- Palabras: {total_words:,}
+- Estructura IMRyD: {len(sections)}/5 secciones detectadas
+- Citas APA formales: {len(all_citations)}
+- Densidad de citas: {citation_density:.1f} por 1000 palabras
+- Bibliografía: {len(refs)} entradas, {bib_chars} caracteres
+
+EXTRACTO DEL TEXTO:
+{text_sample[:1500]}
+
+CRITERIOS:
+CIENTÍFICO = Bibliografía extensa + citas APA densas + IMRyD completo + metodología explícita + rigor analítico
+DIVULGACIÓN = Comunicativo + estructura flexible + sin citas obligatorias + estilo accesible
+
+Responde SOLO con este JSON (sin markdown, sin explicaciones extras):
+{{
+  "tipo_recomendado": "científico" o "divulgación",
+  "confianza": "alta" o "media" o "baja",
+  "puntuacion_cientifica": 0-10,
+  "indicadores_positivos": ["mínimo 2 indicadores que apoyan la recomendación"],
+  "indicadores_negativos": ["mínimo 2 problemas o carencias detectadas"],
+  "recomendacion_editorial": "Una frase concreta de 15-25 palabras para el editor"
+}}
+
+IMPORTANTE: Completa TODOS los campos. La recomendacion_editorial debe ser una frase útil y específica."""
+
+    print("\n🤖 Consultando asistente de IA...")
+    print("   (esto puede tomar 10-30 segundos)")
+    
+    try:
+        response = ollama.chat(
+            model='llama3-gradient:8b',
+            messages=[{'role': 'user', 'content': prompt}],
+            options={
+                'temperature': 0.3,  # More focused responses
+                'num_predict': 500   # Ensure enough tokens for complete response
+            }
+        )
+
+        # Parse JSON response - ROBUST VERSION
+        response_text = response['message']['content'].strip()
+        
+        # Remove markdown code blocks if present
+        if '```json' in response_text:
+            # Extract JSON from markdown
+            response_text = response_text.split('```json')[1].split('```')[0].strip()
+        elif '```' in response_text:
+            response_text = response_text.split('```')[1].split('```')[0].strip()
+        
+        # Find the first complete JSON object
+        # Look for { ... } pattern
+        start_idx = response_text.find('{')
+        if start_idx == -1:
+            raise json.JSONDecodeError("No JSON found", response_text, 0)
+        
+        # Find matching closing brace
+        brace_count = 0
+        end_idx = -1
+        for i in range(start_idx, len(response_text)):
+            if response_text[i] == '{':
+                brace_count += 1
+            elif response_text[i] == '}':
+                brace_count -= 1
+                if brace_count == 0:
+                    end_idx = i + 1
+                    break
+        
+        if end_idx == -1:
+            raise json.JSONDecodeError("Incomplete JSON", response_text, start_idx)
+        
+        # Extract only the JSON part
+        json_text = response_text[start_idx:end_idx]
+        
+        # Parse it
+        result = json.loads(json_text)
+  
+        
+        # Validate required fields
+        if not result.get('recomendacion_editorial') or len(result.get('recomendacion_editorial', '').strip()) < 10:
+            result['recomendacion_editorial'] = f"Clasificar como {result['tipo_recomendado']}. {'Agregar citas y estructura IMRyD para científico.' if result['tipo_recomendado'] == 'divulgación' else 'Cumple criterios de artículo científico.'}"
+        
+        if len(result.get('indicadores_negativos', [])) == 0:
+            result['indicadores_negativos'] = ["No se detectaron problemas críticos"]
+        
+        if len(result.get('indicadores_positivos', [])) < 2:
+            # Fallback based on metrics
+            if len(sections) > 0:
+                result['indicadores_positivos'].append("Tiene estructura básica con introducción/conclusión")
+            if len(refs) > 0:
+                result['indicadores_positivos'].append(f"Incluye bibliografía ({len(refs)} referencias)")
+        
+        
+        # Display recommendation
+        print("\n" + "="*60)
+        print("🔬 RECOMENDACIÓN DE CLASIFICACIÓN")
+        print("="*60)
+        
+        # Type and confidence
+        tipo_upper = result['tipo_recomendado'].upper()
+        confianza_upper = result['confianza'].upper()
+        
+        if result['tipo_recomendado'] == 'científico':
+            icon = "🔬"
+        else:
+            icon = "📰"
+        
+        print(f"\n{icon} Tipo Recomendado: {tipo_upper}")
+        print(f"   Nivel de confianza: {confianza_upper}")
+        print(f"   Puntuación científica: {result['puntuacion_cientifica']}/10")
+        
+        # Positive indicators
+        if result['indicadores_positivos']:
+            print(f"\n✅ Indicadores Positivos:")
+            for ind in result['indicadores_positivos']:
+                print(f"   • {ind}")
+        
+        # Negative indicators
+        if result['indicadores_negativos']:
+            print(f"\n⚠️  Indicadores Negativos:")
+            for ind in result['indicadores_negativos']:
+                print(f"   • {ind}")
+        
+        # Editorial recommendation
+        print(f"\n💡 Recomendación Editorial:")
+        print(f"   {result['recomendacion_editorial']}")
+        
+        # Length validation
+        print(f"\n📏 Validación de Longitud:")
+        if length_info['is_valid']:
+            print(f"   ✅ {length_info['message']}")
+        else:
+            print(f"   🔴 {length_info['message']}")
+        
+        print("")
+        
+        return result
+        
+    except json.JSONDecodeError as e:
+        print(f"\n✗ Error parseando respuesta del LLM: {e}")
+        print(f"   Respuesta recibida: {response_text[:200]}...")
+        return None
+    except Exception as e:
+        print(f"\n✗ Error consultando LLM: {e}")
+        
+        # Full diagnostic
+        import traceback
+        print("\n📋 Traceback completo:")
+        traceback.print_exc()
+        
+        return None
+    
+   
 # ============================================================
 # MAIN ENTRY POINT
 # ============================================================
@@ -1244,6 +1630,7 @@ if __name__ == "__main__":
         print("   python silvina_editorial_v0.6.py documento.docx --refs     # Extraer referencias")
         print("   python silvina_editorial_v0.6.py documento.docx --match     # Análisis completo")
         print("   python silvina_editorial_v0.6.py documento.docx --imryd     # Validar estructura")
+        print("   python silvina_editorial_v0.6.py documento.docx --tipo      # Recomendar tipo (IA)")
 
     # Check for flags BEFORE default analysis
     elif len(sys.argv) >= 2:
@@ -1304,6 +1691,13 @@ if __name__ == "__main__":
                 print(f"✗ Error: {e}")
                 sys.exit(1)
 
+        # Article type recommendation with AI
+        elif len(sys.argv) == 3 and sys.argv[2] == "--tipo":
+            try:
+                recommend_article_type_with_ai(docx_file)
+            except ImportError as e:
+                print(f"✗ Error: {e}")
+                sys.exit(1)
 
         # Default: Document analysis mode (no flag)
         else:
