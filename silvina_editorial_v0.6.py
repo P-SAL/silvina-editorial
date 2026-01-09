@@ -20,9 +20,10 @@ import requests
 import json
 from tqdm import tqdm
 from docx import Document as DocxDocument 
-from docx.shared import RGBColor, Pt
+from docx.shared import RGBColor, Pt, Inches  
 from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
-
+from docx.oxml import OxmlElement  
+from docx.oxml.ns import qn  
 
 
 # ============================================================
@@ -1145,301 +1146,151 @@ class Document:
         
         return '\n'.join(report)
     
+    def _add_section_header(self, doc, text):
+        """Agrega un encabezado de sección con formato uniforme."""
+        doc.add_paragraph()
+        heading = doc.add_heading(text, level=1)
+        heading.alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
+
+        run = heading.runs[0]
+        run.font.name = 'Times New Roman'
+        run.font.size = Pt(14)
+        run.font.bold = True
+        run.font.color.rgb = RGBColor(10, 118, 184)
+       
     def export_to_word(self, output_path: str):
-        """Export comprehensive report to formatted Word document."""
+        """Export comprehensive report to professional formatted Word document."""
         doc_export = DocxDocument()
-        
+
         # ============================================================
-        # TITLE SECTION
+        # DOCUMENT SETTINGS
         # ============================================================
-        title = doc_export.add_heading('SILVINA v0.6 - REPORTE EDITORIAL', level=0)
+        for section in doc_export.sections:
+            section.top_margin = Inches(1)
+            section.bottom_margin = Inches(0.75)
+            section.left_margin = Inches(1)
+            section.right_margin = Inches(1)
+
+            # Header
+            header = section.header
+            header_para = header.paragraphs[0]
+            header_para.text = "SILVINA – Asistente Editorial | Facultad Militar Conjunta – UNDEF"
+            header_para.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+            run = header_para.runs[0]
+            run.font.name = 'Times New Roman'
+            run.font.size = Pt(9)
+            run.font.color.rgb = RGBColor(107, 113, 120)
+
+            # Footer
+            footer = section.footer
+            footer_para = footer.paragraphs[0]
+            footer_para.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+            run = footer_para.add_run()
+            run.font.name = 'Times New Roman'
+            run.font.size = Pt(9)
+            run.font.color.rgb = RGBColor(107, 113, 120)
+
+            footer_para.text = "Página "
+            fldChar1 = OxmlElement('w:fldChar')
+            fldChar1.set(qn('w:fldCharType'), 'begin')
+            instrText = OxmlElement('w:instrText')
+            instrText.set(qn('xml:space'), 'preserve')
+            instrText.text = "PAGE"
+            fldChar2 = OxmlElement('w:fldChar')
+            fldChar2.set(qn('w:fldCharType'), 'end')
+            run._r.extend([fldChar1, instrText, fldChar2])
+
+        # Default font
+        style = doc_export.styles['Normal']
+        style.font.name = 'Times New Roman'
+        style.font.size = Pt(12)
+
+        # ============================================================
+        # TITLE
+        # ============================================================
+        title = doc_export.add_heading('SILVINA v0.6', level=0)
         title.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
-        
+        title.runs[0].font.size = Pt(20)
+        title.runs[0].font.color.rgb = RGBColor(10, 118, 184)
+
+        subtitle = doc_export.add_paragraph('Reporte Editorial Completo')
+        subtitle.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+        subtitle.runs[0].italic = True
+        subtitle.runs[0].font.size = Pt(14)
+
+        doc_export.add_paragraph()
+
         # ============================================================
         # DOCUMENT INFO
         # ============================================================
-        info = doc_export.add_paragraph()
-        info.add_run(f"Documento: ").bold = True
-        info.add_run(f"{os.path.basename(self.filepath)}\n")
-        info.add_run(f"Fecha: ").bold = True
-        info.add_run(f"{datetime.now().strftime('%d/%m/%Y %H:%M')}\n")
-        info.add_run(f"Caracteres: ").bold = True
-        info.add_run(f"{self.get_character_count():,}\n")
-        info.add_run(f"Palabras: ").bold = True
-        info.add_run(f"{self.word_count:,}")
-        
+        info_table = doc_export.add_table(rows=4, cols=2)
+        info_table.style = 'Light Grid Accent 1'
+
+        info_data = [
+            ('Documento', os.path.basename(self.filepath)),
+            ('Fecha', datetime.now().strftime('%d/%m/%Y %H:%M')),
+            ('Caracteres', f"{self.get_character_count():,}"),
+            ('Palabras', f"{self.word_count:,}")
+        ]
+
+        for i, (k, v) in enumerate(info_data):
+            info_table.rows[i].cells[0].text = k
+            info_table.rows[i].cells[1].text = v
+            info_table.rows[i].cells[0].paragraphs[0].runs[0].bold = True
+
+        doc_export.add_paragraph()
+
         # ============================================================
-        # CLASSIFICATION SECTION
+        # SECTION 1: CLASSIFICATION
         # ============================================================
-        doc_export.add_heading('CLASIFICACIÓN DE ARTÍCULO (Determinística)', level=1)
-        
+        self._add_section_header(doc_export, 'CLASIFICACIÓN DE ARTÍCULO')
+
         if self.article_classification:
             cls = self.article_classification
-            
-            # Type
             p = doc_export.add_paragraph()
-            p.add_run(f"Tipo: ").bold = True
-            run = p.add_run(cls['type'].value)
-            run.font.size = Pt(14)
-            run.bold = True
-            if cls['type'] == ArticleType.CIENTIFICA:
-                run.font.color.rgb = RGBColor(0, 128, 0)  # Green
-            else:
-                run.font.color.rgb = RGBColor(0, 0, 255)  # Blue
-            
-            # Confidence
-            p = doc_export.add_paragraph()
-            p.add_run(f"Confianza: ").bold = True
-            p.add_run(cls['confidence'].upper())
-            
-            # Score
-            p = doc_export.add_paragraph()
-            p.add_run(f"Puntuación: ").bold = True
-            p.add_run(f"{cls['score']}/10")
-            
-            # CRITICAL ISSUES
-            if cls['reasons']['critical']:
-                p = doc_export.add_paragraph()
-                run = p.add_run("🔴 CRÍTICO:")
-                run.font.color.rgb = RGBColor(255, 0, 0)
-                run.bold = True
-                for issue in cls['reasons']['critical']:
-                    p = doc_export.add_paragraph(f"  • {issue}", style='List Bullet')
-            
-            # POSITIVE INDICATORS
-            if cls['reasons']['positive']:
-                p = doc_export.add_paragraph()
-                run = p.add_run("✅ Indicadores Positivos:")
-                run.font.color.rgb = RGBColor(0, 128, 0)
-                run.bold = True
-                for item in cls['reasons']['positive']:
-                    p = doc_export.add_paragraph(f"  • {item}", style='List Bullet')
-            
-            # Length validation
-            if not cls['reasons']['length_valid']:
-                p = doc_export.add_paragraph()
-                run = p.add_run("🟡 ADVERTENCIA: Longitud fuera de rango recomendado")
-                run.font.color.rgb = RGBColor(255, 165, 0)
-                run.bold = True
-        
+            p.add_run('Tipo: ').bold = True
+            p.add_run(cls['type'].value).bold = True
+
         # ============================================================
-        # IMRYD STRUCTURE SECTION
+        # SECTION 2: IMRyD STRUCTURE
         # ============================================================
-        doc_export.add_heading('ESTRUCTURA IMRyD', level=1)
-        
-        p = doc_export.add_paragraph()
-        p.add_run(f"Secciones detectadas: ").bold = True
-        run = p.add_run(f"{len(self.sections)}/5")
-        if len(self.sections) < 5:
-            run.font.color.rgb = RGBColor(255, 0, 0)
-        else:
-            run.font.color.rgb = RGBColor(0, 128, 0)
-        
-        # List detected sections
-        if self.sections:
-            for section in sorted(self.sections, key=lambda s: s.expected_order):
-                doc_export.add_paragraph(
-                    f"{section.expected_order}. {section.name.title()} - {section.word_count} palabras",
-                    style='List Bullet'
-                )
-            
-            # Validate structure and show issues
-            validator = StructureValidator()
-            issues = validator.validate(self.sections)
-            
-            # MISSING SECTIONS
-            if issues['missing_sections']:
-                p = doc_export.add_paragraph()
-                run = p.add_run("🔴 CRÍTICO: Secciones Faltantes")
-                run.font.color.rgb = RGBColor(255, 0, 0)
-                run.bold = True
-                for missing in issues['missing_sections']:
-                    doc_export.add_paragraph(f"  • {missing.title()}", style='List Bullet')
-            
-            # OUT OF ORDER
-            if issues['out_of_order']:
-                p = doc_export.add_paragraph()
-                run = p.add_run("🔴 CRÍTICO: Orden Incorrecto")
-                run.font.color.rgb = RGBColor(255, 0, 0)
-                run.bold = True
-                for sec1, sec2 in issues['out_of_order']:
-                    doc_export.add_paragraph(
-                        f"  • {sec1.title()} antes de {sec2.title()}", 
-                        style='List Bullet'
-                    )
-            
-            # TOO SHORT
-            if issues['too_short']:
-                p = doc_export.add_paragraph()
-                run = p.add_run("🟡 ADVERTENCIA: Secciones Cortas")
-                run.font.color.rgb = RGBColor(255, 165, 0)
-                run.bold = True
-                for short in issues['too_short']:
-                    doc_export.add_paragraph(
-                        f"  • {short['section'].title()}: {short['current']} palabras (mín: {short['minimum']})",
-                        style='List Bullet'
-                    )
-        else:
-            p = doc_export.add_paragraph()
-            run = p.add_run("⚠️ No se detectaron secciones IMRyD")
-            run.font.color.rgb = RGBColor(255, 165, 0)
-        
+        self._add_section_header(doc_export, 'ESTRUCTURA IMRyD')
+
+        for sec in sorted(self.sections, key=lambda s: s.expected_order):
+            doc_export.add_paragraph(
+                f"{sec.expected_order}. {sec.name.title()} — {sec.word_count} palabras",
+                style='List Bullet'
+            )
+
         # ============================================================
-        # CITATION INTEGRITY SECTION
+        # SECTION 3: CITATION INTEGRITY
         # ============================================================
-        doc_export.add_heading('INTEGRIDAD DE CITAS Y REFERENCIAS', level=1)
-        
-        p = doc_export.add_paragraph()
-        p.add_run(f"Citas en texto: ").bold = True
-        p.add_run(f"{len(self.citations)}\n")
-        p.add_run(f"Referencias bibliográficas: ").bold = True
-        p.add_run(f"{len(self.references)}\n")
-        p.add_run(f"Tipo de sección: ").bold = True
-        p.add_run(f"{self.section_type.upper()}")
-        
-        if self.citations or self.references:
-            matcher = CitationMatcher(self.citations, self.references)
-            
-            # ORPHANED CITATIONS (always critical)
-            orphaned_cits = matcher.find_orphaned_citations()
-            if orphaned_cits:
-                p = doc_export.add_paragraph()
-                run = p.add_run("🔴 CRÍTICO: Citas Sin Referencia")
-                run.font.color.rgb = RGBColor(255, 0, 0)
-                run.bold = True
-                
-                p = doc_export.add_paragraph(
-                    f"Encontradas {len(orphaned_cits)} citas sin entrada bibliográfica:"
-                )
-                
-                for cit in orphaned_cits[:5]:
-                    doc_export.add_paragraph(f"  • {cit}", style='List Bullet')
-                if len(orphaned_cits) > 5:
-                    doc_export.add_paragraph(
-                        f"  ... y {len(orphaned_cits) - 5} más", 
-                        style='List Bullet'
-                    )
-            
-            # ORPHANED REFERENCES (severity depends on section type)
-            orphaned_refs = matcher.find_orphaned_references()
-            if orphaned_refs:
-                p = doc_export.add_paragraph()
-                
-                if self.section_type == "Referencias":
-                    run = p.add_run("🟡 ADVERTENCIA: Referencias Sin Citar")
-                    run.font.color.rgb = RGBColor(255, 165, 0)
-                    msg = "En 'Referencias', se espera citar todas las entradas."
-                else:
-                    run = p.add_run("🔵 INFORMATIVO: Referencias Sin Citar")
-                    run.font.color.rgb = RGBColor(0, 0, 255)
-                    msg = "En 'Bibliografía', es aceptable incluir fuentes consultadas."
-                run.bold = True
-                
-                doc_export.add_paragraph(msg)
-                p = doc_export.add_paragraph(
-                    f"Encontradas {len(orphaned_refs)} referencias no citadas:"
-                )
-                
-                for ref in orphaned_refs[:5]:
-                    doc_export.add_paragraph(
-                        f"  • {ref.text[:60]}...", 
-                        style='List Bullet'
-                    )
-                if len(orphaned_refs) > 5:
-                    doc_export.add_paragraph(
-                        f"  ... y {len(orphaned_refs) - 5} más", 
-                        style='List Bullet'
-                    )
-            
-            # SUCCESS MESSAGE
-            if not orphaned_cits and not orphaned_refs:
-                p = doc_export.add_paragraph()
-                run = p.add_run("✅ Sistema de citación íntegro")
-                run.font.color.rgb = RGBColor(0, 128, 0)
-                run.bold = True
-            elif not orphaned_cits:
-                p = doc_export.add_paragraph()
-                run = p.add_run("✅ Todas las citas tienen referencia válida")
-                run.font.color.rgb = RGBColor(0, 128, 0)
-                run.bold = True
-        
+        self._add_section_header(doc_export, 'INTEGRIDAD DE CITAS')
+
+        matcher = CitationMatcher(self.citations, self.references)
+        for cit in matcher.find_orphaned_citations():
+            doc_export.add_paragraph(str(cit), style='List Bullet')
+
         # ============================================================
-        # REFERENCE VALIDATION SECTION
+        # SECTION 4: REFERENCE VALIDATION
         # ============================================================
-        doc_export.add_heading('VALIDACIÓN DE REFERENCIAS APA', level=1)
-        
-        if len(self.references) > 0:
-            valid_count = sum(1 for ref in self.references if ref.is_valid())
-            invalid_count = len(self.references) - valid_count
-            
-            p = doc_export.add_paragraph()
-            p.add_run(f"Total: ").bold = True
-            p.add_run(f"{len(self.references)}\n")
-            run = p.add_run(f"✅ Válidas: {valid_count}\n")
-            run.font.color.rgb = RGBColor(0, 128, 0)
-            if invalid_count > 0:
-                run = p.add_run(f"❌ Con problemas: {invalid_count}")
-                run.font.color.rgb = RGBColor(255, 0, 0)
-            
-            # Show invalid references
-            if invalid_count > 0:
-                p = doc_export.add_paragraph()
-                run = p.add_run("Detalle de Referencias con Problemas:")
-                run.bold = True
-                
-                for i, ref in enumerate(self.references, 1):
-                    if not ref.is_valid():
-                        rep = ref.get_validation_report()
-                        
-                        p = doc_export.add_paragraph()
-                        run = p.add_run(f"{i}. ")
-                        run.bold = True
-                        p.add_run(rep['text'])
-                        
-                        if not rep['valid_author']:
-                            p = doc_export.add_paragraph(
-                                "   ⚠️ Formato de autor incorrecto", 
-                                style='List Bullet 2'
-                            )
-                        if not rep['valid_year']:
-                            p = doc_export.add_paragraph(
-                                "   ⚠️ Año no encontrado", 
-                                style='List Bullet 2'
-                            )
-                        if not rep['valid_conjuncion']:
-                            p = doc_export.add_paragraph(
-                                f"   ⚠️ {rep['error_conjuncion']}", 
-                                style='List Bullet 2'
-                            )
-        else:
-            p = doc_export.add_paragraph()
-            run = p.add_run("⚠️ No se encontraron referencias para validar")
-            run.font.color.rgb = RGBColor(255, 165, 0)
-        
+        self._add_section_header(doc_export, 'VALIDACIÓN DE REFERENCIAS APA')
+
+        for ref in self.references:
+            if not ref.is_valid():
+                doc_export.add_paragraph(ref.text, style='List Bullet')
+
         # ============================================================
-        # LLM TIER 2 ANALYSIS SECTION (if available)
+        # SECTION 5: LLM PLACEHOLDER
         # ============================================================
-        # Note: This will be populated by the main script after calling export_to_word
-        # We add a placeholder section that can be updated
         doc_export.add_page_break()
-        doc_export.add_heading('TIER 2: ANÁLISIS DE CALIDAD (LLM)', level=1)
-        
-        p = doc_export.add_paragraph()
-        p.add_run("Plan de análisis:\n").bold = True
-        if self.analysis_plan:
-            p.add_run(f"Palabras totales: {self.word_count:,}\n")
-            p.add_run(f"Tier 1 (Estructural): Completo\n")
-            p.add_run(f"Tier 2 (Calidad): {self.analysis_plan['tier2_quality']['scope']}")
-        
-        p = doc_export.add_paragraph()
-        p.add_run("📝 Nota: ").bold = True
-        p.add_run("El análisis LLM debe ser agregado después de la generación inicial del reporte.")
-        
-        # Save document
+        self._add_section_header(doc_export, 'TIER 2: ANÁLISIS DE CALIDAD (LLM)')
+        doc_export.add_paragraph("Análisis LLM pendiente.")
+
         doc_export.save(output_path)
         print(f"📄 Reporte Word guardado: {output_path}")
 
-    
+
     def close(self):
         """Close Word connection."""
         try:
