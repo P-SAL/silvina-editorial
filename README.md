@@ -242,7 +242,7 @@ silvina-editorial/
 - **v0.6** (Jan 2026): Citation integrity + IMRyD + Two-tier analysis
 
 ### 📅 Upcoming
-- **v0.7** (Feb 2026): Plagiarism detection, figure/table validation
+- **v0.7** (Feb 2026): Text similarity and originality analysis, figure/table validation
 - **v0.8** (Mar 2026): GUI interface, batch processing
 - **v0.9** (Apr 2026): Beta testing with Revista Visión Conjunta
 - **v1.0** (Jun 2026): Production release with REST API
