@@ -1,1710 +1,1525 @@
-# silvina_editorial_v0.6.py
 """
-SILVINA Editorial Assistant v0.6
-Citation Integrity & IMRyD Validation
-Universidad de la Defensa Nacional
+Silvina Editorial Assistant v0.6 - REDESIGNED (Self-Contained)
+Citation Integrity + IMRyD Validation + Deterministic Classification
+
+Author: Pablo Salonio
+Repository: https://github.com/P-SAL/silvina-editorial
 """
 
-from dataclasses import dataclass
-from typing import List, Optional
+from datetime import datetime
 import re
-from pathlib import Path
-import sys
+import win32com.client
+import pythoncom
+import time
+import os
+from difflib import SequenceMatcher
+from dataclasses import dataclass
+from typing import List, Optional, Dict
 from enum import Enum
+import requests
+import json
+from tqdm import tqdm
+from docx import Document as DocxDocument 
+from docx.shared import RGBColor, Pt
+from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
 
-# Try to import pywin32, but don't fail if not available
-try:
-    import win32com.client as win32
-    HAS_WIN32 = True
-except ImportError:
-    HAS_WIN32 = False
-    print("⚠️ pywin32 no instalado - modo documento deshabilitado")
+
+
+# ============================================================
+# LLM INTEGRATION (OLLAMA)
+# ============================================================
+
+def analyze_with_ollama(content: str, article_type: str, tier1_report: str) -> str:
+    """Send content to Ollama with streaming progress."""
+    
+    prompt = f"""Eres un revisor editorial. Analiza este artículo de {article_type}.
+
+TEXTO:
+{content[:6000]}
+
+Evalúa brevemente (máximo 250 palabras):
+1. Claridad del argumento
+2. Tono académico
+3. Coherencia
+4. 2 recomendaciones
+
+Responde en español, sé directo."""
+    
+    try:
+        print("⏳ Analizando con Ollama...")
+        
+        response = requests.post(
+            'http://localhost:11434/api/generate',
+            json={
+                'model': 'llama3-gradient:8b',
+                'prompt': prompt,
+                'stream': True,
+                'options': {
+                    'temperature': 0.3,
+                    'num_predict': 500
+                }
+            },
+            stream=True,
+            timeout=300
+        )
+        
+        full_response = []
+        
+        # Use tqdm for streaming progress
+        with tqdm(desc="Generando análisis", unit=" tokens", bar_format='{l_bar}{bar}| {n_fmt} tokens') as pbar:
+            for line in response.iter_lines():
+                if line:
+                    chunk = json.loads(line)
+                    if 'response' in chunk:
+                        token = chunk['response']
+                        full_response.append(token)
+                        pbar.update(1)  # Update per token
+                    if chunk.get('done', False):
+                        break
+        
+        print("✅ Análisis completado")
+        return ''.join(full_response)
+    
+    except requests.exceptions.ConnectionError:
+        return "❌ No conecta a Ollama"
+    except Exception as e:
+        return f"❌ Error: {str(e)}"
+
+
+
+
+# ============================================================
+# ENUMS AND DATA CLASSES
+# ============================================================
 
 class ArticleType(Enum):
-    """Types of articles according to EUMIC guidelines."""
-    CIENTIFICA = "científica"      # Scientific - requires IMRyD
-    DIVULGACION = "divulgación"    # Dissemination - flexible structure
-    UNKNOWN = "unknown"        # Cannot determine
+    """Article types according to EUMIC guidelines."""
+    CIENTIFICA = "Científica"
+    DIVULGACION = "Divulgación"
+    INDETERMINADO = "Indeterminado"
 
 
-# ============================================================
-# CITATION DATA CLASS
-# ============================================================
+class SeverityLevel(Enum):
+    """Issue severity levels for reporting."""
+    CRITICO = "🔴 CRÍTICO"
+    ADVERTENCIA = "🟡 ADVERTENCIA"
+    INFORMATIVO = "🔵 INFORMATIVO"
+
 
 @dataclass
 class Citation:
-    """Stores one citation with its location in the document."""
-    
+    """Represents one in-text citation."""
     authors: List[str]
     year: str
+    page: Optional[str]
     paragraph_index: int
-    citation_type: str
+    citation_type: str  # "narrativa" or "parentética"
     raw_text: str
-    page: Optional[str] = None
-    start_pos: int = 0
-    is_secondary: bool = False           
-    secondary_source: Optional[str] = None  
-    
-    def __repr__(self):
-        """Show citation in readable format."""
-        authors_text = " y ".join(self.authors)
-        page_text = f", p. {self.page}" if self.page else ""
-        type_marker = "📖" if self.citation_type == "narrativa" else "📎"
-        
-        # Show secondary citation marker
-        if self.is_secondary:
-            return f"🔗 {authors_text} ({self.year}{page_text}) [como se cita en {self.secondary_source}] [¶{self.paragraph_index}]"
-        
-        return f"{type_marker} {authors_text} ({self.year}{page_text}) [¶{self.paragraph_index}]"
-
-@dataclass
-class Reference:
-    """Stores one bibliographic reference with parsed metadata."""
-    
-    authors: List[str]        # ["García", "López"] or ["IBM Research"]
-    year: str                 # "2020" or "2020a"
-    title: str                # Article/book title
-    raw_text: str            # Full reference text
-    paragraph_index: int     # Which paragraph it appears in
-    
-    def __post_init__(self):
-        """Normalize author names (remove extra whitespace)."""
-        self.authors = [a.strip() for a in self.authors if a.strip()]
     
     @property
-    def reference_key(self) -> str:
-        """Generate unique key for matching (first_author_year)."""
-        if not self.authors:
-            return "unknown_unknown"
+    def key(self) -> str:
+        """Generate matching key (handles abbreviations and last names)."""
+        first_author = self.authors[0].replace(" et al.", "").strip()
         
-        # Get first author's last name
-        first_author = self.authors[0]
-        # Remove initials like "García, A." → "García"
-        last_name = first_author.split(',')[0].strip()
-        
-        return f"{last_name}_{self.year}".lower()
-    
-    @property
-    def display_text(self) -> str:
-        """Human-readable reference for reports."""
-        if len(self.authors) == 1:
-            author_text = self.authors[0]
-        elif len(self.authors) == 2:
-            author_text = f"{self.authors[0]} y {self.authors[1]}"
+        # Check if it's an abbreviation with dash: "CIA-" → "cia"
+        if re.match(r'^[A-Z]{2,}[-–—]?$', first_author):
+            key_word = first_author.rstrip('-–—').lower()
         else:
-            author_text = f"{self.authors[0]} et al."
+            # Use last word for organizations or just the name
+            words = first_author.split()
+            skip_words = {'de', 'del', 'la', 'el', 'los', 'las', 'y', 'Diario'}
+            significant_words = [w for w in words if w not in skip_words]
+            key_word = (significant_words[-1] if significant_words else words[-1]).lower()
         
-        return f"{author_text} ({self.year})"
+        return f"{key_word}_{self.year}"
     
     def __repr__(self):
-        return f"Reference({self.display_text} @ ¶{self.paragraph_index})"
+        authors_text = " y ".join(self.authors)
+        page_info = f", p. {self.page}" if self.page else ""
+        return f"{'📖' if self.citation_type == 'narrativa' else '📎'} {authors_text} ({self.year}{page_info}) [¶{self.paragraph_index}]"
+
 
 @dataclass
 class Section:
     """Represents a document section (e.g., Introducción, Métodos)."""
-    
-    name: str              # "Introducción", "Métodos", etc.
-    paragraph_index: int   # Where it appears
-    word_count: int        # Number of words in section
-    order: int = 0         # Expected order (1=first, 2=second, etc.)
+    name: str
+    paragraph_index: int
+    word_count: int
+    expected_order: int
     
     def __repr__(self):
-        return f"Section({self.name} @ ¶{self.paragraph_index}, {self.word_count} palabras)"
+        return f"{self.name} @ ¶{self.paragraph_index} ({self.word_count} palabras)"
+
+
+# ============================================================
+# REFERENCE CLASS (From v0.5 - Included for self-containment)
+# ============================================================
+
+class Reference:
+    """Represents a single bibliographic reference (v0.5 proven class)."""
+    
+    def __init__(self, text):
+        self.text = text
+    
+    def validate_author(self):
+        """Check if reference has valid APA 7 Spanish author format."""
+        # Remove leading bullets/dashes
+        clean_text = re.sub(r'^[-–—•]+\s*', '', self.text)
+        
+        # Personal author patterns
+        personal = r'[A-ZÁ-ÚÑ][a-zá-úñ]+(?:-[A-ZÁ-ÚÑ][a-zá-úñ]+)?,\s+[A-Z]\.'
+        et_al = r'et\s+al\.'
+        
+        # Organizational patterns (broader)
+        org1 = r'^[A-Z][A-Za-záéíóúñ\s&,\-]{10,}\.\s'
+        org2 = r'^[A-Z][A-Za-záéíóúñ\s&,\-]{10,}\s+\(\d{4}'
+        org3 = r'^(Ministerio|Centro|Instituto|Diario|La\s+Nación|Central)'  # Common Spanish orgs
+        
+        has_personal = bool(re.search(personal, clean_text))
+        has_et_al = bool(re.search(et_al, clean_text, re.IGNORECASE))
+        has_org1 = bool(re.search(org1, clean_text))
+        has_org2 = bool(re.search(org2, clean_text))
+        has_org3 = bool(re.search(org3, clean_text, re.IGNORECASE))
+        
+        # Accept if any organizational pattern OR personal author
+        if (has_org1 or has_org2 or has_org3) and not has_personal:
+            return True
+        
+        return has_personal or has_et_al
+    
+            
+    def validate_year(self):
+        """Check if reference has valid year format (flexible patterns)."""
+        # Pattern 1: Standard (2020) or (2020a)
+        pattern1 = r'\((\d{4}[a-z]?)\)'
+        # Pattern 2: Range (1983-2003)
+        pattern2 = r'\((\d{4})-\d{4}\)'
+        # Pattern 3: Date format (2004, diciembre 15)
+        pattern3 = r'\((\d{4}),\s+\w+'
+        
+        for pattern in [pattern1, pattern2, pattern3]:
+            match = re.search(pattern, self.text)
+            if match:
+                year = match.group(1)[:4]  # Take first 4 digits
+                return True, year
+        
+        return False, None
+    
+        
+    def validar_conjuncion_espanola(self):
+        """Verifica uso de 'y' en vez de '&' para referencias en español APA 7."""
+        patron_ampersand = r'[A-Z]\.(?:,)?\s+&\s+[A-Z]'
+        
+        if re.search(patron_ampersand, self.text):
+            return False, "Uso incorrecto de '&' (debe ser 'y' en español APA 7)"
+        
+        return True, None
+    
+    def tiene_doi_o_url(self):
+        """Verifica presencia de DOI o URL."""
+        tiene_doi = bool(re.search(r'https?://doi\.org/[\w\.\-/]+', self.text, re.IGNORECASE))
+        tiene_url = bool(re.search(r'https?://[^\s]+', self.text))
+        formato_antiguo = bool(re.search(r'Recuperado\s+de\s+https?://', self.text, re.IGNORECASE))
+        
+        return {
+            'tiene_doi': tiene_doi,
+            'tiene_url': tiene_url,
+            'formato_antiguo': formato_antiguo
+        }
+    
+    def is_valid(self):
+        """Check if reference meets all APA 7 Spanish requirements."""
+        has_author = self.validate_author()
+        has_year, _ = self.validate_year()
+        conjuncion_valida, _ = self.validar_conjuncion_espanola()
+        
+        return has_author and has_year and conjuncion_valida
+    
+    def get_validation_report(self):
+        """Return detailed validation results."""
+        has_author = self.validate_author()
+        has_year, year = self.validate_year()
+        conjuncion_valida, error_conjuncion = self.validar_conjuncion_espanola()
+        doi_url_info = self.tiene_doi_o_url()
+        
+        return {
+            'text': self.text[:80] + '...' if len(self.text) > 80 else self.text,
+            'valid_author': has_author,
+            'valid_year': has_year,
+            'valid_conjuncion': conjuncion_valida,
+            'error_conjuncion': error_conjuncion,
+            'doi_url_info': doi_url_info,
+            'year': year,
+            'is_valid': has_author and has_year and conjuncion_valida
+        }
+
 
 # ============================================================
 # CITATION EXTRACTOR
 # ============================================================
 
 class CitationExtractor:
-    """Finds APA citations in Spanish text."""
-        
+    """Extracts APA citations from Spanish text."""
+    
+    # Consolidated patterns
+    AUTHOR_PATTERN = r'[A-ZÁÉÍÓÚÑ][a-záéíóúñA-ZÁÉÍÓÚÑ\-]+'
+    YEAR_PATTERN = r'\d{4}[a-z]?'
+    PAGE_PATTERN = r'(?:pp?\.|párr\.)\s*([\d\-]+)'
+    
     def __init__(self):
-        # Pattern 1: Parenthetical citations
-        # Now supports:
-        #   (García, 2020)
-        #   (García et al., 2020)
-        #   (García y López, 2020)
-        #   (NIST, 2022)
-        
-        self.pattern_simple = re.compile(
-            r'\('                                           # Opening parenthesis
-            r'([A-ZÁÉÍÓÚÑ][a-záéíóúñA-ZÁÉÍÓÚÑ\-]+'        # First author (includes hyphens)
-            r'(?:\s+et\s+al\.)?'                            # Optional "et al."
-            r'(?:\s+y\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñA-ZÁÉÍÓÚÑ\-]+)?)'  # Optional "y Second Author"
-            r',\s*'                                         # Comma + spaces
-            r'(\d{4}[a-z]?)'                               # Year (2020 or 2020a)
-            r'(?:,\s*(?:pp?\.|párr\.)\s*([\d\-]+))?'       # Optional page/paragraph
-            r'\)'                                           # Closing parenthesis
+        # Parenthetical: (García, 2020) or (Ministerio, 2020a) or (CIA, 1985)
+        self.pattern_parenthetical = re.compile(
+            rf'\(([A-ZÁ-ÚÑ][a-záéíóúñA-ZÁÉÍÓÚÑ\-]+(?:\s+et\s+al\.)?(?:\s+y\s+[A-ZÁ-ÚÑ][a-záéíóúñA-ZÁÉÍÓÚÑ\-]+)*),?\s+'
+            rf'({self.YEAR_PATTERN})(?:,\s*{self.PAGE_PATTERN})?\)',
+            re.IGNORECASE
         )
         
-        # Pattern 2: Narrative citations
-        # Now supports:
-        #   García (2020)
-        #   García et al. (2019)
-        #   García y López (2020)
-        
+        # Narrative: García (2020) or Ministerio (2020a)
         self.pattern_narrative = re.compile(
-            r'([A-ZÁÉÍÓÚÑ][a-záéíóúñA-ZÁÉÍÓÚÑ\-]+'        # First author
-            r'(?:\s+et\s+al\.)?'                            # Optional "et al."
-            r'(?:\s+y\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñA-ZÁÉÍÓÚÑ\-]+)?)'  # Optional second author
-            r'\s+\('                                        # Space + opening paren
-            r'(\d{4}[a-z]?)'                               # Year
-            r'(?:,\s*(?:pp?\.|párr\.)\s*([\d\-]+))?'       # Optional page
-            r'\)'                                           # Closing parenthesis
+            rf'([A-ZÁ-ÚÑ][a-záéíóúñA-ZÁÉÍÓÚÑ\-]+(?:\s+et\s+al\.)?(?:\s+y\s+[A-ZÁ-ÚÑ][a-záéíóúñA-ZÁÉÍÓÚÑ\-]+)*)\s+'
+            rf'\(({self.YEAR_PATTERN})(?:,\s*{self.PAGE_PATTERN})?\)',
+            re.IGNORECASE
         )
-
-    def extract_simple(self, text: str, para_index: int) -> List[Citation]:
-        """Find parenthetical citations like (García, 2020, p. 45)."""
+    
+        
+    def extract_from_text(self, text: str, para_index: int) -> List[Citation]:
+        """Extract all citations from one paragraph."""
         citations = []
         
-        for match in self.pattern_simple.finditer(text):
+        # Parenthetical citations
+        for match in self.pattern_parenthetical.finditer(text):
             authors_raw = match.group(1)
             year = match.group(2)
             page = match.group(3) if match.lastindex >= 3 else None
             
-            # Parse authors (handles "y" and "et al.")
-            authors = self._parse_authors(authors_raw)
-            
-            citation = Citation(
-                authors=authors,
+            citations.append(Citation(
+                authors=self._parse_authors(authors_raw),
                 year=year,
+                page=page,
                 paragraph_index=para_index,
                 citation_type="parentética",
-                raw_text=match.group(0),
-                page=page,
-                start_pos=match.start()
-            )
-            citations.append(citation)
+                raw_text=match.group(0)
+            ))
         
-        return citations
-    
-    def extract_narrative(self, text: str, para_index: int) -> List[Citation]:
-        """Find narrative citations like García (2020)."""
-        citations = []
-        
+        # Narrative citations
         for match in self.pattern_narrative.finditer(text):
             authors_raw = match.group(1)
             year = match.group(2)
             page = match.group(3) if match.lastindex >= 3 else None
             
-            # Parse authors
-            authors = self._parse_authors(authors_raw)
-            
-            citation = Citation(
-                authors=authors,
+            citations.append(Citation(
+                authors=self._parse_authors(authors_raw),
                 year=year,
+                page=page,
                 paragraph_index=para_index,
                 citation_type="narrativa",
-                raw_text=match.group(0),
-                page=page,
-                start_pos=match.start()
-            )
-            citations.append(citation)
-        
-        return citations
-  
-    def extract_multiple(self, text: str, para_index: int) -> List[Citation]:
-        """
-        Find multiple citations in one parenthesis.
-        Example: (García, 2020; López et al., 2019; Pérez y Martínez, 2018)
-        """
-        # Pattern to find parentheses containing semicolons
-        pattern_multiple = re.compile(r'\(([^)]+;[^)]+)\)')
-        
-        citations = []
-        
-        for match in pattern_multiple.finditer(text):
-            full_text = match.group(0)  # Full citation with parentheses
-            inner_text = match.group(1)  # Text without parentheses
-            match_start = match.start()
-            
-            # Split by semicolon to get individual citations
-            individual_cits = inner_text.split(';')
-            
-            for cit_text in individual_cits:
-                cit_text = cit_text.strip()
-                
-                # Parse each citation (Author, Year [, page])
-                # Pattern: Author [et al.] [y Author2], Year [, page]
-                cit_pattern = re.compile(
-                    r'([A-ZÁÉÍÓÚÑ][a-záéíóúñA-ZÁÉÍÓÚÑ\-]+'    # First author
-                    r'(?:\s+et\s+al\.)?'                       # Optional "et al."
-                    r'(?:\s+y\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñA-ZÁÉÍÓÚÑ\-]+)?)'  # Optional second author
-                    r',\s*'                                    # Comma
-                    r'(\d{4}[a-z]?)'                          # Year
-                    r'(?:,\s*(?:pp?\.|párr\.)\s*([\d\-]+))?'  # Optional page
-                )
-                
-                cit_match = cit_pattern.match(cit_text)
-                
-                if cit_match:
-                    authors_raw = cit_match.group(1)
-                    year = cit_match.group(2)
-                    page = cit_match.group(3) if cit_match.lastindex >= 3 else None
-                    
-                    authors = self._parse_authors(authors_raw)
-                    
-                    citation = Citation(
-                        authors=authors,
-                        year=year,
-                        paragraph_index=para_index,
-                        citation_type="parentética",
-                        raw_text=full_text,  # Keep full parenthesis for context
-                        page=page,
-                        start_pos=match_start
-                    )
-                    citations.append(citation)
-        
-        return citations
-
-
-    def extract_secondary(self, text: str, para_index: int) -> List[Citation]:
-        """
-        Find secondary citations: (Author, Year, como se cita en SecondAuthor, SecondYear)
-        Example: (Saussure, 1916, como se cita en Godel, 1969)
-        """
-        # Pattern for secondary citations
-        pattern_secondary = re.compile(
-            r'\('                                           # Opening paren
-            r'([A-ZÁÉÍÓÚÑ][a-záéíóúñA-ZÁÉÍÓÚÑ\-]+'        # Primary author
-            r'(?:\s+et\s+al\.)?'
-            r'(?:\s+y\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñA-ZÁÉÍÓÚÑ\-]+)?)'
-            r',\s*'
-            r'(\d{4}[a-z]?)'                               # Primary year
-            r',\s*como\s+se\s+cita\s+en\s+'               # "como se cita en"
-            r'([A-ZÁÉÍÓÚÑ][a-záéíóúñA-ZÁÉÍÓÚÑ\-]+'        # Secondary author
-            r'(?:\s+et\s+al\.)?'
-            r'(?:\s+y\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñA-ZÁÉÍÓÚÑ\-]+)?)'
-            r',\s*'
-            r'(\d{4}[a-z]?)'                               # Secondary year
-            r'(?:,\s*(?:pp?\.|párr\.)\s*([\d\-]+))?'       # Optional page
-            r'\)'                                           # Closing paren
-        )
-        
-        citations = []
-        
-        for match in pattern_secondary.finditer(text):
-            primary_author = match.group(1)
-            primary_year = match.group(2)
-            secondary_author = match.group(3)
-            secondary_year = match.group(4)
-            page = match.group(5) if match.lastindex >= 5 else None
-            
-            authors = self._parse_authors(primary_author)
-            
-            # Create citation for primary source (the one being cited indirectly)
-            citation = Citation(
-                authors=authors,
-                year=primary_year,
-                paragraph_index=para_index,
-                citation_type="parentética",
-                raw_text=match.group(0),
-                page=page,
-                start_pos=match.start(),
-                is_secondary=True,
-                secondary_source=f"{secondary_author}, {secondary_year}"
-            )
-            citations.append(citation)
-        
-        return citations
-
-    def extract_all(self, text: str, para_index: int) -> List[Citation]:
-        """Find ALL citations in one paragraph."""
-        citations = []
-        
-        # Extract secondary citations FIRST (most specific pattern)
-        secondary_cits = self.extract_secondary(text, para_index)
-        citations.extend(secondary_cits)
-        secondary_positions = {cit.start_pos for cit in secondary_cits}
-        
-        # Extract multiple citations
-        multiple_cits = self.extract_multiple(text, para_index)
-        # Avoid positions already captured
-        for cit in multiple_cits:
-            if cit.start_pos not in secondary_positions:
-                citations.append(cit)
-        
-        multiple_positions = {cit.start_pos for cit in multiple_cits}
-        all_positions = secondary_positions | multiple_positions
-        
-        # Extract simple parenthetical citations
-        simple_cits = self.extract_simple(text, para_index)
-        for cit in simple_cits:
-            if cit.start_pos not in all_positions:
-                citations.append(cit)
-        
-        # Extract narrative citations
-        narrative_cits = self.extract_narrative(text, para_index)
-        citations.extend(narrative_cits)
+                raw_text=match.group(0)
+            ))
         
         return citations
     
-       
     @staticmethod
     def _parse_authors(authors_text: str) -> List[str]:
-        """
-        Parse author string into list.
-        Examples:
-            "García" → ["García"]
-            "García y López" → ["García", "López"]
-            "García et al." → ["García et al."]
-            "NIST" → ["NIST"]
-        """
-        # Handle et al. case
+        """Parse author string into list."""
         if "et al." in authors_text:
             first_author = authors_text.split("et al.")[0].strip()
             return [f"{first_author} et al."]
         
-        # Handle "y" separator for two authors
         if " y " in authors_text:
             return [a.strip() for a in authors_text.split(" y ")]
         
-        # Single author (could be person or institution)
         return [authors_text.strip()]
 
 
-
-class ReferenceExtractor:
-    """Extracts APA references from bibliography section."""
-    
-    def __init__(self):
-        # Pattern for APA reference: Author, I. (Year). Title...
-        # Examples:
-        #   García, A. (2020). Title...
-        #   García, A. & López, B. (2019). Title...
-        #   IBM Research. (2024). Title...
-        
-        self.pattern_reference = re.compile(
-            r'^([A-ZÁÉÍÓÚÑ][^\(]+?)'     # Authors (up to year parenthesis)
-            r'\s*\((\d{4}[a-z]?)\)\.'    # Year in parentheses with dot
-            r'\s*(.+?)(?:\.|$)',          # Title (up to first period or end)
-            re.MULTILINE | re.IGNORECASE
-        )
-    
-    def detect_section_type(self, paragraphs: List[str]) -> tuple:
-        """
-        Detect if the list is 'Referencias' or 'Bibliografía'.
-        
-        Returns:
-            (section_type, paragraph_index) where section_type is:
-            - "referencias" = strict APA (must cite everything)
-            - "bibliografia" = consulted sources (citation optional)
-            - "unknown" = couldn't determine
-        """
-        # Look for section headers in last 20 paragraphs
-        search_start = max(0, len(paragraphs) - 20)
-        
-        for i in range(search_start, len(paragraphs)):
-            para_lower = paragraphs[i].lower().strip()
-            
-            # Check for "Referencias" variations
-            if para_lower in ['referencias', 'referencias bibliográficas', 'references']:
-                return ("referencias", i)
-            
-            # Check for "Bibliografía" variations
-            if any(keyword in para_lower for keyword in [
-                'bibliografía',
-                'bibliografia',
-                'fuentes bibliográficas',
-                'fuentes consultadas',
-                'bibliography'
-            ]):
-                return ("bibliografia", i)
-        
-        return ("unknown", -1)
-    
-    def extract_from_paragraphs(self, paragraphs: List[str], start_index: int = 0) -> List[Reference]:
-        """
-        Extract references from paragraphs (usually the last section).
-        
-        Args:
-            paragraphs: List of paragraph texts
-            start_index: Which paragraph to start from (references are usually at end)
-        
-        Returns:
-            List of Reference objects
-        """
-        references = []
-        
-        for i in range(start_index, len(paragraphs)):
-            para_text = paragraphs[i].strip()
-            
-            # Skip empty paragraphs
-            if not para_text:
-                continue
-            
-            # Try to match APA reference pattern
-            match = self.pattern_reference.match(para_text)
-            
-            if match:
-                authors_raw = match.group(1).strip()
-                year = match.group(2)
-                title = match.group(3).strip()
-                
-                # Parse authors
-                authors = self._parse_authors(authors_raw)
-                
-                reference = Reference(
-                    authors=authors,
-                    year=year,
-                    title=title,
-                    raw_text=para_text,
-                    paragraph_index=i
-                )
-                references.append(reference)
-        
-        return references
-    
-    @staticmethod
-    def _parse_authors(authors_text: str) -> List[str]:
-        """
-        Parse author string into list.
-        Examples:
-            "García, A." → ["García, A."]
-            "García, A. & López, B." → ["García, A.", "López, B."]
-            "García, A., López, B., & Pérez, C." → ["García, A.", "López, B.", "Pérez, C."]
-        """
-        # Replace " & " with ", " for uniform splitting
-        authors_text = authors_text.replace(' & ', ', ')
-        
-        # Split by comma, but keep "Apellido, Inicial" together
-        # This is a simplified approach - we'll improve it later
-        parts = authors_text.split(', ')
-        
-        authors = []
-        i = 0
-        while i < len(parts):
-            # Each author is "Apellido, Initial"
-            if i + 1 < len(parts) and len(parts[i+1]) <= 3:  # Likely an initial
-                authors.append(f"{parts[i]}, {parts[i+1]}")
-                i += 2
-            else:
-                # Institutional author or last name only
-                authors.append(parts[i])
-                i += 1
-        
-        return authors
-
+# ============================================================
+# STRUCTURE VALIDATOR
+# ============================================================
 
 class StructureValidator:
     """Validates IMRyD structure in scientific articles."""
     
-    # Expected sections for scientific articles
     REQUIRED_SECTIONS = {
         "introducción": {"order": 1, "min_words": 300, "aliases": ["introduccion", "marco teórico", "marco teorico"]},
-        "métodos": {"order": 2, "min_words": 200, "aliases": ["metodos", "métodos y materiales", "metodos y materiales", "metodología", "metodologia"]},
+        "métodos": {"order": 2, "min_words": 200, "aliases": ["metodos", "metodología", "metodologia", "método"]},
         "resultados": {"order": 3, "min_words": 300, "aliases": ["resultados y análisis", "resultados y analisis"]},
         "discusión": {"order": 4, "min_words": 300, "aliases": ["discusion"]},
         "conclusiones": {"order": 5, "min_words": 150, "aliases": ["conclusión", "conclusion"]},
     }
     
-    def __init__(self):
-        self.sections_found = []
-    
-    def detect_article_type(self, paragraphs: List[str], citations_count: int = 0) -> ArticleType:
-        """
-        Detect if document is Científica or Divulgación.
-        Uses both structure AND citation presence.
-        """
-        search_text = " ".join(paragraphs[:30]).lower()
-        
-        # Count IMRyD keywords
-        imryd_keywords = ["métodos", "metodos", "resultados", "discusión", "discusion"]
-        keyword_count = sum(1 for kw in imryd_keywords if kw in search_text)
-        
-        # Extract sections to check completeness
-        sections = self.extract_sections(paragraphs)
-        section_names = {s.name for s in sections}
-        
-        # Core scientific sections (Métodos, Resultados, Discusión)
-        core_sections = {"métodos", "resultados", "discusión"}
-        has_core_sections = len(core_sections & section_names) >= 2
-        
-        # Decision logic:
-        # 1. If has core scientific sections + citations → CIENTIFICA
-        # 2. If has 3+ IMRyD keywords + citations → CIENTIFICA  
-        # 3. If missing core sections OR no citations → DIVULGACION
-        # 4. Otherwise → UNKNOWN
-        
-        if has_core_sections and citations_count > 0:
-            return ArticleType.CIENTIFICA
-        elif keyword_count >= 3 and citations_count > 0:
-            return ArticleType.CIENTIFICA
-        elif len(sections) >= 2 and citations_count == 0:
-            # Has some structure but no citations → Divulgación
-            return ArticleType.DIVULGACION
-        elif keyword_count == 0 and citations_count == 0:
-            return ArticleType.DIVULGACION
-        else:
-            return ArticleType.UNKNOWN
-
-
     def extract_sections(self, paragraphs: List[str]) -> List[Section]:
         """Extract IMRyD sections from document."""
         sections = []
         current_section = None
-        current_section_start = -1
-        current_section_words = 0
+        current_start = -1
+        current_words = 0
         
         for i, para in enumerate(paragraphs):
             para_clean = para.strip().lower()
+            
+            # Skip empty paragraphs
             if not para_clean:
                 continue
             
+            # Check if paragraph is a section header
             section_found = None
             for section_name, section_info in self.REQUIRED_SECTIONS.items():
-                if para_clean == section_name:
+                if para_clean == section_name or para_clean in section_info["aliases"]:
                     section_found = section_name
-                    break
-                for alias in section_info["aliases"]:
-                    if para_clean == alias:
-                        section_found = section_name
-                        break
-                if section_found:
                     break
             
             if section_found:
+                # Save previous section
                 if current_section:
                     sections.append(Section(
                         name=current_section,
-                        paragraph_index=current_section_start,
-                        word_count=current_section_words,
-                        order=self.REQUIRED_SECTIONS[current_section]["order"]
+                        paragraph_index=current_start,
+                        word_count=current_words,
+                        expected_order=self.REQUIRED_SECTIONS[current_section]["order"]
                     ))
+                
+                # Start new section
                 current_section = section_found
-                current_section_start = i
-                current_section_words = 0
+                current_start = i
+                current_words = 0
             else:
+                # Accumulate words in current section
                 if current_section:
-                    current_section_words += len(para.split())
+                    current_words += len(para.split())
         
+        # Save last section
         if current_section:
             sections.append(Section(
                 name=current_section,
-                paragraph_index=current_section_start,
-                word_count=current_section_words,
-                order=self.REQUIRED_SECTIONS[current_section]["order"]
+                paragraph_index=current_start,
+                word_count=current_words,
+                expected_order=self.REQUIRED_SECTIONS[current_section]["order"]
             ))
         
-        self.sections_found = sections
         return sections
     
-    def validate_structure(self, sections: List[Section], article_type: ArticleType) -> dict:
-        """Validate IMRyD structure. Returns dict with issues found."""
+    def validate(self, sections: List[Section]) -> Dict:
+        """Validate structure and return issues."""
         issues = {
             "missing_sections": [],
             "out_of_order": [],
-            "too_short": [],
-            "warnings": []
+            "too_short": []
         }
         
-        if article_type == ArticleType.DIVULGACION:
-            return issues
+        # Check for missing sections
+        found_names = {s.name for s in sections}
+        for required in self.REQUIRED_SECTIONS.keys():
+            if required not in found_names:
+                issues["missing_sections"].append(required)
         
-        if article_type == ArticleType.CIENTIFICA or (article_type == ArticleType.UNKNOWN and len(sections) > 0):
-            found_section_names = {s.name for s in sections}
-            for required_name in self.REQUIRED_SECTIONS.keys():
-                if required_name not in found_section_names:
-                    issues["missing_sections"].append(required_name)
-            
-            if len(sections) > 1:
-                for i in range(len(sections) - 1):
-                    if sections[i].order > sections[i + 1].order:
-                        issues["out_of_order"].append((sections[i].name, sections[i + 1].name))
-            
-            for section in sections:
-                min_words = self.REQUIRED_SECTIONS[section.name]["min_words"]
-                if section.word_count < min_words:
-                    issues["too_short"].append({
-                        "section": section.name,
-                        "current": section.word_count,
-                        "minimum": min_words
-                    })
+        # Check order
+        for i in range(len(sections) - 1):
+            if sections[i].expected_order > sections[i + 1].expected_order:
+                issues["out_of_order"].append((sections[i].name, sections[i + 1].name))
+        
+        # Check minimum length
+        for section in sections:
+            min_words = self.REQUIRED_SECTIONS[section.name]["min_words"]
+            if section.word_count < min_words:
+                issues["too_short"].append({
+                    "section": section.name,
+                    "current": section.word_count,
+                    "minimum": min_words
+                })
         
         return issues
-    
-    def generate_report(self, article_type: ArticleType, sections: List[Section], issues: dict) -> str:
-        """Generate IMRyD validation report."""
-        report = []
-        report.append("=" * 60)
-        report.append("SILVINA v0.6 - Validación de Estructura IMRyD")
-        report.append("=" * 60)
-        report.append("")
-        
-        report.append("📋 Tipo de Artículo:")
-        if article_type == ArticleType.CIENTIFICA:
-            report.append("  • CIENTÍFICA - Se requiere estructura IMRyD completa")
-        
-        elif article_type == ArticleType.DIVULGACION:
-            report.append("  • DIVULGACIÓN - Estructura flexible")
-            report.append("")
-            report.append("  ℹ️  Clasificado como divulgación porque:")
-            
-            # Explain why
-            reasons = []
-            if len(sections) < 3:
-                reasons.append("    • Estructura simplificada (no requiere IMRyD completo)")
-            if len(sections) == 0:
-                reasons.append("    • No se detectaron secciones IMRyD formales")
-            
-            # Add citation info if available (we'll pass this in)
-            report.append("    • Enfoque comunicativo en lugar de metodológico")
-            report.append("")
-            report.append("  ✅ No se aplican validaciones de estructura IMRyD")
-            return "\n".join(report)
-                
-        else:
-            report.append("  • DESCONOCIDO - Detectadas algunas secciones IMRyD")
-            if len(sections) > 0:
-                report.append("  ⚠️  Se validará estructura IMRyD porque se encontraron secciones")
-            else:
-                report.append("  ℹ️  No se encontraron secciones IMRyD")
-                return "\n".join(report)
-        report.append("")
-        
-        report.append(f"📊 Secciones Encontradas: {len(sections)}/5")
-        if sections:
-            for section in sorted(sections, key=lambda s: s.order):
-                report.append(f"  {section.order}. {section.name.title()} [¶{section.paragraph_index}] - {section.word_count} palabras")
-        report.append("")
-        
-        if issues["missing_sections"]:
-            report.append("🔴 CRÍTICO: Secciones Faltantes")
-            report.append("  Las siguientes secciones son obligatorias pero no se encontraron:")
-            for missing in issues["missing_sections"]:
-                report.append(f"  • {missing.title()}")
-            report.append("")
-        
-        if issues["out_of_order"]:
-            report.append("🔴 CRÍTICO: Orden Incorrecto de Secciones")
-            report.append("  Las secciones no siguen el orden IMRyD:")
-            for sec1, sec2 in issues["out_of_order"]:
-                report.append(f"  • {sec1.title()} aparece antes de {sec2.title()}")
-            report.append("")
-        
-        if issues["too_short"]:
-            report.append("🟡 ADVERTENCIA: Secciones Demasiado Cortas")
-            report.append("  Las siguientes secciones no cumplen el mínimo de palabras:")
-            for short in issues["too_short"]:
-                report.append(f"  • {short['section'].title()}: {short['current']} palabras (mínimo: {short['minimum']})")
-            report.append("")
-        
-        if not any(issues.values()):
-            report.append("✅ PERFECTO: Estructura IMRyD Completa y Correcta")
-            report.append("  • Todas las secciones presentes")
-            report.append("  • Orden correcto")
-            report.append("  • Longitud adecuada")
-        
-        return "\n".join(report)
 
-   
-class ArticleLengthValidator:
-    """Validates article length according to EUMIC guidelines."""
+
+# ============================================================
+# ARTICLE CLASSIFIER
+# ============================================================
+
+class ArticleClassifier:
+    """Deterministic article type classification."""
     
-    # EUMIC character ranges (with spaces)
-    CORTO_MIN = 16000
-    CORTO_MAX = 24000
-    LARGO_MIN = 36000
-    LARGO_MAX = 40000
+    # EUMIC thresholds
+    CIENTIFICO_MIN_CHARS = 30000
+    CIENTIFICO_MAX_CHARS = 50000
+    DIVULGACION_TARGET_CHARS = 30000
+    DIVULGACION_TOLERANCE = 5000
+    
+    MIN_CITATIONS_SCIENTIFIC = 5
+    MIN_SECTIONS_SCIENTIFIC = 3
+    MIN_BIBLIOGRAPHY_SCIENTIFIC = 1000  # characters
     
     @staticmethod
-    def classify(total_chars: int) -> dict:
-        """
-        Classify article by length.
+    def collect_metrics(doc_obj) -> Dict:
+        """Collect all metrics needed for classification."""
+        char_count = doc_obj.get_character_count()
         
-        Returns:
-            dict with 'category', 'is_valid', 'message'
+        # Already extracted in load()
+        citations_count = len(doc_obj.citations)
+        sections_count = len(doc_obj.sections)
+        bib_chars = len(doc_obj.text)
+        
+        return {
+            'char_count': char_count,
+            'citations_count': citations_count,
+            'citation_density': (citations_count / (char_count / 1000)) if char_count > 0 else 0,
+            'imryd_sections': sections_count,
+            'section_names': [s.name for s in doc_obj.sections],
+            'bibliography_chars': bib_chars,
+            'bibliography_refs': len(doc_obj.references)
+        }
+    
+    @classmethod
+    def classify(cls, metrics: Dict) -> Dict:
         """
-        if total_chars < ArticleLengthValidator.CORTO_MIN:
+        Deterministic classification using EUMIC rules.
+        NO LLM involvement - pure Python logic.
+        """
+        citations = metrics['citations_count']
+        sections = metrics['imryd_sections']
+        bib_chars = metrics['bibliography_chars']
+        char_count = metrics['char_count']
+        
+        # === RULE 1: No citations = Divulgación (absolute rule) ===
+        if citations == 0:
             return {
-                "category": "demasiado corto",
-                "is_valid": False,
-                "chars": total_chars,
-                "message": f"Mínimo requerido: {ArticleLengthValidator.CORTO_MIN:,} caracteres"
+                'type': ArticleType.DIVULGACION,
+                'confidence': 'alta',
+                'score': 2,
+                'reasons': {
+                    'critical': ['Sin citas APA formales en texto'],
+                    'positive': [] if bib_chars == 0 else ['Incluye bibliografía consultada'],
+                    'length_valid': cls._check_divulgacion_length(char_count)
+                }
             }
-        elif total_chars <= ArticleLengthValidator.CORTO_MAX:
+        
+        # === RULE 2: Check scientific criteria ===
+        meets_citations = citations >= cls.MIN_CITATIONS_SCIENTIFIC
+        meets_structure = sections >= cls.MIN_SECTIONS_SCIENTIFIC
+        meets_bibliography = bib_chars >= cls.MIN_BIBLIOGRAPHY_SCIENTIFIC
+        
+        scientific_score = (
+            (4 if meets_citations else 0) +
+            (3 if meets_structure else 0) +
+            (3 if meets_bibliography else 0)
+        )
+        
+        # === RULE 3: Classify based on score ===
+        if scientific_score >= 8:
+            # Scientific article
+            length_valid = cls.CIENTIFICO_MIN_CHARS <= char_count <= cls.CIENTIFICO_MAX_CHARS
+            
             return {
-                "category": "corto",
-                "is_valid": True,
-                "chars": total_chars,
-                "message": "Longitud válida para artículo corto"
-            }
-        elif total_chars < ArticleLengthValidator.LARGO_MIN:
-            return {
-                "category": "longitud intermedia",
-                "is_valid": False,
-                "chars": total_chars,
-                "message": f"Debe ser corto (≤{ArticleLengthValidator.CORTO_MAX:,}) o largo (≥{ArticleLengthValidator.LARGO_MIN:,})"
-            }
-        elif total_chars <= ArticleLengthValidator.LARGO_MAX:
-            return {
-                "category": "largo",
-                "is_valid": True,
-                "chars": total_chars,
-                "message": "Longitud válida para artículo largo"
+                'type': ArticleType.CIENTIFICA,
+                'confidence': 'alta',
+                'score': scientific_score,
+                'reasons': {
+                    'critical': [] if length_valid else [f'Longitud fuera de rango científico: {char_count:,} caracteres'],
+                    'positive': [
+                        f'{citations} citas APA detectadas',
+                        f'{sections}/5 secciones IMRyD presentes',
+                        f'Bibliografía extensa ({bib_chars} caracteres)'
+                    ],
+                    'length_valid': length_valid
+                }
             }
         else:
+            # Divulgación (failed scientific criteria)
+            issues = []
+            if not meets_citations:
+                issues.append(f'Citas insuficientes: {citations} (mínimo: {cls.MIN_CITATIONS_SCIENTIFIC})')
+            if not meets_structure:
+                issues.append(f'Estructura IMRyD incompleta: {sections}/5 secciones')
+            if not meets_bibliography:
+                issues.append(f'Bibliografía menor a 1 página: {bib_chars} caracteres')
+            
             return {
-                "category": "demasiado largo",
-                "is_valid": False,
-                "chars": total_chars,
-                "message": f"Máximo permitido: {ArticleLengthValidator.LARGO_MAX:,} caracteres"
+                'type': ArticleType.DIVULGACION,
+                'confidence': 'media',
+                'score': scientific_score,
+                'reasons': {
+                    'critical': issues,
+                    'positive': [],
+                    'length_valid': cls._check_divulgacion_length(char_count)
+                }
             }
+    
+    @classmethod
+    def _check_divulgacion_length(cls, char_count: int) -> bool:
+        """Check if length is valid for divulgación."""
+        return abs(char_count - cls.DIVULGACION_TARGET_CHARS) <= cls.DIVULGACION_TOLERANCE
 
-    def validate_structure(self, sections: List[Section], article_type: ArticleType) -> dict:
-        """
-        Validate IMRyD structure.
-        Returns dict with issues found.
-        """
-        issues = {
-            "missing_sections": [],
-            "out_of_order": [],
-            "too_short": [],
-            "warnings": []
+
+# ============================================================
+# CITATION MATCHER
+# ============================================================
+
+# ============================================================
+# HYBRID ANALYSIS STRATEGY
+# ============================================================
+
+class HybridAnalysisStrategy:
+    """Two-tier analysis: Full structural + Selective LLM quality."""
+    
+    FULL_LLM_THRESHOLD = 5000  # words
+    
+    @staticmethod
+    def create_analysis_plan(word_count: int, sections: List[Section]) -> Dict:
+        """Create analysis plan based on document length."""
+        
+        # TIER 1: Always full document (deterministic)
+        tier1_plan = {
+            'scope': 'FULL_DOCUMENT',
+            'uses_llm': False
         }
         
-        # Only validate structure for scientific articles OR unknown articles with some IMRyD sections
-        if article_type == ArticleType.DIVULGACION:
-            # Divulgación articles don't need IMRyD - skip validation
-            return issues
+        # TIER 2: Selective LLM analysis
+        if word_count <= HybridAnalysisStrategy.FULL_LLM_THRESHOLD:
+            tier2_plan = {
+                'scope': 'FULL_DOCUMENT',
+                'sections': 'ALL',
+                'uses_llm': True
+            }
+        else:
+            tier2_plan = {
+                'scope': 'STRATEGIC_SAMPLING',
+                'sections': HybridAnalysisStrategy._select_key_sections(sections),
+                'uses_llm': True
+            }
         
-        # For CIENTIFICA or UNKNOWN with sections found, validate structure
-        if article_type == ArticleType.CIENTIFICA or (article_type == ArticleType.UNKNOWN and len(sections) > 0):
-            # Check for missing required sections
-            found_section_names = {s.name for s in sections}
-            for required_name in self.REQUIRED_SECTIONS.keys():
-                if required_name not in found_section_names:
-                    issues["missing_sections"].append(required_name)
-            
-            # Check section order
-            if len(sections) > 1:
-                for i in range(len(sections) - 1):
-                    if sections[i].order > sections[i + 1].order:
-                        issues["out_of_order"].append((sections[i].name, sections[i + 1].name))
-            
-            # Check minimum word count (only for sections that exist)
-            for section in sections:
-                min_words = self.REQUIRED_SECTIONS[section.name]["min_words"]
-                if section.word_count < min_words:
-                    issues["too_short"].append({
-                        "section": section.name,
-                        "current": section.word_count,
-                        "minimum": min_words
-                    })
-        
-        return issues
+        return {
+            'word_count': word_count,
+            'tier1_structural': tier1_plan,
+            'tier2_quality': tier2_plan
+        }
     
-    
-   
-    def generate_report(self, article_type: ArticleType, sections: List[Section], issues: dict) -> str:
-        """Generate IMRyD validation report."""
-        report = []
-        report.append("=" * 60)
-        report.append("SILVINA v0.6 - Validación de Estructura IMRyD")
-        report.append("=" * 60)
-        report.append("")
+    @staticmethod
+    def _select_key_sections(sections: List[Section]) -> List[Dict]:
+        """Select strategic sections for LLM analysis."""
+        key_sections = []
         
-        # Article type
-        report.append("📋 Tipo de Artículo:")
-        if article_type == ArticleType.CIENTIFICA:
-            report.append("  • CIENTÍFICA - Se requiere estructura IMRyD completa")
-        elif article_type == ArticleType.DIVULGACION:
-            report.append("  • DIVULGACIÓN - Estructura flexible")
-            report.append("  ℹ️  No se aplican validaciones de estructura IMRyD")
-            return "\n".join(report)
-        else:  # UNKNOWN
-            report.append("  • DESCONOCIDO - Detectadas algunas secciones IMRyD")
-            if len(sections) > 0:
-                report.append("  ⚠️  Se validará estructura IMRyD porque se encontraron secciones")
-            else:
-                report.append("  ℹ️  No se encontraron secciones IMRyD")
-                return "\n".join(report)
-        report.append("")
+        # Map section names to strategies
+        section_strategies = {
+            'introducción': 'FIRST_800_WORDS',
+            'métodos': 'FIRST_300_WORDS',
+            'resultados': 'FIRST_300_WORDS',
+            'discusión': 'FIRST_300_WORDS',
+            'conclusiones': 'FULL'
+        }
         
-               
-                # Missing sections (CRITICAL)
-        if issues["missing_sections"]:
-            report.append("🔴 CRÍTICO: Secciones Faltantes")
-            report.append("  Las siguientes secciones son obligatorias pero no se encontraron:")
-            for missing in issues["missing_sections"]:
-                report.append(f"  • {missing.title()}")
-            report.append("")
+        for section in sections:
+            strategy = section_strategies.get(section.name.lower(), 'FIRST_300_WORDS')
+            key_sections.append({
+                'name': section.name,
+                'paragraph_index': section.paragraph_index,
+                'strategy': strategy
+            })
         
-        # Out of order (CRITICAL)
-        if issues["out_of_order"]:
-            report.append("🔴 CRÍTICO: Orden Incorrecto de Secciones")
-            report.append("  Las secciones no siguen el orden IMRyD:")
-            for sec1, sec2 in issues["out_of_order"]:
-                report.append(f"  • {sec1.title()} aparece antes de {sec2.title()}")
-            report.append("")
-        
-        # Too short (WARNING)
-        if issues["too_short"]:
-            report.append("🟡 ADVERTENCIA: Secciones Demasiado Cortas")
-            report.append("  Las siguientes secciones no cumplen el mínimo de palabras:")
-            for short in issues["too_short"]:
-                report.append(f"  • {short['section'].title()}: {short['current']} palabras (mínimo: {short['minimum']})")
-            report.append("")
-        
-        # Perfect structure
-        if not any(issues.values()):
-            report.append("✅ PERFECTO: Estructura IMRyD Completa y Correcta")
-            report.append("  • Todas las secciones presentes")
-            report.append("  • Orden correcto")
-            report.append("  • Longitud adecuada")
-        
-        return "\n".join(report)
+        return key_sections
+
+
 
 class CitationMatcher:
-    """Matches in-text citations with reference list entries."""
+    """Matches in-text citations with reference list."""
     
     def __init__(self, citations: List[Citation], references: List[Reference]):
         self.citations = citations
         self.references = references
         
-        # Build lookup dictionaries for fast matching
-        self.citation_keys = {cit.citation_key for cit in citations}
-        self.reference_keys = {ref.reference_key for ref in references}
+        # Build lookup keys WITH DEBUG
+        self.citation_keys = {}
+        for cit in citations:
+            key = cit.key
+            self.citation_keys[key] = cit
         
-        # Build reference lookup by key
-        self.ref_lookup = {ref.reference_key: ref for ref in references}
+        self.reference_keys = {}
+        for ref in references:
+            key = self._ref_key(ref)
+            self.reference_keys[key] = ref
+        
+          
     
+    @staticmethod
+    def _ref_key(reference: Reference) -> str:
+        """Generate matching key with smart organizational handling."""
+        # Remove bullets/dashes
+        clean_text = re.sub(r'^[-–—•]+\s*', '', reference.text)
+        
+        # Try to match organizational pattern with year
+        org_pattern = r'^([A-ZÁ-ÚÑ][A-Za-záéíóúñ\s&,\-]{5,}?)\s+\((\d{4}[a-z]?)'
+        match = re.search(org_pattern, clean_text)
+        
+        if match:
+            org_name = match.group(1).strip()
+            year = match.group(2)  # ✅ Keep full year with letter
+
+           
+            # Extract last significant word (e.g., "Ministerio de Economía" → "economía")
+            # or use abbreviated form if present
+            
+            # Check for abbreviation in parentheses
+            abbrev_match = re.search(r'[-–—]\s*([A-Z]{2,})\s*[-–—]', org_name)
+            if abbrev_match:
+                # Use abbreviation: "Central Intelligence Agency -CIA-" → "cia"
+                key_word = abbrev_match.group(1).lower()
+            else:
+                # Use last word: "Ministerio de Economía" → "economía"
+                words = org_name.split()
+                # Filter out common words
+                skip_words = {'de', 'del', 'la', 'el', 'los', 'las', 'y'}
+                significant_words = [w for w in words if w.lower() not in skip_words]
+                key_word = significant_words[-1].lower() if significant_words else words[-1].lower()
+            
+            return f"{key_word}_{year}"
+        
+        # Fallback: personal author
+        match = re.match(r'([A-ZÁ-ÚÑ][a-zá-úñ\-]+)', clean_text)
+        if match:
+            first_author = match.group(1).lower()
+            _, year = reference.validate_year()
+            return f"{first_author}_{year if year else 'unknown'}"
+        
+        return "unknown_unknown"
+    
+       
     def find_orphaned_citations(self) -> List[Citation]:
-        """
-        Find citations that don't have matching references.
-        These are CRITICAL errors - cited but not in bibliography.
-        """
+        """Citations without matching references."""
         orphaned = []
-        
-        for citation in self.citations:
-            if citation.citation_key not in self.reference_keys:
-                orphaned.append(citation)
-        
+        for cit in self.citations:
+            if cit.key not in self.reference_keys:
+                orphaned.append(cit)
         return orphaned
     
     def find_orphaned_references(self) -> List[Reference]:
-        """
-        Find references that are never cited in text.
-        These are WARNING level - unnecessary references.
-        """
+        """References never cited in text."""
         orphaned = []
-        
-        for reference in self.references:
-            if reference.reference_key not in self.citation_keys:
-                orphaned.append(reference)
-        
+        for ref in self.references:
+            if self._ref_key(ref) not in self.citation_keys:
+                orphaned.append(ref)
         return orphaned
     
-    def find_year_discrepancies(self) -> List[tuple]:
-        """
-        Find cases where citation year doesn't match reference year.
-        Example: Text says (García, 2020) but reference says (2019).
-        """
-        discrepancies = []
-        
-        for citation in self.citations:
-            # Find matching reference
-            ref = self.ref_lookup.get(citation.citation_key)
-            
-            if ref and citation.year != ref.year:
-                discrepancies.append((citation, ref))
-        
-        return discrepancies
-    
-    def generate_report(self, section_type: str = "referencias") -> str:
-        """
-        Generate comprehensive citation integrity report.
-        
-        Args:
-            section_type: "referencias" or "bibliografia" - affects severity
-        """
+    def generate_report(self, section_type: str) -> str:
+        """Generate citation integrity report."""
         report = []
-        report.append("=" * 60)
-        report.append("SILVINA v0.6 - Reporte de Integridad de Citas")
-        report.append("=" * 60)
-        report.append("")
+        report.append("\n" + "=" * 70)
+        report.append("INTEGRIDAD DE CITAS Y REFERENCIAS")
+        report.append("=" * 70)
         
-        # Summary statistics
-        report.append("📊 Estadísticas:")
-        report.append(f"  • Citas en texto: {len(self.citations)}")
-        report.append(f"  • Entradas bibliográficas: {len(self.references)}")
-        report.append(f"  • Tipo de sección: {section_type.upper()}")
-        report.append("")
+        report.append(f"Citas en texto: {len(self.citations)}")
+        report.append(f"Referencias bibliográficas: {len(self.references)}")
+        report.append(f"Tipo de sección: {section_type.upper()}")
         
         # Orphaned citations (ALWAYS CRITICAL)
         orphaned_cits = self.find_orphaned_citations()
         if orphaned_cits:
-            report.append("🔴 CRÍTICO: Citas sin Entrada Bibliográfica")
-            report.append(f"  Encontradas {len(orphaned_cits)} citas que NO aparecen en la lista:")
-            report.append("")
-            for cit in orphaned_cits[:10]:
-                report.append(f"  • {cit.display_text} [Párrafo {cit.paragraph_index}]")
-                report.append(f"    └─ Texto: {cit.raw_text}")
-            if len(orphaned_cits) > 10:
-                report.append(f"  ... y {len(orphaned_cits) - 10} más")
-            report.append("")
+            report.append(f"\n{SeverityLevel.CRITICO.value}: Citas Sin Referencia")
+            report.append(f"Encontradas {len(orphaned_cits)} citas sin entrada bibliográfica:")
+            for cit in orphaned_cits[:5]:
+                report.append(f"  • {cit}")
+            if len(orphaned_cits) > 5:
+                report.append(f"  ... y {len(orphaned_cits) - 5} más")
         
         # Orphaned references (severity depends on section type)
         orphaned_refs = self.find_orphaned_references()
         if orphaned_refs:
-            if section_type == "referencias":
-                # Strict APA - this is a WARNING (should cite everything)
-                report.append("🟡 ADVERTENCIA: Referencias sin Citar en Texto")
-                report.append(f"  En secciones 'Referencias', se espera citar todas las entradas.")
-                report.append(f"  Encontradas {len(orphaned_refs)} referencias no citadas:")
+            if section_type == "Referencias":
+                severity = SeverityLevel.ADVERTENCIA
+                msg = "En 'Referencias', se espera citar todas las entradas."
             else:
-                # Bibliography - this is just INFORMATIONAL
-                report.append("🔵 INFORMATIVO: Entradas Bibliográficas sin Citar")
-                report.append(f"  En 'Bibliografía', es aceptable incluir fuentes consultadas.")
-                report.append(f"  Encontradas {len(orphaned_refs)} entradas no citadas:")
+                severity = SeverityLevel.INFORMATIVO
+                msg = "En 'Bibliografía', es aceptable incluir fuentes consultadas."
             
-            report.append("")
-            for ref in orphaned_refs[:10]:
-                report.append(f"  • {ref.display_text} [Párrafo {ref.paragraph_index}]")
-                report.append(f"    └─ {ref.title[:60]}...")
-            if len(orphaned_refs) > 10:
-                report.append(f"  ... y {len(orphaned_refs) - 10} más")
-            report.append("")
+            report.append(f"\n{severity.value}: Referencias Sin Citar")
+            report.append(msg)
+            report.append(f"Encontradas {len(orphaned_refs)} referencias no citadas:")
+            for ref in orphaned_refs[:5]:
+                report.append(f"  • {ref.text[:60]}...")
+            if len(orphaned_refs) > 5:
+                report.append(f"  ... y {len(orphaned_refs) - 5} más")
         
-        # Year discrepancies (ALWAYS CRITICAL)
-        discrepancies = self.find_year_discrepancies()
-        if discrepancies:
-            report.append("🔴 CRÍTICO: Discrepancias de Año")
-            report.append(f"  Encontradas {len(discrepancies)} inconsistencias:")
-            report.append("")
-            for cit, ref in discrepancies:
-                report.append(f"  • Cita: {cit.display_text} vs Referencia: {ref.display_text}")
-                report.append(f"    └─ [Párrafo {cit.paragraph_index}] → [Párrafo {ref.paragraph_index}]")
-            report.append("")
+        # Final verdict
+        if not orphaned_cits and not orphaned_refs:
+            report.append(f"\n✅ Sistema de citación íntegro")
+        elif not orphaned_cits:
+            report.append(f"\n✅ Todas las citas tienen referencia válida")
         
-        # Final verdict - FIXED LOGIC
-        if not orphaned_cits and not discrepancies:
-            if section_type == "referencias":
-                if not orphaned_refs:
-                    report.append("✅ PERFECTO: Sistema de Citación Íntegro")
-                    report.append("  • Todas las citas tienen referencias")
-                    report.append("  • Todas las referencias son citadas")
-                    report.append("  • No hay discrepancias de año")
-                else:
-                    report.append("🟡 ADVERTENCIA: Referencias sin Citar")
-                    report.append("  • Algunas referencias no son citadas en el texto")
-            elif section_type == "bibliografia":
-                if len(self.citations) > 0:
-                    # Has citations + bibliography = good
-                    report.append("✅ ACEPTABLE: Sistema de Citación Válido")
-                    report.append("  • Todas las citas tienen entrada bibliográfica")
-                    report.append("  • Bibliografía puede incluir fuentes consultadas")
-                    report.append("  • No hay discrepancias de año")
-                else:
-                    # NO citations but HAS bibliography = CRITICAL PROBLEM
-                    report.append("🔴 CRÍTICO: Documento Sin Sistema de Citación Formal")
-                    report.append("")
-                    report.append("  El documento tiene bibliografía pero NO tiene citas en formato APA.")
-                    report.append("")
-                    report.append("  📋 Problemas detectados:")
-                    report.append("     • Ninguna cita formal en el texto (0 encontradas)")
-                    report.append("     • Referencias bibliográficas presentes pero no utilizadas")
-                    report.append("     • Posibles afirmaciones sin respaldo formal")
-                    report.append("")
-                    report.append("  ⚠️  Esto significa que:")
-                    report.append("     • El lector no puede verificar las fuentes de las afirmaciones")
-                    report.append("     • No se puede evaluar la solidez del argumento")
-                    report.append("     • Viola estándares académicos básicos")
-                    report.append("")
-                    report.append("  ✅ Solución requerida:")
-                    report.append("     • Agregar citas en formato APA en el texto:")
-                    report.append("       Ejemplo parentético: (IBM Research, 2024)")
-                    report.append("       Ejemplo narrativo: Según Gidney y Ekera (2024), ...")
-                    report.append("     • Cada afirmación debe estar respaldada por una cita")
-                    report.append("     • Relacionar las citas con las entradas bibliográficas")
-            report.append("")
-        
-        return "\n".join(report)
-   
-   
+        return '\n'.join(report)
+
+
 # ============================================================
-# WORD DOCUMENT READER
+# DOCUMENT CLASS (v0.5 + v0.6+)
 # ============================================================
 
-class WordDocumentReader:
-    """Reads paragraphs from Word documents using pywin32."""
+class Document:
+    """Extended Document class with v0.6 capabilities."""
     
-    def __init__(self, file_path: str):
-        if not HAS_WIN32:
-            raise ImportError("pywin32 no está instalado. Instalar con: pip install pywin32")
-        
-        self.file_path = Path(file_path)
+    def __init__(self, filepath):
+        self.filepath = filepath
         self.word = None
         self.doc = None
+        self.text = ""
+        self.references = []
+        self.section_type = "Referencias"
+        
+        # v0.6 additions
+        self.citations = []
+        self.sections = []
+        self.article_classification = None
+
+        # NEW: Add these two lines
+        self.analysis_plan = None
+        self.word_count = 0
     
-    def open(self):
-        """Open Word application and document."""
+    def load(self):
+        """Load document and create analysis plan."""
+        self._connect_to_word()
+        self._extract_referencias()
+        self._create_reference_objects()
+        self._extract_citations()
+        self._extract_structure()
+        
+        # NEW: Calculate word count and create analysis plan
+        self.word_count = self._calculate_word_count()
+        self.analysis_plan = HybridAnalysisStrategy.create_analysis_plan(
+            self.word_count, 
+            self.sections
+        )
+        
+        print(f"\n📊 Plan de Análisis:")
+        print(f"   Palabras: {self.word_count:,}")
+        print(f"   Tier 1 (Estructural): Completo")
+        print(f"   Tier 2 (Calidad): {self.analysis_plan['tier2_quality']['scope']}")
+    
+       
+    def _connect_to_word(self):
+        """Open Word document."""
+        pythoncom.CoInitialize()
+        
         try:
-            self.word = win32.Dispatch("Word.Application")
+            self.word = win32com.client.Dispatch("Word.Application")
             self.word.Visible = False
-            self.doc = self.word.Documents.Open(str(self.file_path.absolute()))
-            print(f"✓ Documento abierto: {self.file_path.name}")
-            return True
+            abs_path = os.path.abspath(self.filepath)
+            self.doc = self.word.Documents.Open(abs_path)
+            
+            time.sleep(2.0)
+            self.doc.Activate()
+            time.sleep(1.0)
+            
+            print(f"✅ Documento cargado: {os.path.basename(self.filepath)}")
+            
         except Exception as e:
-            print(f"✗ Error abriendo documento: {e}")
-            return False
+            print(f"❌ Error de conexión: {e}")
+            self.word = None
+            self.doc = None
     
-    def get_paragraphs(self) -> List[str]:
-        """Extract all paragraph texts from document."""
+    def _extract_referencias(self):
+        """Extract references section."""
         if not self.doc:
-            return []
+            return
+        
+        try:
+            found_start = False
+            referencias_paras = []
+            
+            for para in self.doc.Paragraphs:
+                try:
+                    para_text = para.Range.Text.strip()
+                except:
+                    continue
+                
+                if not found_start:
+                    if "Bibliografía" in para_text or "Fuentes bibliográficas" in para_text:
+                        self.section_type = "Bibliografía"
+                        found_start = True
+                        continue
+                    elif "Referencias" in para_text and "bibliográficas" in para_text:
+                        self.section_type = "Referencias"
+                        found_start = True
+                        continue
+                
+                if found_start and para_text and len(para_text) > 30:
+                    referencias_paras.append(para_text)
+            
+            self.text = '\n'.join(referencias_paras)
+            
+            if len(referencias_paras) > 0:
+                print(f"✅ Extraídas {len(referencias_paras)} referencias")
+            else:
+                print(f"⚠️  No se encontró sección de referencias/bibliografía")
+            
+        except Exception as e:
+            print(f"❌ Error extrayendo referencias: {e}")
+    
+    def _create_reference_objects(self):
+        """Create Reference objects from extracted text."""
+        if not self.text:
+            return
+        
+        paragraphs = self.text.split('\n')
+        
+        for para in paragraphs:
+            para = para.strip()
+            if len(para) < 30:
+                continue
+            
+            # Check if paragraph has multiple references (separated by years)
+            years = re.findall(r'\(\d{4}\)', para)
+            
+            if len(years) >= 2:
+                # Try to split by period before capital letter
+                split_pattern = r'\.(?=[A-Z][a-z]+,\s+[A-Z]\.)'
+                parts = re.split(split_pattern, para, maxsplit=1)
+                
+                for part in parts:
+                    part = part.strip()
+                    if len(part) > 30:
+                        if not part.endswith('.'):
+                            part += '.'
+                        self.references.append(Reference(part))
+            else:
+                self.references.append(Reference(para))
+        
+        if len(self.references) > 0:
+            print(f"✅ Creados {len(self.references)} objetos Reference")
+    
+    
+    def _extract_citations(self):
+        """Extract all in-text citations with progress bar."""
+        if not self.doc:
+            return
+        
+        extractor = CitationExtractor()
+        total_paras = self.doc.Paragraphs.Count
+        
+        print("⏳ Extrayendo citas del texto...")
+        for i in tqdm(range(1, total_paras + 1), desc="Párrafos", unit="¶"):
+            try:
+                para = self.doc.Paragraphs(i)
+                para_text = para.Range.Text.strip()
+                if len(para_text) > 10:
+                    citations = extractor.extract_from_text(para_text, i)
+                    self.citations.extend(citations)
+            except:
+                continue
+        
+        if len(self.citations) > 0:
+            print(f"✅ Extraídas {len(self.citations)} citas en texto")
+        else:
+            print(f"⚠️  No se encontraron citas APA en el texto")
+    
+    def _extract_structure(self):
+        """Extract IMRyD structure with progress bar."""
+        if not self.doc:
+            return
         
         paragraphs = []
-        for para in self.doc.Paragraphs:
-            text = para.Range.Text.strip()
-            if text and not para.Style.NameLocal.startswith("Título"):
-                paragraphs.append(text)
+        total_paras = self.doc.Paragraphs.Count
         
-        print(f"✓ Extraídos {len(paragraphs)} párrafos")
-        return paragraphs
+        print("⏳ Analizando estructura IMRyD...")
+        for i in tqdm(range(1, total_paras + 1), desc="Estructura", unit="¶"):
+            try:
+                para = self.doc.Paragraphs(i)
+                para_text = para.Range.Text.strip()
+                paragraphs.append(para_text)
+            except:
+                continue
+        
+        validator = StructureValidator()
+        self.sections = validator.extract_sections(paragraphs)
+        
+        print(f"✅ Detectadas {len(self.sections)}/5 secciones IMRyD")
+
+  
+    
+    def classify_article(self):
+        """Classify article type deterministically."""
+        metrics = ArticleClassifier.collect_metrics(self)
+        self.article_classification = ArticleClassifier.classify(metrics)
+        
+        return self.article_classification
+    
+    def get_character_count(self):
+        """Get accurate character count."""
+        if not self.doc:
+            return 0
+        try:
+            return self.doc.Characters.Count
+        except:
+            return 0
+    
+    def _calculate_word_count(self):
+        """Calculate accurate word count."""
+        if not self.doc:
+            return 0
+        try:
+            return self.doc.Words.Count
+        except:
+            return 0
+    
+    def _is_section_header(self, text: str) -> bool:
+        """Check if text is a section header."""
+        text_lower = text.lower().strip()
+        headers = ['introducción', 'métodos', 'resultados', 'discusión', 
+                   'conclusiones', 'referencias', 'bibliografía']
+        return text_lower in headers
+    
+    def get_llm_analysis_content(self) -> str:
+        """Extract content for LLM analysis based on plan."""
+        if not self.analysis_plan:
+            return ""
+        
+        plan = self.analysis_plan['tier2_quality']
+        
+        if plan['scope'] == 'FULL_DOCUMENT':
+            return self._get_full_document_text()
+        
+        elif plan['scope'] == 'STRATEGIC_SAMPLING':
+            return self._build_strategic_excerpt(plan['sections'])
+        
+        return ""
+    
+    def _get_full_document_text(self) -> str:
+        """Extract complete document text."""
+        paragraphs = []
+        for para in self.doc.Paragraphs:
+            try:
+                text = para.Range.Text.strip()
+                if text:
+                    paragraphs.append(text)
+            except:
+                continue
+        return '\n\n'.join(paragraphs)
+    
+    def _build_strategic_excerpt(self, sections_plan: List[Dict]) -> str:
+        """Build strategic excerpt for large documents."""
+        content = []
+        content.append("=== ANÁLISIS ESTRATÉGICO (DOCUMENTO LARGO) ===")
+        content.append(f"Palabras totales: {self.word_count:,}")
+        content.append(f"Validación estructural: COMPLETADA (Tier 1)\n")
+        
+        for section_info in sections_plan:
+            section_text = self._extract_section_text(
+                section_info['name'],
+                section_info['paragraph_index'],
+                section_info['strategy']
+            )
+            
+            content.append(f"\n{'='*60}")
+            content.append(f"{section_info['name'].upper()} [{section_info['strategy']}]")
+            content.append('='*60)
+            content.append(section_text)
+        
+        return '\n'.join(content)
+    
+    def _extract_section_text(self, section_name: str, start_index: int, strategy: str) -> str:
+        """Extract section text according to strategy."""
+        paragraphs = []
+        word_count = 0
+        word_limits = {
+            'FULL': float('inf'),
+            'FIRST_800_WORDS': 800,
+            'FIRST_300_WORDS': 300
+        }
+        limit = word_limits.get(strategy, 300)
+        
+        collecting = False
+        for i, para in enumerate(self.doc.Paragraphs):
+            try:
+                text = para.Range.Text.strip()
+                
+                if i == start_index:
+                    collecting = True
+                    continue
+                
+                if collecting:
+                    if self._is_section_header(text):
+                        break
+                    
+                    if text:
+                        paragraphs.append(text)
+                        word_count += len(text.split())
+                        
+                        if word_count >= limit:
+                            paragraphs.append("\n[... resto omitido ...]")
+                            break
+            except:
+                continue
+        
+        return '\n\n'.join(paragraphs)
+           
+    
+    def generate_report_v06(self):
+        """
+        Generate comprehensive v0.6 report.
+        Includes v0.5 features + new v0.6 features.
+        """
+        report = []
+        report.append("=" * 70)
+        report.append("SILVINA v0.6 - REPORTE COMPLETO")
+        report.append("=" * 70)
+        report.append(f"Documento: {os.path.basename(self.filepath)}")
+        report.append(f"Fecha: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+        report.append(f"Caracteres: {self.get_character_count():,}")
+        
+        # === ARTICLE CLASSIFICATION ===
+        if self.article_classification:
+            cls = self.article_classification
+            report.append("\n" + "=" * 70)
+            report.append("CLASIFICACIÓN DE ARTÍCULO (Determinística)")
+            report.append("=" * 70)
+            report.append(f"Tipo: {cls['type'].value}")
+            report.append(f"Confianza: {cls['confidence'].upper()}")
+            report.append(f"Puntuación: {cls['score']}/10")
+            
+            if cls['reasons']['critical']:
+                report.append(f"\n{SeverityLevel.CRITICO.value}:")
+                for issue in cls['reasons']['critical']:
+                    report.append(f"  • {issue}")
+            
+            if cls['reasons']['positive']:
+                report.append(f"\n✅ Indicadores Positivos:")
+                for item in cls['reasons']['positive']:
+                    report.append(f"  • {item}")
+        
+        # === IMRYD STRUCTURE ===
+        if self.sections:
+            report.append("\n" + "=" * 70)
+            report.append("ESTRUCTURA IMRyD")
+            report.append("=" * 70)
+            report.append(f"Secciones detectadas: {len(self.sections)}/5")
+            
+            for section in sorted(self.sections, key=lambda s: s.expected_order):
+                report.append(f"  {section.expected_order}. {section.name.title()} - {section.word_count} palabras")
+            
+            # Validate structure
+            validator = StructureValidator()
+            issues = validator.validate(self.sections)
+            
+            if issues['missing_sections']:
+                report.append(f"\n{SeverityLevel.CRITICO.value}: Secciones Faltantes")
+                for missing in issues['missing_sections']:
+                    report.append(f"  • {missing.title()}")
+            
+            if issues['out_of_order']:
+                report.append(f"\n{SeverityLevel.CRITICO.value}: Orden Incorrecto")
+                for sec1, sec2 in issues['out_of_order']:
+                    report.append(f"  • {sec1.title()} antes de {sec2.title()}")
+            
+            if issues['too_short']:
+                report.append(f"\n{SeverityLevel.ADVERTENCIA.value}: Secciones Cortas")
+                for short in issues['too_short']:
+                    report.append(f"  • {short['section'].title()}: {short['current']} palabras (mín: {short['minimum']})")
+        
+        # === CITATION INTEGRITY ===
+        if self.citations or self.references:
+            matcher = CitationMatcher(self.citations, self.references)
+            report.append(matcher.generate_report(self.section_type))
+        
+        # === REFERENCE VALIDATION ===
+        report.append("\n" + "=" * 70)
+        report.append("VALIDACIÓN DE REFERENCIAS APA")
+        report.append("=" * 70)
+        
+        if len(self.references) > 0:
+            valid_count = sum(1 for ref in self.references if ref.is_valid())
+            invalid_count = len(self.references) - valid_count
+            
+            report.append(f"Total: {len(self.references)}")
+            report.append(f"✅ Válidas: {valid_count}")
+            report.append(f"❌ Con problemas: {invalid_count}")
+            
+            # Show only invalid references
+            if invalid_count > 0:
+                report.append("\nDetalle de Referencias con Problemas:")
+                for i, ref in enumerate(self.references, 1):
+                    if not ref.is_valid():
+                        rep = ref.get_validation_report()
+                        report.append(f"\n{i}. {rep['text']}")
+                        if not rep['valid_author']:
+                            report.append("   ⚠️ Formato de autor incorrecto")
+                        if not rep['valid_year']:
+                            report.append("   ⚠️ Año no encontrado")
+                        if not rep['valid_conjuncion']:
+                            report.append(f"   ⚠️ {rep['error_conjuncion']}")
+        else:
+            report.append(f"⚠️  No se encontraron referencias para validar")
+        
+        report.append("\n" + "=" * 70)
+        
+        return '\n'.join(report)
+    
+    def export_to_word(self, output_path: str):
+        """Export comprehensive report to formatted Word document."""
+        doc_export = DocxDocument()
+        
+        # ============================================================
+        # TITLE SECTION
+        # ============================================================
+        title = doc_export.add_heading('SILVINA v0.6 - REPORTE EDITORIAL', level=0)
+        title.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+        
+        # ============================================================
+        # DOCUMENT INFO
+        # ============================================================
+        info = doc_export.add_paragraph()
+        info.add_run(f"Documento: ").bold = True
+        info.add_run(f"{os.path.basename(self.filepath)}\n")
+        info.add_run(f"Fecha: ").bold = True
+        info.add_run(f"{datetime.now().strftime('%d/%m/%Y %H:%M')}\n")
+        info.add_run(f"Caracteres: ").bold = True
+        info.add_run(f"{self.get_character_count():,}\n")
+        info.add_run(f"Palabras: ").bold = True
+        info.add_run(f"{self.word_count:,}")
+        
+        # ============================================================
+        # CLASSIFICATION SECTION
+        # ============================================================
+        doc_export.add_heading('CLASIFICACIÓN DE ARTÍCULO (Determinística)', level=1)
+        
+        if self.article_classification:
+            cls = self.article_classification
+            
+            # Type
+            p = doc_export.add_paragraph()
+            p.add_run(f"Tipo: ").bold = True
+            run = p.add_run(cls['type'].value)
+            run.font.size = Pt(14)
+            run.bold = True
+            if cls['type'] == ArticleType.CIENTIFICA:
+                run.font.color.rgb = RGBColor(0, 128, 0)  # Green
+            else:
+                run.font.color.rgb = RGBColor(0, 0, 255)  # Blue
+            
+            # Confidence
+            p = doc_export.add_paragraph()
+            p.add_run(f"Confianza: ").bold = True
+            p.add_run(cls['confidence'].upper())
+            
+            # Score
+            p = doc_export.add_paragraph()
+            p.add_run(f"Puntuación: ").bold = True
+            p.add_run(f"{cls['score']}/10")
+            
+            # CRITICAL ISSUES
+            if cls['reasons']['critical']:
+                p = doc_export.add_paragraph()
+                run = p.add_run("🔴 CRÍTICO:")
+                run.font.color.rgb = RGBColor(255, 0, 0)
+                run.bold = True
+                for issue in cls['reasons']['critical']:
+                    p = doc_export.add_paragraph(f"  • {issue}", style='List Bullet')
+            
+            # POSITIVE INDICATORS
+            if cls['reasons']['positive']:
+                p = doc_export.add_paragraph()
+                run = p.add_run("✅ Indicadores Positivos:")
+                run.font.color.rgb = RGBColor(0, 128, 0)
+                run.bold = True
+                for item in cls['reasons']['positive']:
+                    p = doc_export.add_paragraph(f"  • {item}", style='List Bullet')
+            
+            # Length validation
+            if not cls['reasons']['length_valid']:
+                p = doc_export.add_paragraph()
+                run = p.add_run("🟡 ADVERTENCIA: Longitud fuera de rango recomendado")
+                run.font.color.rgb = RGBColor(255, 165, 0)
+                run.bold = True
+        
+        # ============================================================
+        # IMRYD STRUCTURE SECTION
+        # ============================================================
+        doc_export.add_heading('ESTRUCTURA IMRyD', level=1)
+        
+        p = doc_export.add_paragraph()
+        p.add_run(f"Secciones detectadas: ").bold = True
+        run = p.add_run(f"{len(self.sections)}/5")
+        if len(self.sections) < 5:
+            run.font.color.rgb = RGBColor(255, 0, 0)
+        else:
+            run.font.color.rgb = RGBColor(0, 128, 0)
+        
+        # List detected sections
+        if self.sections:
+            for section in sorted(self.sections, key=lambda s: s.expected_order):
+                doc_export.add_paragraph(
+                    f"{section.expected_order}. {section.name.title()} - {section.word_count} palabras",
+                    style='List Bullet'
+                )
+            
+            # Validate structure and show issues
+            validator = StructureValidator()
+            issues = validator.validate(self.sections)
+            
+            # MISSING SECTIONS
+            if issues['missing_sections']:
+                p = doc_export.add_paragraph()
+                run = p.add_run("🔴 CRÍTICO: Secciones Faltantes")
+                run.font.color.rgb = RGBColor(255, 0, 0)
+                run.bold = True
+                for missing in issues['missing_sections']:
+                    doc_export.add_paragraph(f"  • {missing.title()}", style='List Bullet')
+            
+            # OUT OF ORDER
+            if issues['out_of_order']:
+                p = doc_export.add_paragraph()
+                run = p.add_run("🔴 CRÍTICO: Orden Incorrecto")
+                run.font.color.rgb = RGBColor(255, 0, 0)
+                run.bold = True
+                for sec1, sec2 in issues['out_of_order']:
+                    doc_export.add_paragraph(
+                        f"  • {sec1.title()} antes de {sec2.title()}", 
+                        style='List Bullet'
+                    )
+            
+            # TOO SHORT
+            if issues['too_short']:
+                p = doc_export.add_paragraph()
+                run = p.add_run("🟡 ADVERTENCIA: Secciones Cortas")
+                run.font.color.rgb = RGBColor(255, 165, 0)
+                run.bold = True
+                for short in issues['too_short']:
+                    doc_export.add_paragraph(
+                        f"  • {short['section'].title()}: {short['current']} palabras (mín: {short['minimum']})",
+                        style='List Bullet'
+                    )
+        else:
+            p = doc_export.add_paragraph()
+            run = p.add_run("⚠️ No se detectaron secciones IMRyD")
+            run.font.color.rgb = RGBColor(255, 165, 0)
+        
+        # ============================================================
+        # CITATION INTEGRITY SECTION
+        # ============================================================
+        doc_export.add_heading('INTEGRIDAD DE CITAS Y REFERENCIAS', level=1)
+        
+        p = doc_export.add_paragraph()
+        p.add_run(f"Citas en texto: ").bold = True
+        p.add_run(f"{len(self.citations)}\n")
+        p.add_run(f"Referencias bibliográficas: ").bold = True
+        p.add_run(f"{len(self.references)}\n")
+        p.add_run(f"Tipo de sección: ").bold = True
+        p.add_run(f"{self.section_type.upper()}")
+        
+        if self.citations or self.references:
+            matcher = CitationMatcher(self.citations, self.references)
+            
+            # ORPHANED CITATIONS (always critical)
+            orphaned_cits = matcher.find_orphaned_citations()
+            if orphaned_cits:
+                p = doc_export.add_paragraph()
+                run = p.add_run("🔴 CRÍTICO: Citas Sin Referencia")
+                run.font.color.rgb = RGBColor(255, 0, 0)
+                run.bold = True
+                
+                p = doc_export.add_paragraph(
+                    f"Encontradas {len(orphaned_cits)} citas sin entrada bibliográfica:"
+                )
+                
+                for cit in orphaned_cits[:5]:
+                    doc_export.add_paragraph(f"  • {cit}", style='List Bullet')
+                if len(orphaned_cits) > 5:
+                    doc_export.add_paragraph(
+                        f"  ... y {len(orphaned_cits) - 5} más", 
+                        style='List Bullet'
+                    )
+            
+            # ORPHANED REFERENCES (severity depends on section type)
+            orphaned_refs = matcher.find_orphaned_references()
+            if orphaned_refs:
+                p = doc_export.add_paragraph()
+                
+                if self.section_type == "Referencias":
+                    run = p.add_run("🟡 ADVERTENCIA: Referencias Sin Citar")
+                    run.font.color.rgb = RGBColor(255, 165, 0)
+                    msg = "En 'Referencias', se espera citar todas las entradas."
+                else:
+                    run = p.add_run("🔵 INFORMATIVO: Referencias Sin Citar")
+                    run.font.color.rgb = RGBColor(0, 0, 255)
+                    msg = "En 'Bibliografía', es aceptable incluir fuentes consultadas."
+                run.bold = True
+                
+                doc_export.add_paragraph(msg)
+                p = doc_export.add_paragraph(
+                    f"Encontradas {len(orphaned_refs)} referencias no citadas:"
+                )
+                
+                for ref in orphaned_refs[:5]:
+                    doc_export.add_paragraph(
+                        f"  • {ref.text[:60]}...", 
+                        style='List Bullet'
+                    )
+                if len(orphaned_refs) > 5:
+                    doc_export.add_paragraph(
+                        f"  ... y {len(orphaned_refs) - 5} más", 
+                        style='List Bullet'
+                    )
+            
+            # SUCCESS MESSAGE
+            if not orphaned_cits and not orphaned_refs:
+                p = doc_export.add_paragraph()
+                run = p.add_run("✅ Sistema de citación íntegro")
+                run.font.color.rgb = RGBColor(0, 128, 0)
+                run.bold = True
+            elif not orphaned_cits:
+                p = doc_export.add_paragraph()
+                run = p.add_run("✅ Todas las citas tienen referencia válida")
+                run.font.color.rgb = RGBColor(0, 128, 0)
+                run.bold = True
+        
+        # ============================================================
+        # REFERENCE VALIDATION SECTION
+        # ============================================================
+        doc_export.add_heading('VALIDACIÓN DE REFERENCIAS APA', level=1)
+        
+        if len(self.references) > 0:
+            valid_count = sum(1 for ref in self.references if ref.is_valid())
+            invalid_count = len(self.references) - valid_count
+            
+            p = doc_export.add_paragraph()
+            p.add_run(f"Total: ").bold = True
+            p.add_run(f"{len(self.references)}\n")
+            run = p.add_run(f"✅ Válidas: {valid_count}\n")
+            run.font.color.rgb = RGBColor(0, 128, 0)
+            if invalid_count > 0:
+                run = p.add_run(f"❌ Con problemas: {invalid_count}")
+                run.font.color.rgb = RGBColor(255, 0, 0)
+            
+            # Show invalid references
+            if invalid_count > 0:
+                p = doc_export.add_paragraph()
+                run = p.add_run("Detalle de Referencias con Problemas:")
+                run.bold = True
+                
+                for i, ref in enumerate(self.references, 1):
+                    if not ref.is_valid():
+                        rep = ref.get_validation_report()
+                        
+                        p = doc_export.add_paragraph()
+                        run = p.add_run(f"{i}. ")
+                        run.bold = True
+                        p.add_run(rep['text'])
+                        
+                        if not rep['valid_author']:
+                            p = doc_export.add_paragraph(
+                                "   ⚠️ Formato de autor incorrecto", 
+                                style='List Bullet 2'
+                            )
+                        if not rep['valid_year']:
+                            p = doc_export.add_paragraph(
+                                "   ⚠️ Año no encontrado", 
+                                style='List Bullet 2'
+                            )
+                        if not rep['valid_conjuncion']:
+                            p = doc_export.add_paragraph(
+                                f"   ⚠️ {rep['error_conjuncion']}", 
+                                style='List Bullet 2'
+                            )
+        else:
+            p = doc_export.add_paragraph()
+            run = p.add_run("⚠️ No se encontraron referencias para validar")
+            run.font.color.rgb = RGBColor(255, 165, 0)
+        
+        # ============================================================
+        # LLM TIER 2 ANALYSIS SECTION (if available)
+        # ============================================================
+        # Note: This will be populated by the main script after calling export_to_word
+        # We add a placeholder section that can be updated
+        doc_export.add_page_break()
+        doc_export.add_heading('TIER 2: ANÁLISIS DE CALIDAD (LLM)', level=1)
+        
+        p = doc_export.add_paragraph()
+        p.add_run("Plan de análisis:\n").bold = True
+        if self.analysis_plan:
+            p.add_run(f"Palabras totales: {self.word_count:,}\n")
+            p.add_run(f"Tier 1 (Estructural): Completo\n")
+            p.add_run(f"Tier 2 (Calidad): {self.analysis_plan['tier2_quality']['scope']}")
+        
+        p = doc_export.add_paragraph()
+        p.add_run("📝 Nota: ").bold = True
+        p.add_run("El análisis LLM debe ser agregado después de la generación inicial del reporte.")
+        
+        # Save document
+        doc_export.save(output_path)
+        print(f"📄 Reporte Word guardado: {output_path}")
+
     
     def close(self):
-        """Close document and Word application."""
-        if self.doc:
-            self.doc.Close(SaveChanges=False)
-        if self.word:
-            self.word.Quit()
-        print("✓ Documento cerrado")
-    
-    def __enter__(self):
-        self.open()
-        return self
-    
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.close()
-
-
+        """Close Word connection."""
+        try:
+            if self.doc:
+                self.doc.Close(SaveChanges=False)
+            if self.word:
+                self.word.Quit()
+        except:
+            pass
 
 
 # ============================================================
-# MAIN ANALYSIS FUNCTION
-# ============================================================
-
-def analyze_document_citations(docx_path: str):
-    """
-    Extract and analyze all citations from a Word document.
-    
-    Args:
-        docx_path: Path to .docx file
-    
-    Returns:
-        List of Citation objects found
-    """
-    print("\n" + "="*60)
-    print("SILVINA v0.6 - Análisis de Citas")
-    print("="*60)
-    
-    # Read document
-    with WordDocumentReader(docx_path) as reader:
-        paragraphs = reader.get_paragraphs()
-    
-    if not paragraphs:
-        print("✗ No se encontraron párrafos")
-        return []
-    
-    # Extract citations
-    print("\n📊 Extrayendo citas...")
-    extractor = CitationExtractor()
-    
-    all_citations = []
-    for i, para_text in enumerate(paragraphs):
-        citations = extractor.extract_all(para_text, para_index=i)
-        all_citations.extend(citations)
-    
-    # Report results
-    print(f"\n✓ Análisis completado")
-    print(f"  • Total citas: {len(all_citations)}")
-    print(f"  • Parentéticas: {sum(1 for c in all_citations if c.citation_type == 'parentética')}")
-    print(f"  • Narrativas: {sum(1 for c in all_citations if c.citation_type == 'narrativa')}")
-    
-    # Show first 10 citations as sample
-    if all_citations:
-        print(f"\n📋 Primeras {min(10, len(all_citations))} citas encontradas:")
-        for cit in all_citations[:10]:
-            print(f"  {cit}")
-    
-    return all_citations
-
-def debug_document_paragraphs(docx_path: str, max_paragraphs: int = 20):
-    """
-    Show first N paragraphs to debug citation detection.
-    
-    Args:
-        docx_path: Path to .docx file
-        max_paragraphs: Number of paragraphs to display
-    """
-    print("\n" + "="*60)
-    print("SILVINA v0.6 - Modo Debug: Visualización de Párrafos")
-    print("="*60)
-    
-    with WordDocumentReader(docx_path) as reader:
-        paragraphs = reader.get_paragraphs()
-    
-    if not paragraphs:
-        print("✗ No se encontraron párrafos")
-        return
-    
-    print(f"\n📝 Mostrando los primeros {min(max_paragraphs, len(paragraphs))} párrafos:\n")
-    
-    for i, para in enumerate(paragraphs[:max_paragraphs]):
-        print(f"--- Párrafo {i} ({len(para)} caracteres) ---")
-        print(para)
-        print()
-
-def search_parentheses(docx_path: str):
-    """Find all paragraphs containing parentheses (potential citations)."""
-    print("\n" + "="*60)
-    print("SILVINA v0.6 - Búsqueda de Paréntesis")
-    print("="*60)
-    
-    with WordDocumentReader(docx_path) as reader:
-        paragraphs = reader.get_paragraphs()
-    
-    print(f"\n🔍 Buscando párrafos con paréntesis...\n")
-    
-    found_count = 0
-    for i, para in enumerate(paragraphs):
-        if '(' in para and ')' in para:
-            found_count += 1
-            print(f"--- Párrafo {i} ---")
-            # Extract content between parentheses
-            import re
-            matches = re.findall(r'\([^)]+\)', para)
-            if matches:
-                print(f"  Paréntesis encontrados: {len(matches)}")
-                for match in matches[:3]:  # Show first 3
-                    print(f"    • {match}")
-            print(f"  Texto: {para[:200]}...")
-            print()
-    
-    print(f"✓ Total: {found_count} párrafos con paréntesis de {len(paragraphs)} totales")
-
-def check_citation_integrity(docx_path: str):
-    """
-    Check if document has orphaned references (references without in-text citations).
-    This is a critical editorial problem.
-    """
-    print("\n" + "="*60)
-    print("SILVINA v0.6 - Verificación de Integridad de Citas")
-    print("="*60)
-    
-    with WordDocumentReader(docx_path) as reader:
-        paragraphs = reader.get_paragraphs()
-    
-    # Extract citations
-    extractor = CitationExtractor()
-    all_citations = []
-    for i, para_text in enumerate(paragraphs):
-        citations = extractor.extract_all(para_text, para_index=i)
-        all_citations.extend(citations)
-    
-    # Detect reference section (paragraphs with author names and years)
-    reference_pattern = re.compile(r'^[A-Z][a-zA-Z]+,\s+[A-Z]')  # "Author, A."
-    reference_paragraphs = []
-    
-    for i, para in enumerate(paragraphs):
-        if reference_pattern.match(para.strip()):
-            reference_paragraphs.append((i, para[:100]))
-    
-    # Generate report
-    print(f"\n📊 Resultados del Análisis:\n")
-    print(f"  • Total de párrafos: {len(paragraphs)}")
-    print(f"  • Citas en texto encontradas: {len(all_citations)}")
-    print(f"  • Referencias bibliográficas: {len(reference_paragraphs)}")
-    
-    # Critical issue detection
-    if len(reference_paragraphs) > 0 and len(all_citations) == 0:
-        print(f"\n🔴 CRÍTICO: Problema de Integridad de Citas Detectado")
-        print(f"\n  El documento tiene {len(reference_paragraphs)} referencias bibliográficas")
-        print(f"  pero NO tiene citas en el texto.")
-        print(f"\n  📋 Esto significa que:")
-        print(f"     • Las referencias nunca son citadas en el cuerpo del artículo")
-        print(f"     • No se puede verificar qué afirmaciones están respaldadas")
-        print(f"     • Viola normas APA y estándares académicos")
-        
-        print(f"\n  ⚠️  Referencias encontradas (primeras 5):")
-        for i, (para_idx, ref_text) in enumerate(reference_paragraphs[:5]):
-            print(f"     {i+1}. [Párrafo {para_idx}] {ref_text}...")
-        
-        print(f"\n  ✅ Solución requerida:")
-        print(f"     • Agregar citas en formato APA en el texto:")
-        print(f"       Ejemplo: (Gidney & Ekera, 2024)")
-        print(f"       Ejemplo: Según IBM Research (2024), ...")
-    
-    elif len(all_citations) > 0 and len(reference_paragraphs) == 0:
-        print(f"\n🔴 CRÍTICO: Citas sin Lista de Referencias")
-        print(f"  El documento cita {len(all_citations)} fuentes pero no tiene")
-        print(f"  una sección de Referencias bibliográficas.")
-    
-    elif len(all_citations) == 0 and len(reference_paragraphs) == 0:
-        print(f"\n🟡 ADVERTENCIA: Sin Sistema de Citación")
-        print(f"  El documento no tiene citas ni referencias.")
-        print(f"  Si es un artículo académico, esto debe corregirse.")
-    
-    else:
-        print(f"\n✅ Sistema de citación presente")
-        print(f"  • {len(all_citations)} citas en texto")
-        print(f"  • {len(reference_paragraphs)} referencias bibliográficas")
-
-
-def test_reference_extraction(docx_path: str):
-    """Test reference extraction from a document."""
-    print("\n" + "="*60)
-    print("SILVINA v0.6 - Test: Extracción de Referencias")
-    print("="*60)
-    
-    with WordDocumentReader(docx_path) as reader:
-        paragraphs = reader.get_paragraphs()
-    
-    print(f"\n📚 Buscando referencias en los últimos 15 párrafos...\n")
-    
-    # Extract references from last 15 paragraphs (where references usually are)
-    extractor = ReferenceExtractor()
-    start_para = max(0, len(paragraphs) - 15)
-    references = extractor.extract_from_paragraphs(paragraphs, start_index=start_para)
-    
-    print(f"✓ Referencias encontradas: {len(references)}\n")
-    
-    for ref in references:
-        print(f"  {ref}")
-        print(f"    └─ Key: {ref.reference_key}")
-        print(f"    └─ Autores: {ref.authors}")
-        print(f"    └─ Título: {ref.title[:60]}...")
-        print()
-    
-    return references
-
-def analyze_citation_reference_matching(docx_path: str):
-    """
-    Complete citation-reference integrity analysis.
-    Detects section type (Referencias vs Bibliografía) and adjusts validation.
-    """
-    print("\n" + "="*60)
-    print("SILVINA v0.6 - Análisis Completo de Citas y Referencias")
-    print("="*60)
-    
-    # Read document
-    with WordDocumentReader(docx_path) as reader:
-        paragraphs = reader.get_paragraphs()
-    
-    print(f"\n📖 Extrayendo citas del texto...")
-    
-    # Extract citations
-    cit_extractor = CitationExtractor()
-    all_citations = []
-    for i, para_text in enumerate(paragraphs):
-        citations = cit_extractor.extract_all(para_text, para_index=i)
-        all_citations.extend(citations)
-    
-    print(f"  ✓ {len(all_citations)} citas encontradas")
-    
-    print(f"\n📚 Detectando tipo de sección bibliográfica...")
-    
-    # Detect section type
-    ref_extractor = ReferenceExtractor()
-    section_type, section_para = ref_extractor.detect_section_type(paragraphs)
-    
-    if section_type == "referencias":
-        print(f"  ✓ Sección detectada: REFERENCIAS (Párrafo {section_para})")
-        print(f"    └─ Norma APA: Todas deben ser citadas")
-    elif section_type == "bibliografia":
-        print(f"  ✓ Sección detectada: BIBLIOGRAFÍA (Párrafo {section_para})")
-        print(f"    └─ Puede incluir fuentes consultadas sin citar")
-    else:
-        print(f"  ⚠️  Sección no identificada - asumiendo Referencias")
-        section_type = "referencias"  # Default to strict
-    
-    print(f"\n📚 Extrayendo entradas bibliográficas...")
-    
-    # Extract references (from last 20 paragraphs)
-    start_para = max(0, len(paragraphs) - 20)
-    all_references = ref_extractor.extract_from_paragraphs(paragraphs, start_index=start_para)
-    
-    print(f"  ✓ {len(all_references)} entradas encontradas")
-    
-    print(f"\n🔍 Verificando integridad...")
-    
-    # Match citations with references
-    matcher = CitationMatcher(all_citations, all_references)
-    
-    # Generate report with section type awareness
-    report = matcher.generate_report(section_type=section_type)
-    print("\n" + report)
-    
-    return matcher
-
-def validate_imryd_structure(docx_path: str):
-    """Validate IMRyD structure of a scientific article."""
-    print("\n" + "="*60)
-    print("SILVINA v0.6 - Validación de Estructura IMRyD")
-    print("="*60)
-    
-    # Read document
-    with WordDocumentReader(docx_path) as reader:
-        paragraphs = reader.get_paragraphs()
-    
-    print(f"\n📖 Analizando estructura del documento...")
-    
-    # Count citations first
-    cit_extractor = CitationExtractor()
-    all_citations = []
-    for i, para in enumerate(paragraphs):
-        all_citations.extend(cit_extractor.extract_all(para, i))
-    
-    # Create validator
-    validator = StructureValidator()
-    
-    # Detect article type (now considers citations)
-    article_type = validator.detect_article_type(paragraphs, citations_count=len(all_citations))
-    print(f"  ✓ Tipo detectado: {article_type.value.upper()}")
-    
-    # Extract sections
-    sections = validator.extract_sections(paragraphs)
-    print(f"  ✓ Secciones encontradas: {len(sections)}")
-    print(f"  ✓ Citas APA detectadas: {len(all_citations)}")
-    
-    # Validate structure
-    issues = validator.validate_structure(sections, article_type)
-    
-    # Generate report
-    report = validator.generate_report(article_type, sections, issues)
-    print("\n" + report)
-    
-    return validator
-
-
-def recommend_article_type_with_ai(docx_path: str):
-    """
-    Use AI to recommend article type (científico vs divulgación).
-    Combines deterministic metrics with LLM judgment.
-    """
-    import ollama
-    import json
-    
-    print("\n" + "="*60)
-    print("SILVINA v0.6 - Recomendación de Tipo de Artículo (IA)")
-    print("="*60)
-    
-    # Read document
-    with WordDocumentReader(docx_path) as reader:
-        paragraphs = reader.get_paragraphs()
-    
-    print("\n📊 Recopilando métricas del documento...")
-    
-    # 1. Calculate length
-    full_text = " ".join(paragraphs)
-    total_chars = len(full_text)
-    total_words = len(full_text.split())
-    
-    length_info = ArticleLengthValidator.classify(total_chars)
-    print(f"  ✓ Longitud: {total_chars:,} caracteres ({length_info['category']})")
-    
-    # 2. Structure analysis
-    struct_validator = StructureValidator()
-    sections = struct_validator.extract_sections(paragraphs)
-    section_names = [s.name for s in sections]
-    print(f"  ✓ Estructura: {len(sections)}/5 secciones IMRyD")
-    
-    # 3. Citations
-    cit_extractor = CitationExtractor()
-    all_citations = []
-    for i, para in enumerate(paragraphs):
-        all_citations.extend(cit_extractor.extract_all(para, i))
-    citation_density = (len(all_citations) / total_words * 1000) if total_words > 0 else 0
-    print(f"  ✓ Citas: {len(all_citations)} (densidad: {citation_density:.1f} por 1000 palabras)")
-    
-    # 4. Bibliography
-    ref_extractor = ReferenceExtractor()
-    start_para = max(0, len(paragraphs) - 20)
-    refs = ref_extractor.extract_from_paragraphs(paragraphs, start_para)
-    bib_chars = sum(len(r.raw_text) for r in refs)
-    print(f"  ✓ Bibliografía: {len(refs)} entradas, {bib_chars} caracteres")
-    
-    # 5. Text sample (first 3000 chars of main content)
-    # Skip preliminaries (first 10 paragraphs often title/author/abstract)
-    main_text = " ".join(paragraphs[10:])
-    text_sample = main_text[:3000] if len(main_text) > 3000 else main_text
-
-    # Build LLM prompt - UPDATED VERSION
-    prompt = f"""Analiza este artículo académico argentino y recomiéndalo como CIENTÍFICO o DIVULGACIÓN.
-
-DATOS OBJETIVOS:
-- Longitud: {total_chars:,} caracteres ({length_info['category']})
-- Palabras: {total_words:,}
-- Estructura IMRyD: {len(sections)}/5 secciones detectadas
-- Citas APA formales: {len(all_citations)}
-- Densidad de citas: {citation_density:.1f} por 1000 palabras
-- Bibliografía: {len(refs)} entradas, {bib_chars} caracteres
-
-EXTRACTO DEL TEXTO:
-{text_sample[:1500]}
-
-CRITERIOS:
-CIENTÍFICO = Bibliografía extensa + citas APA densas + IMRyD completo + metodología explícita + rigor analítico
-DIVULGACIÓN = Comunicativo + estructura flexible + sin citas obligatorias + estilo accesible
-
-Responde SOLO con este JSON (sin markdown, sin explicaciones extras):
-{{
-  "tipo_recomendado": "científico" o "divulgación",
-  "confianza": "alta" o "media" o "baja",
-  "puntuacion_cientifica": 0-10,
-  "indicadores_positivos": ["mínimo 2 indicadores que apoyan la recomendación"],
-  "indicadores_negativos": ["mínimo 2 problemas o carencias detectadas"],
-  "recomendacion_editorial": "Una frase concreta de 15-25 palabras para el editor"
-}}
-
-IMPORTANTE: Completa TODOS los campos. La recomendacion_editorial debe ser una frase útil y específica."""
-
-    print("\n🤖 Consultando asistente de IA...")
-    print("   (esto puede tomar 10-30 segundos)")
-    
-    try:
-        response = ollama.chat(
-            model='llama3-gradient:8b',
-            messages=[{'role': 'user', 'content': prompt}],
-            options={
-                'temperature': 0.3,  # More focused responses
-                'num_predict': 500   # Ensure enough tokens for complete response
-            }
-        )
-
-        # Parse JSON response - ROBUST VERSION
-        response_text = response['message']['content'].strip()
-        
-        # Remove markdown code blocks if present
-        if '```json' in response_text:
-            # Extract JSON from markdown
-            response_text = response_text.split('```json')[1].split('```')[0].strip()
-        elif '```' in response_text:
-            response_text = response_text.split('```')[1].split('```')[0].strip()
-        
-        # Find the first complete JSON object
-        # Look for { ... } pattern
-        start_idx = response_text.find('{')
-        if start_idx == -1:
-            raise json.JSONDecodeError("No JSON found", response_text, 0)
-        
-        # Find matching closing brace
-        brace_count = 0
-        end_idx = -1
-        for i in range(start_idx, len(response_text)):
-            if response_text[i] == '{':
-                brace_count += 1
-            elif response_text[i] == '}':
-                brace_count -= 1
-                if brace_count == 0:
-                    end_idx = i + 1
-                    break
-        
-        if end_idx == -1:
-            raise json.JSONDecodeError("Incomplete JSON", response_text, start_idx)
-        
-        # Extract only the JSON part
-        json_text = response_text[start_idx:end_idx]
-        
-        # Parse it
-        result = json.loads(json_text)
-  
-        
-        # Validate required fields
-        if not result.get('recomendacion_editorial') or len(result.get('recomendacion_editorial', '').strip()) < 10:
-            result['recomendacion_editorial'] = f"Clasificar como {result['tipo_recomendado']}. {'Agregar citas y estructura IMRyD para científico.' if result['tipo_recomendado'] == 'divulgación' else 'Cumple criterios de artículo científico.'}"
-        
-        if len(result.get('indicadores_negativos', [])) == 0:
-            result['indicadores_negativos'] = ["No se detectaron problemas críticos"]
-        
-        if len(result.get('indicadores_positivos', [])) < 2:
-            # Fallback based on metrics
-            if len(sections) > 0:
-                result['indicadores_positivos'].append("Tiene estructura básica con introducción/conclusión")
-            if len(refs) > 0:
-                result['indicadores_positivos'].append(f"Incluye bibliografía ({len(refs)} referencias)")
-        
-        
-        # Display recommendation
-        print("\n" + "="*60)
-        print("🔬 RECOMENDACIÓN DE CLASIFICACIÓN")
-        print("="*60)
-        
-        # Type and confidence
-        tipo_upper = result['tipo_recomendado'].upper()
-        confianza_upper = result['confianza'].upper()
-        
-        if result['tipo_recomendado'] == 'científico':
-            icon = "🔬"
-        else:
-            icon = "📰"
-        
-        print(f"\n{icon} Tipo Recomendado: {tipo_upper}")
-        print(f"   Nivel de confianza: {confianza_upper}")
-        print(f"   Puntuación científica: {result['puntuacion_cientifica']}/10")
-        
-        # Positive indicators
-        if result['indicadores_positivos']:
-            print(f"\n✅ Indicadores Positivos:")
-            for ind in result['indicadores_positivos']:
-                print(f"   • {ind}")
-        
-        # Negative indicators
-        if result['indicadores_negativos']:
-            print(f"\n⚠️  Indicadores Negativos:")
-            for ind in result['indicadores_negativos']:
-                print(f"   • {ind}")
-        
-        # Editorial recommendation
-        print(f"\n💡 Recomendación Editorial:")
-        print(f"   {result['recomendacion_editorial']}")
-        
-        # Length validation
-        print(f"\n📏 Validación de Longitud:")
-        if length_info['is_valid']:
-            print(f"   ✅ {length_info['message']}")
-        else:
-            print(f"   🔴 {length_info['message']}")
-        
-        print("")
-        
-        return result
-        
-    except json.JSONDecodeError as e:
-        print(f"\n✗ Error parseando respuesta del LLM: {e}")
-        print(f"   Respuesta recibida: {response_text[:200]}...")
-        return None
-    except Exception as e:
-        print(f"\n✗ Error consultando LLM: {e}")
-        
-        # Full diagnostic
-        import traceback
-        print("\n📋 Traceback completo:")
-        traceback.print_exc()
-        
-        return None
-    
-   
-# ============================================================
-# MAIN ENTRY POINT
+# MAIN EXECUTION
 # ============================================================
 
 if __name__ == "__main__":
-    # Test mode (no arguments)
-    if len(sys.argv) == 1:
-        print("SILVINA v0.6 - Citation Extractor (Test Mode)")
-        print("="*50)
-        
-        
-       # NEW TEST DATA - Session 3 COMPLETE
-        test_paragraphs = [
-            "El cambio climático es real (García, 2020, p. 45).",
-            "Según López et al. (2019) el problema es grave.",
-            "Dos autores (Pérez y Martínez, 2021) confirman esto.",
-            "Institución (NIST, 2022) publicó estándares.",
-            "Apellido compuesto (García-López, 2018) analizó datos.",
-            "Narrativa con dos: Sánchez y Rodríguez (2023) proponen un modelo.",
-            "Múltiples citas (García, 2020; López et al., 2019; Pérez, 2021).",
-            "Con páginas (Martínez, 2022, p. 10; Ruiz y Soto, 2021, pp. 5-8).",
-            "Cita secundaria (Saussure, 1916, como se cita en Godel, 1969).",
-        ]
-                           
-        extractor = CitationExtractor()
-        all_citations = []
-        
-        for i, paragraph in enumerate(test_paragraphs):
-            found = extractor.extract_all(paragraph, para_index=i)
-            all_citations.extend(found)
-            if found:
-                print(f"\nPárrafo {i}: {paragraph}")
-                for cit in found:
-                    print(f"  → {cit}")
-        
-        
-        print("\n💡 Comandos disponibles:")
-        print("   python silvina_editorial_v0.6.py documento.docx            # Analizar")
-        print("   python silvina_editorial_v0.6.py documento.docx --debug    # Ver párrafos")
-        print("   python silvina_editorial_v0.6.py documento.docx --search   # Buscar paréntesis")
-        print("   python silvina_editorial_v0.6.py documento.docx --check    # Verificar integridad")
-        print("   python silvina_editorial_v0.6.py documento.docx --refs     # Extraer referencias")
-        print("   python silvina_editorial_v0.6.py documento.docx --match     # Análisis completo")
-        print("   python silvina_editorial_v0.6.py documento.docx --imryd     # Validar estructura")
-        print("   python silvina_editorial_v0.6.py documento.docx --tipo      # Recomendar tipo (IA)")
-
-    # Check for flags BEFORE default analysis
-    elif len(sys.argv) >= 2:
-        docx_file = sys.argv[1]
-        
-        if not Path(docx_file).exists():
-            print(f"✗ Error: Archivo no encontrado: {docx_file}")
-            sys.exit(1)
-        
-        # Now check which mode (all at same indentation level)
-        # Check integrity mode
-        if len(sys.argv) == 3 and sys.argv[2] == "--check":
-            try:
-                check_citation_integrity(docx_file)
-            except ImportError as e:
-                print(f"✗ Error: {e}")
-                sys.exit(1)
-                       
-
-        # Search mode (find parentheses)
-        elif len(sys.argv) == 3 and sys.argv[2] == "--search":
-            try:
-                search_parentheses(docx_file)
-            except ImportError as e:
-                print(f"✗ Error: {e}")
-                sys.exit(1)
-        
-        # Debug mode (show paragraphs)
-        elif len(sys.argv) >= 3 and sys.argv[2] == "--debug":
-            start_para = int(sys.argv[3]) if len(sys.argv) > 3 else 15
-            try:
-                debug_document_paragraphs(docx_file, start=start_para, count=25)
-            except ImportError as e:
-                print(f"✗ Error: {e}")
-                sys.exit(1)
-        
-        # Test reference extraction
-        elif len(sys.argv) == 3 and sys.argv[2] == "--refs":
-            try:
-                test_reference_extraction(docx_file)
-            except ImportError as e:
-                print(f"✗ Error: {e}")
-                sys.exit(1)
-
-        # Full citation-reference matching analysis
-        elif len(sys.argv) == 3 and sys.argv[2] == "--match":
-            try:
-                analyze_citation_reference_matching(docx_file)
-            except ImportError as e:
-                print(f"✗ Error: {e}")
-                sys.exit(1)
-
-        # IMRyD structure validation
-        elif len(sys.argv) == 3 and sys.argv[2] == "--imryd":
-            try:
-                validate_imryd_structure(docx_file)
-            except ImportError as e:
-                print(f"✗ Error: {e}")
-                sys.exit(1)
-
-        # Article type recommendation with AI
-        elif len(sys.argv) == 3 and sys.argv[2] == "--tipo":
-            try:
-                recommend_article_type_with_ai(docx_file)
-            except ImportError as e:
-                print(f"✗ Error: {e}")
-                sys.exit(1)
-
-        # Default: Document analysis mode (no flag)
-        else:
-            try:
-                citations = analyze_document_citations(docx_file)
-            except ImportError as e:
-                print(f"✗ Error: {e}")
-                sys.exit(1)
+    print("\n" + "="*70)
+    print("SILVINA v0.6 - ASISTENTE EDITORIAL REDESIGNED")
+    print("="*70 + "\n")
+    
+    # Load document
+    filepath = r"C:\Users\usuario\Desktop\05 - PI Presupuesto... - Informe Final 2024.docx"
+    
+    doc = Document(filepath)
+    doc.load()
+    
+    # TIER 1: Deterministic validation (always full document)
+    doc.classify_article()
+    tier1_report = doc.generate_report_v06()
+    print(tier1_report)
+    
+    # TIER 2: LLM Quality Analysis
+    print("\n" + "="*70)
+    print("TIER 2: ANÁLISIS DE CALIDAD (Ollama - llama3-gradient:8b)")
+    print("="*70)
+    
+    llm_content = doc.get_llm_analysis_content()
+    
+    if llm_content:
+        article_type = doc.article_classification['type'].value
+        # CHANGED: Use Ollama instead
+        llm_report = analyze_with_ollama(llm_content, article_type, tier1_report)
+        print(llm_report)
+    else:
+        print("⚠️ No se pudo extraer contenido para análisis LLM")
+    
+    # Save combined report
+    combined_report = tier1_report + "\n\n" + "="*70 + "\n"
+    combined_report += "TIER 2: ANÁLISIS DE CALIDAD (Ollama - llama3-gradient:8b)\n"
+    combined_report += "="*70 + "\n" + llm_report
+    
+    report_filename = f"reporte_silvina_v06_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+    with open(report_filename, 'w', encoding='utf-8') as f:
+        f.write(combined_report)
+    
+    print(f"\n💾 Reporte completo guardado: {report_filename}")
+     
+       
+    # NEW: Export to Word
+    word_filename = f"reporte_silvina_v06_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
+    doc.export_to_word(word_filename)
 
     
+    # Then add LLM analysis to existing Word file
+    if llm_report:
+        word_doc = DocxDocument(word_filename)
+        
+        # Find the LLM section (last heading)
+        for para in word_doc.paragraphs[-10:]:
+            if "TIER 2" in para.text:
+                # Clear placeholder text
+                for para in word_doc.paragraphs[-3:]:
+                    if "agregado después" in para.text:
+                        para.clear()
+                break
+        
+        # Add LLM analysis
+        word_doc.add_paragraph(llm_report)
+        word_doc.save(word_filename)
+        print(f"✅ Análisis LLM agregado al reporte Word")
+    
+    doc.close()
+

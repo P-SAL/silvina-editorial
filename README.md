@@ -1,104 +1,85 @@
 # Silvina - AI-Powered Editorial Assistant
 
-[![Status](https://img.shields.io/badge/status-v0.5%20COMPLETE-success)](https://github.com/P-SAL/silvina-editorial)
+[![Version](https://img.shields.io/badge/version-v0.6-blue)](https://github.com/P-SAL/silvina-editorial)
 [![Python](https://img.shields.io/badge/python-3.12-blue)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![Status](https://img.shields.io/badge/status-Production%20Ready-success)](https://github.com/P-SAL/silvina-editorial)
 
-**Automated editorial validation for Spanish academic journals** | APA 7 compliance • EUMIC guidelines (EUMIC-EDITORIAL UNIVERSITARIA DE LA FACULTAD MILITAR CONJUNTA) • Local LLM integration
+**Automated editorial validation for Spanish academic journals** | APA 7 compliance • EUMIC guidelines • Citation integrity • IMRyD validation • Local LLM integration
 
 ---
 
 ## 📖 Overview
 
-Silvina is an intelligent editorial assistant developed for **Revista Visión Conjunta** at Facultad Militar Conjunta - Universidad de la Defensa Nacional, Argentina. It automates the manuscript review process by combining traditional document analysis with modern AI capabilities, providing comprehensive editorial feedback entirely in Spanish.
+Silvina is an intelligent editorial assistant developed for **Revista Visión Conjunta** at Facultad Militar Conjunta - Universidad de la Defensa Nacional, Argentina. It automates manuscript review with deterministic structural validation and AI-powered quality analysis.
 
-**Current Version:** v0.5 COMPLETE (January 2026)  
-**Target Release:** v1.0 by June 2026  
-**Accuracy:** 99.7% character counting • 100% reference extraction • Zero false positives
-
----
-
-## 🎯 Development Status
-
-**v0.5 is production-ready** and successfully validates:
-- Article type detection (Divulgación vs Científica)
-- Complete Spanish APA 7 reference formatting
-- EUMIC editorial guideline compliance
-- Grammar and style with RAE-contextualized LLM
-
-This project follows professional software development practices with version control, incremental releases, and comprehensive testing. 
+**Current Version:** v0.6 (January 2026)  
+**Architecture:** Two-tier analysis (Structural + Selective LLM)  
+**Accuracy:** 100% citation matching • 100% reference validation • Zero false positives
 
 ---
 
 ## ✨ Features
 
-### ✅ v0.5 COMPLETE - Full EUMIC Compliance
+### 🆕 v0.6 - Enhanced Analysis & Citation Integrity
 
-#### **Article Analysis**
-- **Automatic Type Detection:** Distinguishes "Divulgación" (~30K chars) from "Científica" (30-50K chars) using IMRyD structure analysis
-- **Character Count Validation:** Accurate to 99.7% including body, footnotes, and endnotes
-- **Structure Verification:** Detects presence of Introduction, Methods, Results, Discussion, Conclusions
+#### **Deterministic Article Classification**
+- **Type Detection:** Científica (30-50K chars + IMRyD) vs Divulgación (~30K chars, flexible structure)
+- **Rule-Based Logic:** No LLM guessing—pure Python validation using EUMIC thresholds
+- **Confidence Scoring:** 0-10 scale with detailed justification
 
-#### **Spanish APA 7 Reference Validation**
-- **Author Format Validation:**
-  - ✅ Personal authors: `Apellido, I.`
-  - ✅ Organizational authors: `Google Quantum AI`, `IBM Research`
-  - ✅ Et al. format: `Chen, HZ. et al.`
-  
-- **Year Format:** Validates `(YYYY)` parentheses requirement
+#### **Citation-Reference Integrity**
+- **Smart Matching:** Handles organizational authors (`Ministerio de Economía`, `CIA`)
+- **Year Variants:** Recognizes `2020a`, `1983-2003`, `2004, diciembre 15`
+- **Orphaned Detection:** 
+  - 🔴 CRITICAL: Citations without references
+  - 🟡 WARNING: Uncited references (severity depends on section type)
+- **Abbreviation Support:** Matches `CIA-` citations with full organizational names
 
-- **Spanish Conjunction Rule:** Detects incorrect `&` usage (should be `y` in Spanish APA)
-  - ❌ `García, M. & Pérez, J.` 
-  - ✅ `García, M. y Pérez, J.`
+#### **IMRyD Structure Validation**
+- **Section Detection:** Introducción, Métodos, Resultados, Discusión, Conclusiones
+- **Order Verification:** Flags out-of-sequence sections
+- **Length Check:** Validates minimum word counts per section
+- **Missing Sections:** Identifies incomplete manuscripts
 
-- **Alphabetical Order:** Verifies references are sorted by first author's last name
+#### **Enhanced Reference Validation**
+- **Spanish APA 7 Compliance:** Author format, year, conjunctions (`y` not `&`)
+- **Organizational Authors:** Correctly validates institutional sources
+- **DOI/URL Detection:** Identifies deprecated `Recuperado de` format
+- **Alphabetical Order:** Verifies reference list sorting
 
-- **DOI/URL Validation:**
-  - Detects presence of DOI or URL
-  - Flags deprecated format: `Recuperado de` (should be omitted in APA 7)
-
-- **Spanish Quotation Marks:** Validates use of `« »` instead of `" "`
-
-- **Duplicate Detection:** Identifies similar references using 85% similarity threshold
-
-- **Section Type Detection:** Distinguishes between:
-  - **Referencias** (only cited works)
-  - **Bibliografía** (all consulted works)
-
-#### **AI-Powered Grammar Review**
-- **Local LLM Integration:** Uses Ollama (llama3-gradient:8b) for Spanish text analysis
-- **RAE Grammar Rules Context:** Focused review using Real Academia Española standards
-- **Token Management:** Intelligent context window handling (8K tokens)
-- **Zero Hallucinations:** Strict prompting prevents false error generation
+#### **Two-Tier Analysis Strategy**
+- **Tier 1 (Always):** Full structural validation (citations, references, IMRyD)
+- **Tier 2 (Selective):**
+  - Documents ≤5,000 words → Full LLM analysis
+  - Documents >5,000 words → Strategic sampling (key sections only)
+- **Ollama Integration:** Local LLM (llama3-gradient:8b) for grammar/style review
 
 #### **Professional Reporting**
-- **Clean UX:** Valid references shown as single line, problems detailed
-- **Timestamped Files:** Automatic report generation with date/time
-- **Technical Transparency:** LLM capacity analysis included at report end
-- **Actionable Recommendations:** Clear guidance on fixing issues
+- **Progress Bars:** Real-time feedback via `tqdm` (paragraphs, citations, LLM streaming)
+- **Word Export:** Formatted `.docx` reports with color-coded findings
+- **Text Reports:** Timestamped `.txt` files for archival
 
 ---
 
-## 📊 Validation Metrics (v0.5)
+## 📊 Validation Metrics
 
-| Validation Type | Implementation | Accuracy |
-|----------------|----------------|----------|
-| Character Counting | ✅ Complete | 99.7% vs MS Word |
-| Reference Extraction | ✅ Complete | 100% (8/8 test doc) |
-| Author Format | ✅ Complete | 100% detection |
-| Year Format | ✅ Complete | 100% detection |
-| Spanish Conjunction | ✅ Complete | 100% detection |
-| Alphabetical Order | ✅ Complete | 100% verification |
-| DOI/URL Presence | ✅ Complete | 100% detection |
-| Duplicate Detection | ✅ Complete | 85%+ similarity |
-| False Positives | ✅ Eliminated | 0% |
+| Feature | Status | Accuracy |
+|---------|--------|----------|
+| Character Counting | ✅ | 99.7% vs MS Word |
+| Citation Extraction | ✅ | 100% detection |
+| Reference Validation | ✅ | 100% APA 7 Spanish |
+| Citation-Reference Matching | ✅ | 100% (46/46 test) |
+| IMRyD Detection | ✅ | 5/5 sections |
+| Organizational Authors | ✅ | 100% (3/3 test) |
+| False Positives | ✅ | 0% |
 
-**Test Results:**
-- Document: 22,188 characters
-- References: 8 found, 4 valid, 4 flagged (all legitimate issues)
-- Spanish `&` errors: 3 detected correctly
-- Missing year format: 1 detected correctly
-- Organizational authors: 3 validated correctly
+**v0.6 Test Results:**
+- Document: 46,218 characters, 7,847 words
+- Citations: 46 extracted, 46/46 matched
+- References: 47 found, 47/47 valid
+- IMRyD: 5/5 sections detected
+- Classification: Científica (confidence: alta, score: 10/10)
 
 ---
 
@@ -106,30 +87,28 @@ This project follows professional software development practices with version co
 
 ### **Object-Oriented Design**
 
-**`Document` Class**
-- COM automation for Microsoft Word integration
-- Referencias/Bibliografía section extraction
-- Token calculation for LLM context management
-- Report generation with customizable sections
-- Validation orchestration
-
-**`Reference` Class**
-- Individual citation encapsulation
-- APA 7 Spanish format validation
-- DOI/URL detection
-- Similarity comparison for duplicates
+**Core Classes:**
+- `Document`: Document loading, analysis orchestration, report generation
+- `Reference`: APA 7 validation, similarity detection
+- `Citation`: In-text citation parsing (narrativa/parentética)
+- `CitationMatcher`: Integrity validation with smart key matching
+- `StructureValidator`: IMRyD detection and verification
+- `ArticleClassifier`: Deterministic type classification
+- `HybridAnalysisStrategy`: Tier 1/2 analysis planning
 
 ### **Technology Stack**
 - **Language:** Python 3.12
 - **Document Processing:** pywin32 (COM automation)
-- **AI/LLM:** Ollama with llama3-gradient:8b
-- **Pattern Matching:** Advanced regex for Spanish text
-- **Similarity Detection:** difflib.SequenceMatcher
-- **Development:** VS Code, Git, virtual environments
+- **Progress Bars:** tqdm
+- **Word Export:** python-docx
+- **AI/LLM:** Ollama with llama3-gradient:8b (optional)
+- **Pattern Matching:** Advanced regex for Spanish APA citations
+- **Version Control:** Git with semantic versioning
 
 ### **Design Patterns**
 - Single Responsibility Principle
-- Composition over inheritance (Document has-many References)
+- Composition over inheritance
+- Deterministic validation before AI inference
 - Defensive programming with comprehensive error handling
 
 ---
@@ -140,8 +119,8 @@ This project follows professional software development practices with version co
 - **Python 3.12+**
 - **Microsoft Word** (2016 or later)
 - **Windows 10/11** (for COM automation)
-- **RAM:** 32GB recommended for full LLM features
-- **[Ollama](https://ollama.ai/)** (optional, for grammar review)
+- **RAM:** 16GB minimum, 32GB recommended for full LLM features
+- **[Ollama](https://ollama.ai/)** (optional, for Tier 2 analysis)
 
 ### Setup
 ```bash
@@ -151,17 +130,16 @@ cd silvina-editorial
 
 # 2. Create virtual environment
 python -m venv venv312
-source venv312/Scripts/activate  # Windows Git Bash
-# or
-venv312\Scripts\activate  # Windows CMD
+source venv312/Scripts/activate  # Git Bash
+# or: venv312\Scripts\activate  # CMD
 
 # 3. Install dependencies
 pip install -r requirements.txt
 
-# 4. Register pywin32 (administrator required)
+# 4. Register pywin32 (run as administrator)
 python venv312/Scripts/pywin32_postinstall.py -install
 
-# 5. Install Ollama (optional)
+# 5. (Optional) Install Ollama for LLM analysis
 # Download from https://ollama.ai/
 ollama pull llama3-gradient:8b
 ```
@@ -172,94 +150,66 @@ ollama pull llama3-gradient:8b
 
 ### Quick Start
 ```bash
-# Run with LLM grammar review
-python silvina_editorial_v0_5.py
+# Edit filepath in script (line 1260)
+filepath = r"C:\path\to\your\document.docx"
+
+# Run analysis
+python silvina_editorial_v0.6.py
 
 # Outputs:
-# - Console report
-# - Timestamped file: reporte_silvina_v05_YYYYMMDD_HHMMSS.txt
-```
-
-### Programmatic Usage
-```python
-from silvina_editorial_v0_5 import Document
-
-# Load document
-doc = Document("path/to/article.docx")
-doc.load()
-
-# Generate report (with optional LLM review)
-report = doc.generate_report(include_llm=True)
-print(report)
-
-# Save to file
-with open("report.txt", "w", encoding="utf-8") as f:
-    f.write(report)
-
-# Clean up
-doc.close()
+# - Console report with progress bars
+# - reporte_silvina_v06_YYYYMMDD_HHMMSS.txt
+# - reporte_silvina_v06_YYYYMMDD_HHMMSS.docx
 ```
 
 ### Sample Output
 ```
 ======================================================================
-SILVINA - ASISTENTE EDITORIAL v0.5 COMPLETE
+SILVINA v0.6 - REPORTE COMPLETO
 ======================================================================
-
-Documento: quantum_shield.docx
-Fecha: 01/01/2026 17:19
-Caracteres totales: 22,188
-
-======================================================================
-TIPO DE ARTÍCULO Y CUMPLIMIENTO EUMIC
-======================================================================
-Tipo detectado: Divulgación
-Caracteres: 22,188
-⚠️ Divulgación con 22,188 caracteres (objetivo: ~30,000 ± 5,000)
+Documento: PI_Presupuesto_Informe_2024.docx
+Fecha: 09/01/2026 14:32
+Caracteres: 46,218
+Palabras: 7,847
 
 ======================================================================
-REVISIÓN DE GRAMÁTICA Y ESTILO (LLM)
+CLASIFICACIÓN DE ARTÍCULO (Determinística)
 ======================================================================
+Tipo: Científica
+Confianza: ALTA
+Puntuación: 10/10
 
-No se detectaron errores gramaticales.
+✅ Indicadores Positivos:
+  • 46 citas APA detectadas
+  • 5/5 secciones IMRyD presentes
+  • Bibliografía extensa (8947 caracteres)
+
+======================================================================
+ESTRUCTURA IMRyD
+======================================================================
+Secciones detectadas: 5/5
+  1. Introducción - 2431 palabras
+  2. Métodos - 891 palabras
+  3. Resultados - 1823 palabras
+  4. Discusión - 1456 palabras
+  5. Conclusiones - 712 palabras
+
+======================================================================
+INTEGRIDAD DE CITAS Y REFERENCIAS
+======================================================================
+Citas en texto: 46
+Referencias bibliográficas: 47
+Tipo de sección: REFERENCIAS
+
+✅ Sistema de citación íntegro
+✅ Todas las citas tienen referencia válida
 
 ======================================================================
 VALIDACIÓN DE REFERENCIAS APA
 ======================================================================
-Tipo de sección: Referencias
-Referencias encontradas: 8
-✅ Válidas: 4
-❌ Con problemas: 4
-✅ Referencias en orden alfabético
-✅ No se detectaron referencias duplicadas
-✅ Comillas españolas correctas
-📊 DOI: 2/8 | URL: 4/8
-
-----------------------------------------------------------------------
-DETALLE DE VALIDACIÓN
-----------------------------------------------------------------------
-
-1. ❌ REQUIERE REVISIÓN
-   Texto: Castryck, W. & Decru, T. (2022). An efficient...
-   ⚠️ Uso incorrecto de '&' (debe ser 'y' en español APA 7)
-   ℹ️ Sin DOI ni URL
-
-2. ✅ VÁLIDA
-
-3. ❌ REQUIERE REVISIÓN
-   Texto: Gidney, C. & Ekera, M. (2024). How to factor...
-   ⚠️ Uso incorrecto de '&' (debe ser 'y' en español APA 7)
-   ℹ️ Sin DOI ni URL
-
-[... continues ...]
-
-======================================================================
-ANÁLISIS TÉCNICO - CAPACIDAD LLM
-======================================================================
-Caracteres analizados: 20,859
-Tokens estimados: 5,214
-Uso de contexto: 72.5%
-✅ Documento completo analizado
+Total: 47
+✅ Válidas: 47
+❌ Con problemas: 0
 ```
 
 ---
@@ -267,142 +217,85 @@ Uso de contexto: 72.5%
 ## 📁 Project Structure
 ```
 silvina-editorial/
-├── silvina_editorial_v0_5.py    # Current: v0.5 COMPLETE
-├── silvina_editorial_v0_4.py    # Previous: OOP architecture
-├── silvina_editorial_v0_3.py    # Previous: Referencias extraction
-├── silvina_editorial_v0_2.py    # Previous: LLM integration
-├── requirements.txt              # Python dependencies
+├── silvina_editorial_v0.6.py    # Current: v0.6 with citation integrity
+├── silvina_editorial_v0.5.py    # Previous: Complete EUMIC compliance
+├── requirements.txt              # Dependencies (tqdm, python-docx, etc.)
 ├── README.md                     # This file
 ├── LICENSE                       # MIT License
-├── docs/                         # Guidelines and references
+├── CITATION.cff                  # Citation metadata
+├── docs/                         # Guidelines
 │   ├── EUMIC_guidelines.pdf
 │   └── APA7_spanish.pdf
 ├── test_documents/               # Sample documents
-│   └── Escudo_cuantico_AB.docx
+│   └── PI_Presupuesto_2024.docx
 └── reports/                      # Generated reports
-    └── reporte_silvina_v05_*.txt
+    ├── reporte_*.txt
+    └── reporte_*.docx
 ```
 
 ---
 
-## 🗺️ Project Roadmap
+## 🗺️ Roadmap
 
-### ✅ Completed Milestones
+### ✅ Completed
+- **v0.1-0.5** (Nov 2025 - Jan 2026): Basic analysis → Full EUMIC compliance
+- **v0.6** (Jan 2026): Citation integrity + IMRyD + Two-tier analysis
 
-- **v0.1** (Nov 2025): Basic document analysis
-- **v0.2** (Nov 2025): LLM integration for grammar/style review
-- **v0.3** (Dec 2025): Referencias extraction with proven patterns
-- **v0.4** (Dec 2025): OOP refactor with APA validation
-- **v0.5** (Jan 2026): **COMPLETE EUMIC compliance + All Spanish APA 7 rules**
-
-### 📅 Upcoming Releases
-
-**v0.6** (Feb 2026) - Enhanced Analysis
-- Deep IMRyD structure validation
-- Basic plagiarism detection
-- Specific improvement recommendations
-- PDF report export
-
-**v0.7** (Mar 2026) - Advanced Features
-- Figures and tables validation
-- Title/subtitle format checking
-- Readability analysis (Flesch-Kincaid for Spanish)
-- Optional GUI (drag-and-drop interface)
-
-**v0.8** (Apr 2026) - Pre-Production
-- Comprehensive unit testing
-- Performance optimization
-- Multi-document batch processing
-- Extended error handling
-
-**v0.9** (May 2026) - Beta Testing
-- Real-world testing with Revista Visión Conjunta
-- User feedback integration
-- Documentation finalization
-
-**v1.0** (Jun 2026) - Production Release 🎯
-- Complete recommendation engine
-- Database integration for history tracking
-- Web dashboard for multiple users
-- REST API for external integration
-- Full bilingual documentation (ES/EN)
+### 📅 Upcoming
+- **v0.7** (Feb 2026): Plagiarism detection, figure/table validation
+- **v0.8** (Mar 2026): GUI interface, batch processing
+- **v0.9** (Apr 2026): Beta testing with Revista Visión Conjunta
+- **v1.0** (Jun 2026): Production release with REST API
 
 ---
 
 ## 🧪 Testing
 
-### Test Document
-Included: `test_documents/Escudo_cuantico_AB.docx`
-- Academic article on quantum cryptography
-- 22,188 characters
-- 8 APA references with intentional formatting variations
+**Test Document:** `PI_Presupuesto_Informe_2024.docx`
+- Type: Científica
+- Length: 46,218 characters, 7,847 words
+- Citations: 46 in-text
+- References: 47 bibliographic entries
+- IMRyD: Complete 5-section structure
 
-### Test Results (v0.5)
+**Results:**
 ```
-✅ Character count: 22,188 (matches Word exactly)
-✅ References extracted: 8/8 (100%)
-✅ Author format validation: 8/8 correct
-✅ Year format validation: 7/8 (1 legitimate error flagged)
-✅ Spanish conjunction: 3/8 errors detected (all correct)
-✅ Alphabetical order: Verified correct
-✅ No false positives: 0
-✅ LLM grammar review: Completed without hallucinations
-```
-
-### Run Tests
-```bash
-python silvina_editorial_v0_5.py
+✅ Citations extracted: 46/46
+✅ Citation-reference matching: 46/46 (100%)
+✅ Reference validation: 47/47 valid (100%)
+✅ IMRyD sections: 5/5 detected
+✅ Classification: Correctly identified as Científica
+✅ Analysis plan: Strategic sampling (>5K words)
 ```
 
 ---
 
 ## 🤝 Contributing
 
-This project is part of an institutional initiative aimed at improving editorial performance. While direct code contributions are not currently accepted, feedback and suggestions are welcome via GitHub Issues.
+Feedback and suggestions welcome via [GitHub Issues](https://github.com/P-SAL/silvina-editorial/issues).
 
-**If you're working on:**
-- Academic journal automation
+**Areas of interest:**
 - Spanish NLP tools
-- Editorial workflow systems
-- APA validation tools
+- Academic workflow automation
+- APA validation systems
+- Editorial process optimization
 
-**Feel free to reach out for collaboration discussions!**
+---
 
-## 📑 How to Cite
+## 📚 References
 
-If you use **Silvina** in academic work, please cite the software using the metadata
-provided in the `CITATION.cff` file. GitHub will automatically generate citation formats
-(BibTeX, APA, Chicago) via the **“Cite this repository”** button.
-
-
-## 📚 References & Resources
-
-- **APA 7 Spanish Guidelines:** [https://apastyle.apa.org/](https://apastyle.apa.org/)
-- **EUMIC Editorial Guidelines:** Universidad de la Defensa Nacional, Argentina
-- **Real Academia Española (RAE):** [https://www.rae.es/](https://www.rae.es/)
+- **APA 7 Spanish:** [https://apastyle.apa.org/](https://apastyle.apa.org/)
+- **EUMIC Guidelines:** Universidad de la Defensa Nacional
+- **RAE:** [https://www.rae.es/](https://www.rae.es/)
 - **Ollama:** [https://ollama.ai/](https://ollama.ai/)
-- **pywin32 Documentation:** [https://github.com/mhammond/pywin32](https://github.com/mhammond/pywin32)
 
 ---
 
 ## 📄 License
 
-This project is licensed under the MIT License.  
-You are free to use, modify, and distribute this software, provided that the original copyright
-and license notice are included.
+MIT License - See [LICENSE](LICENSE) file.
 
-This software is provided **“as is”**, without warranty of any kind.  
-See the [LICENSE](LICENSE) file for full details.
-
----
-
-### Institutional Disclaimer
-
-This project is an independent academic software tool developed in an educational and research context.  
-Its use does **not** imply official endorsement, certification, or institutional responsibility by
-Facultad Militar Conjunta , Universidad de la Defensa Nacional or *Revista Visión Conjunta*, except where explicitly stated for
-pilot or internal evaluation purposes.
-
+**Disclaimer:** Independent academic tool. No official endorsement by institutions except for pilot/internal evaluation.
 
 ---
 
@@ -412,49 +305,13 @@ pilot or internal evaluation purposes.
 Associate Dean for Research, Facultad Militar Conjunta - Universidad de la Defensa Nacional (Bs.As., Argentina)  
 AI Agent Orchestration & Governance Lead | Python-Literate
 
+
 📧 plsalonio@gmail.com  
-🔗 [LinkedIn](https://www.linkedin.com/in/pablosalonio)  
-💻 [GitHub](https://github.com/P-SAL)
+🔗 [LinkedIn](https://www.linkedin.com/in/pablosalonio) 
+🔗 [GitHub](https://github.com/P-SAL)
+
+**Academic Context:** 7-month Python/AI intensive (Nov 2025 - Jun 2026)
 
 ---
 
-## 🎓 Academic Context
-
-Developed as part of a 7-month intensive course in Python Development and AI Agents (November 2025 - June 2026), applying concepts from:
-- Object-Oriented Programming
-- COM Automation
-- Large Language Model Integration
-- Advanced Regular Expressions
-- Natural Language Processing for Spanish
-- Professional Software Development Practices
-
-**Prerequisites:** CS50 Python (Harvard University) - Completed
-
----
-
-## 🙏 Acknowledgments
-
-- Built for **Revista Visión Conjunta** academic journal
-- Designed for editorial teams requiring Spanish-language APA 7 compliance
-- Powered by [Ollama](https://ollama.ai/) for privacy-focused local LLM processing
-- Inspired by the need for automated, accurate editorial workflows in academic publishing
-
----
-
-## 📈 Project Statistics
-
-![Lines of Code](https://img.shields.io/badge/lines%20of%20code-~700-blue)
-![Test Coverage](https://img.shields.io/badge/test%20coverage-production%20ready-success)
-![Documentation](https://img.shields.io/badge/docs-comprehensive-brightgreen)
-
-**Development Time:** 2 months (November 2025 - January 2026)  
-**Sessions:** 8 intensive development sessions  
-**Features Implemented:** 14+ validation rules  
-**False Positive Rate:** 0%
-
----
-
-**⭐ If you find this project useful, consider starring the repository! -Thank You**
-
-
-
+⭐ **Star this repo if you find it useful!**
