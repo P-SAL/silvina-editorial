@@ -25,10 +25,17 @@ from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
 from docx.oxml import OxmlElement  
 from docx.oxml.ns import qn  
 
+# ============================================================
+# CONFIGURATION
+# ============================================================
+OLLAMA_MODEL = 'llama3-gradient:8b-instruct-1048k-q5_K_M'  # Change here to switch models
+OLLAMA_URL = 'http://localhost:11434/api/generate'
+
 
 # ============================================================
 # LLM INTEGRATION (OLLAMA)
 # ============================================================
+
 
 def analyze_with_ollama(content: str, article_type: str, tier1_report: str) -> str:
     """Send content to Ollama with streaming progress."""
@@ -38,21 +45,20 @@ def analyze_with_ollama(content: str, article_type: str, tier1_report: str) -> s
 TEXTO:
 {content[:6000]}
 
-Evalúa brevemente (máximo 250 palabras):
+Evalúa brevemente (máximo 200 palabras):
 1. Claridad del argumento
 2. Tono académico
 3. Coherencia
-4. 2 recomendaciones
 
-Responde en español, sé directo."""
+Responde en español, sé directo. NO incluyas recomendaciones ni sugerencias."""
     
     try:
         print("⏳ Analizando con Ollama...")
         
         response = requests.post(
-            'http://localhost:11434/api/generate',
+            OLLAMA_URL,  # ← Use constant
             json={
-                'model': 'llama3-gradient:8b',
+                'model': OLLAMA_MODEL,  # ← Use constant
                 'prompt': prompt,
                 'stream': True,
                 'options': {
@@ -66,7 +72,6 @@ Responde en español, sé directo."""
         
         full_response = []
         
-        # Use tqdm for streaming progress
         with tqdm(desc="Generando análisis", unit=" tokens", bar_format='{l_bar}{bar}| {n_fmt} tokens') as pbar:
             for line in response.iter_lines():
                 if line:
@@ -74,7 +79,7 @@ Responde en español, sé directo."""
                     if 'response' in chunk:
                         token = chunk['response']
                         full_response.append(token)
-                        pbar.update(1)  # Update per token
+                        pbar.update(1)
                     if chunk.get('done', False):
                         break
         
@@ -82,10 +87,9 @@ Responde en español, sé directo."""
         return ''.join(full_response)
     
     except requests.exceptions.ConnectionError:
-        return "❌ No conecta a Ollama"
+        return "❌ No conecta a Ollama (¿está corriendo 'ollama serve'?)"
     except Exception as e:
         return f"❌ Error: {str(e)}"
-
 
 
 
@@ -927,8 +931,7 @@ class Document:
         
         print(f"✅ Detectadas {len(self.sections)}/5 secciones IMRyD")
 
-  
-    
+      
     def classify_article(self):
         """Classify article type deterministically."""
         metrics = ArticleClassifier.collect_metrics(self)
@@ -968,26 +971,41 @@ class Document:
         
         plan = self.analysis_plan['tier2_quality']
         
+        
         if plan['scope'] == 'FULL_DOCUMENT':
-            return self._get_full_document_text()
+            content = self._get_full_document_text()
+            return content
         
         elif plan['scope'] == 'STRATEGIC_SAMPLING':
-            return self._build_strategic_excerpt(plan['sections'])
+            content = self._build_strategic_excerpt(plan['sections'])
+            return content
         
         return ""
     
     def _get_full_document_text(self) -> str:
         """Extract complete document text."""
+        if not self.doc:
+            return ""
+        
         paragraphs = []
-        for para in self.doc.Paragraphs:
-            try:
-                text = para.Range.Text.strip()
-                if text:
-                    paragraphs.append(text)
-            except:
-                continue
-        return '\n\n'.join(paragraphs)
-    
+        try:
+            total_paras = self.doc.Paragraphs.Count
+                        
+            for para in self.doc.Paragraphs:
+                try:
+                    text = para.Range.Text.strip()
+                    if text:
+                        paragraphs.append(text)
+                except:
+                    continue
+            
+            full_text = '\n\n'.join(paragraphs)
+            return full_text
+            
+        except Exception as e:
+            return ""
+
+        
     def _build_strategic_excerpt(self, sections_plan: List[Dict]) -> str:
         """Build strategic excerpt for large documents."""
         content = []
@@ -1045,107 +1063,125 @@ class Document:
         
         return '\n\n'.join(paragraphs)
            
-    
     def generate_report_v06(self):
-        """
-        Generate comprehensive v0.6 report.
-        Includes v0.5 features + new v0.6 features.
-        """
+        """Generate comprehensive v0.6 report."""
+
         report = []
-        report.append("=" * 70)
+        SEP = "=" * 70
+
+        # ---- local helpers (method-scoped) ----
+        def header(title):
+            report.append("\n" + SEP)
+            report.append(title)
+            report.append(SEP)
+
+        def bullets(items, formatter=str):
+            for item in items:
+                report.append(f"  • {formatter(item)}")
+
+        def severity_block(severity, items, formatter=str):
+            if not items:
+                return
+            report.append(f"\n{severity.value}:")
+            bullets(items, formatter)
+
+        # === REPORT HEADER ===
+        report.append(SEP)
         report.append("SILVINA v0.6 - REPORTE COMPLETO")
-        report.append("=" * 70)
+        report.append(SEP)
         report.append(f"Documento: {os.path.basename(self.filepath)}")
         report.append(f"Fecha: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
         report.append(f"Caracteres: {self.get_character_count():,}")
-        
+
         # === ARTICLE CLASSIFICATION ===
         if self.article_classification:
             cls = self.article_classification
-            report.append("\n" + "=" * 70)
-            report.append("CLASIFICACIÓN DE ARTÍCULO (Determinística)")
-            report.append("=" * 70)
+
+            header("CLASIFICACIÓN DE ARTÍCULO (Determinística)")
             report.append(f"Tipo: {cls['type'].value}")
             report.append(f"Confianza: {cls['confidence'].upper()}")
             report.append(f"Puntuación: {cls['score']}/10")
-            
-            if cls['reasons']['critical']:
-                report.append(f"\n{SeverityLevel.CRITICO.value}:")
-                for issue in cls['reasons']['critical']:
-                    report.append(f"  • {issue}")
-            
+
+            severity_block(
+                SeverityLevel.CRITICO,
+                cls['reasons']['critical']
+            )
+
             if cls['reasons']['positive']:
-                report.append(f"\n✅ Indicadores Positivos:")
-                for item in cls['reasons']['positive']:
-                    report.append(f"  • {item}")
-        
-        # === IMRYD STRUCTURE ===
+                report.append("\n✅ Indicadores Positivos:")
+                bullets(cls['reasons']['positive'])
+
+        # === IMRyD STRUCTURE ===
         if self.sections:
-            report.append("\n" + "=" * 70)
-            report.append("ESTRUCTURA IMRyD")
-            report.append("=" * 70)
+            header("ESTRUCTURA IMRyD")
             report.append(f"Secciones detectadas: {len(self.sections)}/5")
-            
+
             for section in sorted(self.sections, key=lambda s: s.expected_order):
-                report.append(f"  {section.expected_order}. {section.name.title()} - {section.word_count} palabras")
-            
-            # Validate structure
+                report.append(
+                    f"  {section.expected_order}. "
+                    f"{section.name.title()} - {section.word_count} palabras"
+                )
+
             validator = StructureValidator()
             issues = validator.validate(self.sections)
-            
-            if issues['missing_sections']:
-                report.append(f"\n{SeverityLevel.CRITICO.value}: Secciones Faltantes")
-                for missing in issues['missing_sections']:
-                    report.append(f"  • {missing.title()}")
-            
-            if issues['out_of_order']:
-                report.append(f"\n{SeverityLevel.CRITICO.value}: Orden Incorrecto")
-                for sec1, sec2 in issues['out_of_order']:
-                    report.append(f"  • {sec1.title()} antes de {sec2.title()}")
-            
-            if issues['too_short']:
-                report.append(f"\n{SeverityLevel.ADVERTENCIA.value}: Secciones Cortas")
-                for short in issues['too_short']:
-                    report.append(f"  • {short['section'].title()}: {short['current']} palabras (mín: {short['minimum']})")
-        
+
+            severity_block(
+                SeverityLevel.CRITICO,
+                issues['missing_sections'],
+                formatter=lambda s: s.title()
+            )
+
+            severity_block(
+                SeverityLevel.CRITICO,
+                issues['out_of_order'],
+                formatter=lambda p: f"{p[0].title()} antes de {p[1].title()}"
+            )
+
+            severity_block(
+                SeverityLevel.ADVERTENCIA,
+                issues['too_short'],
+                formatter=lambda s: (
+                    f"{s['section'].title()}: "
+                    f"{s['current']} palabras (mín: {s['minimum']})"
+                )
+            )
+
         # === CITATION INTEGRITY ===
         if self.citations or self.references:
             matcher = CitationMatcher(self.citations, self.references)
             report.append(matcher.generate_report(self.section_type))
-        
+
         # === REFERENCE VALIDATION ===
-        report.append("\n" + "=" * 70)
-        report.append("VALIDACIÓN DE REFERENCIAS APA")
-        report.append("=" * 70)
-        
-        if len(self.references) > 0:
-            valid_count = sum(1 for ref in self.references if ref.is_valid())
-            invalid_count = len(self.references) - valid_count
-            
+        header("VALIDACIÓN DE REFERENCIAS APA")
+
+        if self.references:
+            validated = [(ref, ref.is_valid()) for ref in self.references]
+            valid_count = sum(1 for _, ok in validated if ok)
+            invalid = [(i, ref) for i, (ref, ok) in enumerate(validated, 1) if not ok]
+
             report.append(f"Total: {len(self.references)}")
             report.append(f"✅ Válidas: {valid_count}")
-            report.append(f"❌ Con problemas: {invalid_count}")
-            
-            # Show only invalid references
-            if invalid_count > 0:
+            report.append(f"❌ Con problemas: {len(invalid)}")
+
+            if invalid:
                 report.append("\nDetalle de Referencias con Problemas:")
-                for i, ref in enumerate(self.references, 1):
-                    if not ref.is_valid():
-                        rep = ref.get_validation_report()
-                        report.append(f"\n{i}. {rep['text']}")
-                        if not rep['valid_author']:
-                            report.append("   ⚠️ Formato de autor incorrecto")
-                        if not rep['valid_year']:
-                            report.append("   ⚠️ Año no encontrado")
-                        if not rep['valid_conjuncion']:
-                            report.append(f"   ⚠️ {rep['error_conjuncion']}")
+                for i, ref in invalid:
+                    rep = ref.get_validation_report()
+                    report.append(f"\n{i}. {rep['text']}")
+
+                    if not rep['valid_author']:
+                        report.append("   ⚠️ Formato de autor incorrecto")
+                    if not rep['valid_year']:
+                        report.append("   ⚠️ Año no encontrado")
+                    if not rep['valid_conjuncion']:
+                        report.append(f"   ⚠️ {rep['error_conjuncion']}")
         else:
-            report.append(f"⚠️  No se encontraron referencias para validar")
-        
-        report.append("\n" + "=" * 70)
-        
-        return '\n'.join(report)
-    
+            report.append("⚠️  No se encontraron referencias para validar")
+
+        report.append("\n" + SEP)
+        return "\n".join(report)
+
+                    
     def _add_section_header(self, doc, text):
         """Agrega un encabezado de sección con formato uniforme."""
         doc.add_paragraph()
@@ -1159,18 +1195,19 @@ class Document:
         run.font.color.rgb = RGBColor(10, 118, 184)
        
     def export_to_word(self, output_path: str):
-        """Export comprehensive report to professional formatted Word document."""
+        """Export comprehensive report to formatted Word document."""
         doc_export = DocxDocument()
-
+    
         # ============================================================
         # DOCUMENT SETTINGS
         # ============================================================
-        for section in doc_export.sections:
+        sections = doc_export.sections
+        for section in sections:
             section.top_margin = Inches(1)
             section.bottom_margin = Inches(0.75)
             section.left_margin = Inches(1)
             section.right_margin = Inches(1)
-
+            
             # Header
             header = section.header
             header_para = header.paragraphs[0]
@@ -1180,17 +1217,17 @@ class Document:
             run.font.name = 'Times New Roman'
             run.font.size = Pt(9)
             run.font.color.rgb = RGBColor(107, 113, 120)
-
-            # Footer
+            
+            # Footer with page number
             footer = section.footer
             footer_para = footer.paragraphs[0]
             footer_para.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
-            run = footer_para.add_run()
+            footer_para.text = "Página "
+            run = footer_para.runs[0]
             run.font.name = 'Times New Roman'
             run.font.size = Pt(9)
             run.font.color.rgb = RGBColor(107, 113, 120)
-
-            footer_para.text = "Página "
+            # Add page number field
             fldChar1 = OxmlElement('w:fldChar')
             fldChar1.set(qn('w:fldCharType'), 'begin')
             instrText = OxmlElement('w:instrText')
@@ -1198,99 +1235,281 @@ class Document:
             instrText.text = "PAGE"
             fldChar2 = OxmlElement('w:fldChar')
             fldChar2.set(qn('w:fldCharType'), 'end')
-            run._r.extend([fldChar1, instrText, fldChar2])
-
-        # Default font
-        style = doc_export.styles['Normal']
-        style.font.name = 'Times New Roman'
-        style.font.size = Pt(12)
-
-        # ============================================================
-        # TITLE
-        # ============================================================
-        title = doc_export.add_heading('SILVINA v0.6', level=0)
-        title.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
-        title.runs[0].font.size = Pt(20)
-        title.runs[0].font.color.rgb = RGBColor(10, 118, 184)
-
-        subtitle = doc_export.add_paragraph('Reporte Editorial Completo')
-        subtitle.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
-        subtitle.runs[0].italic = True
-        subtitle.runs[0].font.size = Pt(14)
-
-        doc_export.add_paragraph()
-
-        # ============================================================
-        # DOCUMENT INFO
-        # ============================================================
-        info_table = doc_export.add_table(rows=4, cols=2)
-        info_table.style = 'Light Grid Accent 1'
-
-        info_data = [
-            ('Documento', os.path.basename(self.filepath)),
-            ('Fecha', datetime.now().strftime('%d/%m/%Y %H:%M')),
-            ('Caracteres', f"{self.get_character_count():,}"),
-            ('Palabras', f"{self.word_count:,}")
-        ]
-
-        for i, (k, v) in enumerate(info_data):
-            info_table.rows[i].cells[0].text = k
-            info_table.rows[i].cells[1].text = v
-            info_table.rows[i].cells[0].paragraphs[0].runs[0].bold = True
-
-        doc_export.add_paragraph()
-
-        # ============================================================
-        # SECTION 1: CLASSIFICATION
-        # ============================================================
-        self._add_section_header(doc_export, 'CLASIFICACIÓN DE ARTÍCULO')
-
-        if self.article_classification:
-            cls = self.article_classification
+            run._r.append(fldChar1)
+            run._r.append(instrText)
+            run._r.append(fldChar2)
+    
+            # Set default font
+            style = doc_export.styles['Normal']
+            font = style.font
+            font.name = 'Times New Roman'
+            font.size = Pt(12)
+    
+            # ============================================================
+            # TITLE (Italic subtitle only)
+            # ============================================================
+            title = doc_export.add_paragraph('Reporte Editorial Completo')
+            title.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+            title_run = title.runs[0]
+            title_run.font.name = 'Times New Roman'
+            title_run.font.size = Pt(14)
+            title_run.italic = True
+            
+            doc_export.add_paragraph()  # Spacer
+            
+            # ============================================================
+            # DOCUMENT INFO TABLE
+            # ============================================================
+            info_table = doc_export.add_table(rows=4, cols=2)
+            info_table.style = 'Light Grid Accent 1'
+            
+            info_table.rows[0].cells[0].text = 'Documento'
+            info_table.rows[0].cells[1].text = os.path.basename(self.filepath)
+            info_table.rows[1].cells[0].text = 'Fecha'
+            info_table.rows[1].cells[1].text = datetime.now().strftime('%d/%m/%Y %H:%M')
+            info_table.rows[2].cells[0].text = 'Caracteres'
+            info_table.rows[2].cells[1].text = f"{self.get_character_count():,}"
+            info_table.rows[3].cells[0].text = 'Palabras'
+            info_table.rows[3].cells[1].text = f"{self.word_count:,}"
+            
+            # Format all cells
+            for row in info_table.rows:
+                for cell in row.cells:
+                    for paragraph in cell.paragraphs:
+                        for run in paragraph.runs:
+                            run.font.name = 'Times New Roman'
+                            run.font.size = Pt(12)
+            
+            doc_export.add_paragraph()  # Spacer
+            
+            # ============================================================
+            # SECTION 1: CLASSIFICATION
+            # ============================================================
+            heading = doc_export.add_heading('CLASIFICACIÓN DE ARTÍCULO', level=1)
+            heading.runs[0].font.name = 'Times New Roman'
+            
+            if self.article_classification:
+                cls = self.article_classification
+                
+                # Type (bold inline)
+                p = doc_export.add_paragraph()
+                p.add_run('Tipo: ').bold = True
+                p.add_run(cls['type'].value).bold = True
+                
+                # Confidence & Score
+                p = doc_export.add_paragraph()
+                p.add_run(f"Confianza: {cls['confidence'].upper()}")
+                
+                p = doc_export.add_paragraph()
+                p.add_run(f"Puntuación: {cls['score']}/10")
+                
+                # CRITICAL ISSUES
+                if cls['reasons']['critical']:
+                    doc_export.add_paragraph()
+                    p = doc_export.add_paragraph()
+                    run = p.add_run('🔴 CRÍTICO:')
+                    run.bold = True
+                    
+                    for issue in cls['reasons']['critical']:
+                        p = doc_export.add_paragraph(f"• {issue}")
+                
+                # POSITIVE INDICATORS
+                if cls['reasons']['positive']:
+                    doc_export.add_paragraph()
+                    p = doc_export.add_paragraph()
+                    run = p.add_run('✅ Indicadores Positivos:')
+                    run.bold = True
+                    
+                    for item in cls['reasons']['positive']:
+                        p = doc_export.add_paragraph(f"• {item}")
+            
+            # ============================================================
+            # SECTION 2: IMRYD STRUCTURE
+            # ============================================================
+            heading = doc_export.add_heading('ESTRUCTURA IMRyD', level=1)
+            heading.runs[0].font.name = 'Times New Roman'
+            
             p = doc_export.add_paragraph()
-            p.add_run('Tipo: ').bold = True
-            p.add_run(cls['type'].value).bold = True
+            p.add_run(f"Secciones detectadas: {len(self.sections)}/5")
+            
+            # List detected sections
+            if self.sections:
+                doc_export.add_paragraph()
+                for section in sorted(self.sections, key=lambda s: s.expected_order):
+                    p = doc_export.add_paragraph(
+                        f"{section.expected_order}. {section.name.title()} - {section.word_count} palabras"
+                    )
+                
+                # Validate structure
+                validator = StructureValidator()
+                issues = validator.validate(self.sections)
+                
+                # MISSING SECTIONS
+                if issues['missing_sections']:
+                    doc_export.add_paragraph()
+                    p = doc_export.add_paragraph()
+                    run = p.add_run('🔴 CRÍTICO: Secciones Faltantes')
+                    run.bold = True
+                    
+                    for missing in issues['missing_sections']:
+                        p = doc_export.add_paragraph(f"• {missing.title()}")
+                
+                # OUT OF ORDER
+                if issues['out_of_order']:
+                    doc_export.add_paragraph()
+                    p = doc_export.add_paragraph()
+                    run = p.add_run('🔴 CRÍTICO: Orden Incorrecto')
+                    run.bold = True
+                    
+                    for sec1, sec2 in issues['out_of_order']:
+                        p = doc_export.add_paragraph(f"• {sec1.title()} antes de {sec2.title()}")
+                
+                # TOO SHORT
+                if issues['too_short']:
+                    doc_export.add_paragraph()
+                    p = doc_export.add_paragraph()
+                    run = p.add_run('🟡 ADVERTENCIA: Secciones Cortas')
+                    run.bold = True
+                    
+                    for short in issues['too_short']:
+                        p = doc_export.add_paragraph(
+                            f"• {short['section'].title()}: {short['current']} palabras (mín: {short['minimum']})"
+                        )
+            else:
+                p = doc_export.add_paragraph('⚠️ No se detectaron secciones IMRyD')
+            
+            # ============================================================
+            # SECTION 3: CITATION INTEGRITY
+            # ============================================================
+            heading = doc_export.add_heading('INTEGRIDAD DE CITAS', level=1)
+            heading.runs[0].font.name = 'Times New Roman'
+            
+            p = doc_export.add_paragraph()
+            p.add_run(f"Citas en texto: {len(self.citations)}")
+            
+            p = doc_export.add_paragraph()
+            p.add_run(f"Referencias bibliográficas: {len(self.references)}")
+            
+            p = doc_export.add_paragraph()
+            p.add_run(f"Tipo de sección: {self.section_type.upper()}")
+            
+            if self.citations or self.references:
+                matcher = CitationMatcher(self.citations, self.references)
+                
+                doc_export.add_paragraph()
+                
+                # ORPHANED REFERENCES
+                orphaned_refs = matcher.find_orphaned_references()
+                if orphaned_refs:
+                    p = doc_export.add_paragraph()
+                    
+                    if self.section_type == "Referencias":
+                        run = p.add_run('🟡 ADVERTENCIA: Referencias Sin Citar')
+                    else:
+                        run = p.add_run('🔵 INFORMATIVO: Referencias Sin Citar')
+                    run.bold = True
+                    
+                    if self.section_type == "Referencias":
+                        msg = "En 'Referencias', se espera citar todas las entradas."
+                    else:
+                        msg = "En 'Bibliografía', es aceptable incluir fuentes consultadas."
+                    
+                    p = doc_export.add_paragraph(msg)
+                    
+                    p = doc_export.add_paragraph(f"Encontradas {len(orphaned_refs)} referencias no citadas:")
+                    
+                    doc_export.add_paragraph()
+                    for ref in orphaned_refs[:10]:
+                        p = doc_export.add_paragraph(f"• {ref.text[:60]}...")
+                
+                # ORPHANED CITATIONS
+                orphaned_cits = matcher.find_orphaned_citations()
+                if orphaned_cits:
+                    doc_export.add_paragraph()
+                    p = doc_export.add_paragraph()
+                    run = p.add_run('🔴 CRÍTICO: Citas Sin Referencia')
+                    run.bold = True
+                    
+                    p = doc_export.add_paragraph(f"Encontradas {len(orphaned_cits)} citas sin entrada bibliográfica:")
+                    
+                    doc_export.add_paragraph()
+                    for cit in orphaned_cits[:10]:
+                        p = doc_export.add_paragraph(f"• {cit}")
+                
+                # SUCCESS MESSAGE
+                if not orphaned_cits and not orphaned_refs:
+                    doc_export.add_paragraph()
+                    p = doc_export.add_paragraph()
+                    run = p.add_run('✅ Sistema de citación íntegro')
+                    run.bold = True
+                elif not orphaned_cits:
+                    doc_export.add_paragraph()
+                    p = doc_export.add_paragraph()
+                    run = p.add_run('✅ Todas las citas tienen referencia válida')
+                    run.bold = True
+            
+            # ============================================================
+            # SECTION 4: REFERENCE VALIDATION
+            # ============================================================
+            heading = doc_export.add_heading('VALIDACIÓN DE REFERENCIAS APA', level=1)
+            heading.runs[0].font.name = 'Times New Roman'
+            
+            if len(self.references) > 0:
+                valid_count = sum(1 for ref in self.references if ref.is_valid())
+                invalid_count = len(self.references) - valid_count
+                
+                p = doc_export.add_paragraph()
+                p.add_run(f"Total: {len(self.references)}")
+                
+                p = doc_export.add_paragraph()
+                p.add_run(f"✅ Válidas: {valid_count}")
+                
+                if invalid_count > 0:
+                    p = doc_export.add_paragraph()
+                    p.add_run(f"❌ Con problemas: {invalid_count}")
+                else:
+                    p = doc_export.add_paragraph()
+                    p.add_run(f"❌ Con problemas: 0")
+                
+                # Show invalid references
+                if invalid_count > 0:
+                    doc_export.add_paragraph()
+                    p = doc_export.add_paragraph()
+                    run = p.add_run('Detalle de Referencias con Problemas:')
+                    run.bold = True
+                    
+                    for i, ref in enumerate(self.references, 1):
+                        if not ref.is_valid():
+                            rep = ref.get_validation_report()
+                            
+                            doc_export.add_paragraph()
+                            p = doc_export.add_paragraph(f"{i}. {rep['text']}")
+                            
+                            if not rep['valid_author']:
+                                p = doc_export.add_paragraph("   ⚠️ Formato de autor incorrecto")
+                            if not rep['valid_year']:
+                                p = doc_export.add_paragraph("   ⚠️ Año no encontrado")
+                            if not rep['valid_conjuncion']:
+                                p = doc_export.add_paragraph(f"   ⚠️ {rep['error_conjuncion']}")
+            else:
+                p = doc_export.add_paragraph('⚠️ No se encontraron referencias para validar')
+            
+            # ============================================================
+            # SECTION 5: LLM TIER 2 PLACEHOLDER
+            # ============================================================
+            doc_export.add_page_break()
+            heading = doc_export.add_heading('TIER 2: ANÁLISIS DE CALIDAD (LLM)', level=1)
+            heading.runs[0].font.name = 'Times New Roman'
 
-        # ============================================================
-        # SECTION 2: IMRyD STRUCTURE
-        # ============================================================
-        self._add_section_header(doc_export, 'ESTRUCTURA IMRyD')
+            p = doc_export.add_paragraph('Análisis LLM pendiente.')
+            # Set line spacing to 1.0
+            p.paragraph_format.line_spacing = 1.0
 
-        for sec in sorted(self.sections, key=lambda s: s.expected_order):
-            doc_export.add_paragraph(
-                f"{sec.expected_order}. {sec.name.title()} — {sec.word_count} palabras",
-                style='List Bullet'
-            )
-
-        # ============================================================
-        # SECTION 3: CITATION INTEGRITY
-        # ============================================================
-        self._add_section_header(doc_export, 'INTEGRIDAD DE CITAS')
-
-        matcher = CitationMatcher(self.citations, self.references)
-        for cit in matcher.find_orphaned_citations():
-            doc_export.add_paragraph(str(cit), style='List Bullet')
-
-        # ============================================================
-        # SECTION 4: REFERENCE VALIDATION
-        # ============================================================
-        self._add_section_header(doc_export, 'VALIDACIÓN DE REFERENCIAS APA')
-
-        for ref in self.references:
-            if not ref.is_valid():
-                doc_export.add_paragraph(ref.text, style='List Bullet')
-
-        # ============================================================
-        # SECTION 5: LLM PLACEHOLDER
-        # ============================================================
-        doc_export.add_page_break()
-        self._add_section_header(doc_export, 'TIER 2: ANÁLISIS DE CALIDAD (LLM)')
-        doc_export.add_paragraph("Análisis LLM pendiente.")
-
-        doc_export.save(output_path)
-        print(f"📄 Reporte Word guardado: {output_path}")
-
-
+            # Save
+            doc_export.save(output_path)
+            print(f"📄 Reporte Word guardado: {output_path}")
+            
+                        
     def close(self):
         """Close Word connection."""
         try:
@@ -1312,32 +1531,39 @@ if __name__ == "__main__":
     print("="*70 + "\n")
     
     # Load document
-    filepath = r"C:\Users\usuario\Desktop\05 - PI Presupuesto... - Informe Final 2024.docx"
+    filepath = r"C:\Users\usuario\Desktop\Escudo cuantico_AB_25092025.docx"
     
     doc = Document(filepath)
     doc.load()
     
-    # TIER 1: Deterministic validation (always full document)
+    # TIER 1: Deterministic validation
     doc.classify_article()
     tier1_report = doc.generate_report_v06()
     print(tier1_report)
-    
+   
     # TIER 2: LLM Quality Analysis
     print("\n" + "="*70)
-    print("TIER 2: ANÁLISIS DE CALIDAD (Ollama - llama3-gradient:8b)")
+    print(f"TIER 2: ANÁLISIS DE CALIDAD (Ollama - {OLLAMA_MODEL})")
     print("="*70)
-    
+           
     llm_content = doc.get_llm_analysis_content()
-    
+    llm_report = ""
+
     if llm_content:
         article_type = doc.article_classification['type'].value
-        # CHANGED: Use Ollama instead
         llm_report = analyze_with_ollama(llm_content, article_type, tier1_report)
+        
+        # Remove "Recomendaciones" section
+        if "Recomendaciones" in llm_report or "**Recomendaciones**" in llm_report:
+            llm_report = llm_report.split("Recomendaciones")[0].strip()
+            llm_report = llm_report.split("**Recomendaciones**")[0].strip()
+        
         print(llm_report)
     else:
-        print("⚠️ No se pudo extraer contenido para análisis LLM")
+        llm_report = "⚠️ No se pudo extraer contenido para análisis LLM"
+        print(llm_report)
     
-    # Save combined report
+    # Save text report
     combined_report = tier1_report + "\n\n" + "="*70 + "\n"
     combined_report += "TIER 2: ANÁLISIS DE CALIDAD (Ollama - llama3-gradient:8b)\n"
     combined_report += "="*70 + "\n" + llm_report
@@ -1347,30 +1573,43 @@ if __name__ == "__main__":
         f.write(combined_report)
     
     print(f"\n💾 Reporte completo guardado: {report_filename}")
-     
-       
-    # NEW: Export to Word
+    
+    # Export to Word
     word_filename = f"reporte_silvina_v06_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
     doc.export_to_word(word_filename)
-
     
-    # Then add LLM analysis to existing Word file
-    if llm_report:
-        word_doc = DocxDocument(word_filename)
-        
-        # Find the LLM section (last heading)
-        for para in word_doc.paragraphs[-10:]:
-            if "TIER 2" in para.text:
-                # Clear placeholder text
-                for para in word_doc.paragraphs[-3:]:
-                    if "agregado después" in para.text:
-                        para.clear()
-                break
-        
-        # Add LLM analysis
-        word_doc.add_paragraph(llm_report)
-        word_doc.save(word_filename)
-        print(f"✅ Análisis LLM agregado al reporte Word")
+    # Add LLM analysis to Word document (only if valid)
+    if llm_report and "No se pudo extraer" not in llm_report and "No conecta" not in llm_report:
+        try:
+            word_doc = DocxDocument(word_filename)
+            
+            # Find and replace "Análisis LLM pendiente."
+            for i in range(len(word_doc.paragraphs) - 1, -1, -1):
+                if "Análisis LLM pendiente" in word_doc.paragraphs[i].text:
+                    word_doc.paragraphs[i].text = ""
+                    break
+            
+            # Add formatted LLM analysis
+            p = word_doc.add_paragraph()
+            run = p.add_run('Análisis')
+            run.bold = True
+            run.font.name = 'Times New Roman'
+            run.font.size = Pt(12)
+            p.paragraph_format.line_spacing = 1.0
+            
+            # Add LLM content
+            llm_para = word_doc.add_paragraph(llm_report)
+            llm_para.paragraph_format.line_spacing = 1.0
+            for run in llm_para.runs:
+                run.font.name = 'Times New Roman'
+                run.font.size = Pt(12)
+            
+            word_doc.save(word_filename)
+            print(f"✅ Análisis LLM agregado al reporte Word")
+        except Exception as e:
+            print(f"⚠️ Error agregando LLM al Word: {e}")
     
     doc.close()
+
+
 
