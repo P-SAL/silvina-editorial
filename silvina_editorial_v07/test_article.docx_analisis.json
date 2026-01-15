@@ -1,0 +1,101 @@
+{
+  "filename": "test_article.docx.docx",
+  "document_info": {
+    "title": "La ventana crítica para la soberanía digital ante la amenaza criptográfica emergente",
+    "authors": null,
+    "word_count": 2645,
+    "paragraph_count": 59,
+    "estimated_pages": 10
+  },
+  "classification": {
+    "category": "review_article",
+    "confidence": 0.85,
+    "reasoning": "El artículo presenta una revisión sistemática de literatura sobre el tema de la ventana crítica ante la amenaza criptográfica emergente, con un enfoque teórico y conceptual. Aunque no presenta resultados experimentales originales, los argumentos son basados en una amplia revisión de la literatura..."
+  },
+  "quality_analysis": {
+    "overall_score": 7.0,
+    "quality_level": "acceptable",
+    "dimensions": {
+      "claridad": {
+        "score": 7.0,
+        "feedback": "Análisis automático no completado"
+      },
+      "coherencia": {
+        "score": 7.0,
+        "feedback": "Análisis automático no completado"
+      },
+      "argumentacion": {
+        "score": 7.0,
+        "feedback": "Análisis automático no completado"
+      },
+      "metodologia": {
+        "score": 7.0,
+        "feedback": "Análisis automático no completado"
+      },
+      "conclusiones": {
+        "score": 7.0,
+        "feedback": "Análisis automático no completado"
+      },
+      "formato": {
+        "score": 7.0,
+        "feedback": "Análisis automático no completado"
+      }
+    }
+  },
+  "structure_validation": {
+    "is_valid": false,
+    "missing_sections": [
+      "Resumen",
+      "Desarrollo",
+      "Referencias"
+    ],
+    "details": {
+      "Resumen": {
+        "present": false,
+        "required": true
+      },
+      "Introducción": {
+        "present": true,
+        "required": true
+      },
+      "Desarrollo": {
+        "present": false,
+        "required": true
+      },
+      "Conclusiones": {
+        "present": true,
+        "required": true
+      },
+      "Referencias": {
+        "present": false,
+        "required": true
+      }
+    }
+  },
+  "citations_analysis": {
+    "total_citations": 0,
+    "total_references": 8,
+    "matched_count": 0,
+    "unmatched_count": 0,
+    "by_type": {},
+    "unmatched_citations": []
+  },
+  "recommendations": [
+    {
+      "priority": "alta",
+      "message": "Falta la sección requerida: \"Resumen\". Complete esta sección según las normas EUMIC."
+    },
+    {
+      "priority": "alta",
+      "message": "Falta la sección requerida: \"Desarrollo\". Complete esta sección según las normas EUMIC."
+    },
+    {
+      "priority": "alta",
+      "message": "Falta la sección requerida: \"Referencias\". Complete esta sección según las normas EUMIC."
+    },
+    {
+      "priority": "media",
+      "message": "Número bajo de citas (0). Considere ampliar el marco teórico con más referencias."
+    }
+  ]
+}
