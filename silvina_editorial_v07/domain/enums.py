@@ -6,6 +6,30 @@ Defines all enum types used across the application.
 
 from enum import Enum
 
+class ArticleType(Enum):
+    """Article type classification."""
+    CIENTIFICO = "científico"
+    DIVULGACION = "divulgación"
+    OPINION = "opinión"
+    UNKNOWN = "unknown"
+
+class ArticleSize(Enum):
+    """Article size classification based on character count."""
+    LARGO = "largo"           # 36,000 - 40,000 chars
+    CORTO = "corto"           # 16,000 - 24,000 chars
+    NO_DEFINIDO = "no_definido"  # 24,001 - 35,999 chars
+    FUERA_RANGO = "fuera_rango"  # Outside all ranges
+
+def classify_article_size(char_count: int) -> ArticleSize:
+    """Classify article size based on character count with spaces."""
+    if 36000 <= char_count <= 40000:
+        return ArticleSize.LARGO
+    elif 16000 <= char_count <= 24000:
+        return ArticleSize.CORTO
+    elif 24001 <= char_count <= 35999:
+        return ArticleSize.NO_DEFINIDO
+    else:
+        return ArticleSize.FUERA_RANGO
 
 class CitationType(Enum):
     """Types of citations found in academic documents."""

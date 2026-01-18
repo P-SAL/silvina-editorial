@@ -29,78 +29,73 @@ class QualityAnalyzer:
         self.base_url = base_url
         self.client = ollama.Client(host=self.base_url)
         
-         
-    def analyze_quality(self, document, document_text, category) -> 'QualityResult':
-        """Analyze document quality across all dimensions efficiently."""
+    def analyze_quality(self, document_content, article_type) -> QualityAnalysisResult:
+        print("      ⏳ Analizando calidad...")
     
-        print("      ⏳ Analizando calidad (modo rápido)...")
+        # Strategic sampling
+        parts = []
+        parts.append(document_content.title or "")
+        parts.extend([p.text for p in document_content.paragraphs[:2]])
+        mid = len(document_content.paragraphs) // 2
+        parts.extend([p.text for p in document_content.paragraphs[mid:mid+2]])
+        parts.extend([p.text for p in document_content.paragraphs[-2:]])
+        text_sample = ' '.join(parts)[:3000]
         
-        # Create ONE combined prompt instead of 6 separate calls
-        combined_prompt = f"""Analiza este artículo académico en TODAS estas dimensiones y responde en formato JSON:
+        prompt = f"""Analiza calidad editorial de este artículo.
 
-DOCUMENTO:
-Título: {document.title if hasattr(document, "title") else document.paragraphs[0].text}
+    TEXTO:
+    {text_sample}
 
-Palabras: {len(document_text.split())}
-Categoría: {category.value}
+    EVALÚA (0-10) en JSON:
+    {{
+    "claridad": {{"score": X, "feedback": "Una oración justificando"}},
+    "coherencia": {{"score": X, "feedback": "Una oración justificando"}},
+    "argumentacion": {{"score": X, "feedback": "Una oración justificando"}},
+    "conclusiones": {{"score": X, "feedback": "Una oración justificando"}},
+    "formato": {{"score": X, "feedback": "Una oración justificando"}}
+    }}
 
-Texto (primeros 1500 palabras):
-{' '.join([p.text for p in document.paragraphs[:50]])[:6000]}
-
-EVALÚA (escala 0-10) y responde SOLO en JSON sin texto adicional:
-{{
-  "claridad": {{"score": X, "feedback": "..."}},
-  "coherencia": {{"score": X, "feedback": "..."}},
-  "argumentacion": {{"score": X, "feedback": "..."}},
-  "metodologia": {{"score": X, "feedback": "..."}},
-  "conclusiones": {{"score": X, "feedback": "..."}},
-  "formato": {{"score": X, "feedback": "..."}}
-}}"""
+    INSTRUCCIONES: Conciso, académico, enfoque editorial EUMIC/APA."""
 
         try:
-            response = self.client.generate(
+            response = self.ollama.generate(
                 model=self.model_name,
-                prompt=combined_prompt,
-                options={'temperature': 0.3, 'num_predict': 800}
+                prompt=prompt,
+                options={'temperature': 0.3, 'num_predict': 600, 'num_ctx': 4096},
+                timeout=90
             )
             
-            # Parse JSON response
-            import json
-            import re
+            import json, re
+            text = response['response'].strip()
+            json_match = re.search(r'\{.*\}', text, re.DOTALL)
             
-            response_text = response['response'].strip()
-            # Extract JSON from response
-            json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
             if json_match:
-                scores_data = json.loads(json_match.group())
+                scores = json.loads(json_match.group())
             else:
-                # Fallback to default scores if parsing fails
-                scores_data = {dim: {"score": 7.0, "feedback": "Análisis no disponible"} 
-                            for dim in ["claridad", "coherencia", "argumentacion", "metodologia", "conclusiones", "formato"]}
+                scores = {
+                    "claridad": {"score": 7.0, "feedback": "Análisis no disponible"},
+                    "coherencia": {"score": 7.0, "feedback": "Análisis no disponible"},
+                    "argumentacion": {"score": 7.0, "feedback": "Análisis no disponible"},
+                    "conclusiones": {"score": 7.0, "feedback": "Análisis no disponible"},
+                    "formato": {"score": 7.0, "feedback": "Análisis no disponible"}
+                }
             
-            # Calculate overall score
-            overall = sum(scores_data[dim]["score"] for dim in scores_data) / len(scores_data)
-            
-            # Determine quality level
+            overall = sum(s["score"] for s in scores.values()) / len(scores)
             quality_level = get_quality_level_from_score(overall)
-           
-            return QualityResult(
+            
+            return QualityAnalysisResult(
                 overall_score=overall,
                 quality_level=quality_level,
-                dimension_scores=scores_data
+                dimension_scores=scores
             )
             
         except Exception as e:
-            print(f"      ⚠ Error en análisis de calidad: {e}, usando valores por defecto")
-            # Return default acceptable scores
-            default_scores = {dim: {"score": 7.0, "feedback": "Análisis automático no completado"} 
-                            for dim in ["claridad", "coherencia", "argumentacion", "metodologia", "conclusiones", "formato"]}
-            return QualityResult(
-                overall_score=7.0,
-                quality_level=QualityLevel.ACCEPTABLE,
-                dimension_scores=default_scores
-            )
-    
+            print(f"⚠️  Error: {e}")
+            default = {d: {"score": 7.0, "feedback": "Error en análisis"} 
+                    for d in ["claridad", "coherencia", "argumentacion", "conclusiones", "formato"]}
+            return QualityAnalysisResult(7.0, QualityLevel.ACCEPTABLE, default)
+
+
    # Convenience function
 def analyze_document_quality(document: DocumentContent,
                             category: ClassificationCategory,

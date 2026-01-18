@@ -41,50 +41,43 @@ class StructureValidator:
         
         return issues
     
-    def validate_structure(self, document_content, category):
-        """
-        Validate if document has required sections for its category.
+    def validate_structure(self, document_content, article_type):
+        if article_type == ArticleType.CIENTIFICO:
+            required = ["Resumen", "Introducción", "Metodología", "Resultados", "Discusión", "Conclusiones", "Referencias"]
+            justification = "Científico requiere IMRyD con razonamiento crítico y citación académica"
+        elif article_type == ArticleType.DIVULGACION:
+            required = ["Resumen", "Introducción", "Desarrollo", "Conclusiones", "Referencias"]
+            justification = "Divulgación enfatiza reflexión crítica sin IMRyD rígido"
+        elif article_type == ArticleType.OPINION:
+            required = ["Introducción", "Argumentación", "Conclusiones"]
+            justification = "Opinión privilegia crítica reflexiva sin validación empírica"
+        else:
+            required = ["Introducción", "Conclusiones"]
+            justification = "Estructura mínima requerida"
         
-        Args:
-            document_content: DocumentContent object
-            category: ClassificationCategory enum
-            
-        Returns:
-            StructureValidationResult with validation details
-        """
-        required_sections = self._get_required_sections(category)
-        present_sections = self._extract_present_sections(document_content)
+        present = self._extract_present_sections(document_content)
+        missing = [s for s in required if s.lower() not in [p.lower() for p in present]]
         
-        missing_sections = [
-            section for section in required_sections 
-            if section.lower() not in [s.lower() for s in present_sections]
-        ]
+        details = {s: {'present': s.lower() in [p.lower() for p in present], 'required': True} 
+                for s in required}
         
-        section_details = {}
-        for section in required_sections:
-            is_present = section.lower() in [s.lower() for s in present_sections]
-            section_details[section] = {
-                'present': is_present,
-                'required': True
-            }
-        
-        from domain.models import StructureValidationResult
         return StructureValidationResult(
-            is_valid=len(missing_sections) == 0,
-            missing_sections=missing_sections,
-            section_details=section_details
+            is_valid=len(missing) == 0,
+            missing_sections=missing,
+            section_details=details,
+            justification=justification
         )
 
-    def _get_required_sections(self, category):
-        """Get required sections based on article category."""
-        from domain.enums import ClassificationCategory
-        
-        if category == ClassificationCategory.RESEARCH_ARTICLE:
-            return ["Resumen", "Introducción", "Metodología", "Resultados", "Discusión", "Conclusiones", "Referencias"]
-        elif category == ClassificationCategory.REVIEW_ARTICLE:
-            return ["Resumen", "Introducción", "Desarrollo", "Conclusiones", "Referencias"]
-        else:
-            return ["Introducción", "Desarrollo", "Conclusiones", "Referencias"]
+        def _get_required_sections(self, category):
+            """Get required sections based on article category."""
+            from domain.enums import ClassificationCategory
+            
+            if category == ClassificationCategory.RESEARCH_ARTICLE:
+                return ["Resumen", "Introducción", "Metodología", "Resultados", "Discusión", "Conclusiones", "Referencias"]
+            elif category == ClassificationCategory.REVIEW_ARTICLE:
+                return ["Resumen", "Introducción", "Desarrollo", "Conclusiones", "Referencias"]
+            else:
+                return ["Introducción", "Desarrollo", "Conclusiones", "Referencias"]
 
     def _extract_present_sections(self, document_content):
         """Extract section headers from document."""

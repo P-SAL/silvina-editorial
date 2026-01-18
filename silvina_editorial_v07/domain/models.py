@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Optional
 from datetime import datetime
 from .enums import CitationType, ClassificationCategory, QualityLevel, SectionType
+from domain.enums import ArticleType, ArticleSize
 
 
 @dataclass
@@ -39,14 +40,16 @@ class Reference:
 @dataclass
 class DocumentContent:
     """Represents the extracted content of a document."""
+    word_count: int
+    char_count: int
+
     title: Optional[str] = None
     authors: Optional[str] = None
     abstract: Optional[str] = None
     keywords: List[str] = field(default_factory=list)
     paragraphs: List[str] = field(default_factory=list)
     sections: Dict[str, str] = field(default_factory=dict)
-    word_count: int = 0
-    
+
     def __post_init__(self):
         """Calculate word count if not provided."""
         if self.word_count == 0 and self.paragraphs:
@@ -56,15 +59,20 @@ class DocumentContent:
 @dataclass
 class ClassificationResult:
     """Result of article classification."""
-    category: ClassificationCategory
+    article_type: ArticleType  
+    article_size: ArticleSize  
     confidence: float
     reasoning: str
     timestamp: datetime = field(default_factory=datetime.now)
     
     def __str__(self):
-        return f"Classification: {self.category.value} ({self.confidence:.1%})"
+        return (
+            f"Classification: {self.article_type.value} | "
+            f"Size: {self.article_size.value} | "
+            f"Confidence: {self.confidence:.1%}"
+        )
 
-
+   
 @dataclass
 class QualityResult:
     """Result of quality analysis."""

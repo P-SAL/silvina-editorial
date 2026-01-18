@@ -7,8 +7,8 @@ Part of Silvina Editorial Assistant v0.7
 from typing import Optional
 import ollama
 from domain.models import DocumentContent, ClassificationResult
-from domain.enums import ClassificationCategory
-
+from domain.enums import ArticleType
+from business_logic.structure_analyzer import StructureAnalyzer
 
 class ArticleClassifier:
     """Classifies academic articles using LLM analysis."""
@@ -26,169 +26,118 @@ class ArticleClassifier:
         self.base_url = base_url
         self.client = ollama.Client(host=base_url)
     
-    def classify_article(self, document: DocumentContent) -> ClassificationResult:
-        """
-        Classify an article into one of the defined categories.
-        
-        Args:
-            document: DocumentContent object with article text
-            
-        Returns:
-            ClassificationResult with category, confidence, and reasoning
-        """
-        # Prepare the prompt for classification
-        prompt = self._create_classification_prompt(document)
-        
-        try:
-            # Call LLM for classification
-            response = self.client.chat(
-                model=self.model_name,
-                messages=[
-                    {
-                        'role': 'system',
-                        'content': self._get_system_prompt()
-                    },
-                    {
-                        'role': 'user',
-                        'content': prompt
-                    }
-                ],
-                options={
-                    'temperature': 0.3,
-                    'num_predict': 500
-                }
-            )
-            
-            # Parse the response
-            response_text = response['message']['content']
-            # Debug: Print raw response
-            category, confidence, reasoning = self._parse_classification_response(response_text)
-            
+    def classify_article(self, document_content: DocumentContent) -> ClassificationResult:
+        if not document_content or not document_content.paragraphs:
+            raise ValueError("DocumentContent.paragraphs is empty")
+
+        from domain.enums import classify_article_size
+        article_size = classify_article_size(document_content.char_count)
+
+        structure = StructureAnalyzer().analyze(document_content)
+
+        # =========================
+        # 1. DETERMINISTIC RULES
+        # =========================
+
+        if structure["imryd_complete"] and article_size.name != "FUERA_RANGO":
             return ClassificationResult(
-                category=category,
+                article_type=ArticleType.CIENTIFICO,
+                article_size=article_size,
+                confidence=0.9,
+                reasoning="Estructura IMRyD completa detectada mediante análisis determinístico."
+            )
+
+        if structure["has_introduction"] and structure["has_discussion"]:
+            return ClassificationResult(
+                article_type=ArticleType.DIVULGACION,
+                article_size=article_size,
+                confidence=0.75,
+                reasoning="Artículo con estructura reflexiva sin IMRyD completo."
+            )
+
+        if not structure["has_methods"] and not structure["has_results"]:
+            return ClassificationResult(
+                article_type=ArticleType.OPINION,
+                article_size=article_size,
+                confidence=0.7,
+                reasoning="Texto argumentativo sin validación empírica."
+            )
+
+        # =========================
+        # 2. LLM FALLBACK
+        # =========================
+
+        text_sample = ' '.join(document_content.paragraphs[:50])[:6000]
+
+        prompt = f"""Clasifica este artículo académico según normas EUMIC.
+
+    DOCUMENTO:
+    Título: {document_content.title}
+    Caracteres: {document_content.char_count:,}
+    Palabras: {document_content.word_count}
+
+    Texto:
+    {text_sample}
+
+    TIPOS:
+    - CIENTIFICO: IMRyD, razonamiento crítico, citas académicas
+    - DIVULGACION: Reflexión académica, sin IMRyD rígido
+    - OPINION: Crítica reflexiva, sin validación empírica
+
+    RESPONDE (una línea por campo):
+    CATEGORY: [CIENTIFICO|DIVULGACION|OPINION]
+    CONFIDENCE: [0.0-1.0]
+    REASONING: [Máximo 2 oraciones en español]"""
+
+        try:
+            response = self.client.generate(
+                model=self.model_name,
+                prompt=prompt,
+                options={'temperature': 0.3, 'num_predict': 200}
+            )
+
+            text = response['response'].strip()
+
+            article_type = ArticleType.UNKNOWN
+            confidence = 0.5
+            reasoning = ""
+
+            for line in text.split('\n'):
+                if line.startswith('CATEGORY:'):
+                    if 'CIENTIFICO' in line.upper():
+                        article_type = ArticleType.CIENTIFICO
+                    elif 'DIVULGACION' in line.upper():
+                        article_type = ArticleType.DIVULGACION
+                    elif 'OPINION' in line.upper():
+                        article_type = ArticleType.OPINION
+                elif line.startswith('CONFIDENCE:'):
+                    try:
+                        confidence = float(line.split(':', 1)[1].strip())
+                    except ValueError:
+                        confidence = 0.5
+                elif line.startswith('REASONING:'):
+                    reasoning = line.split(':', 1)[1].strip()
+
+            return ClassificationResult(
+                article_type=article_type,
+                article_size=article_size,
                 confidence=confidence,
                 reasoning=reasoning
             )
-            
+
         except Exception as e:
-            print(f"Warning: LLM classification failed: {e}")
-            # Return fallback classification
-            return ClassificationResult(
-                category=ClassificationCategory.UNKNOWN,
-                confidence=0.0,
-                reasoning=f"Classification failed due to error: {str(e)}"
-            )
-    
-    def _get_system_prompt(self) -> str:
-        """Get the system prompt for classification."""
-        return """Eres un experto en clasificación de artículos académicos según las normas EUMIC.
+            print(f"⚠️  Error en clasificación LLM: {e}")
 
-Debes clasificar artículos en una de estas categorías:
+        # =========================
+        # 3. ABSOLUTE FALLBACK
+        # =========================
 
-1. RESEARCH_ARTICLE: Investigación original con metodología, resultados y análisis
-2. REVIEW_ARTICLE: Revisión sistemática de literatura sobre un tema
-3. REFLECTION_ARTICLE: Análisis crítico y reflexivo desde perspectiva del autor
-4. SHORT_ARTICLE: Comunicación breve de resultados preliminares
-5. CASE_REPORT: Descripción detallada de un caso específico
-
-IMPORTANTE: Debes responder ÚNICAMENTE con estas tres líneas, nada más:
-
-CATEGORY: [escribe exactamente uno: RESEARCH_ARTICLE, REVIEW_ARTICLE, REFLECTION_ARTICLE, SHORT_ARTICLE, o CASE_REPORT]
-CONFIDENCE: [un número decimal entre 0.0 y 1.0, ejemplo: 0.85]
-REASONING: [una línea breve explicando por qué]
-
-Ejemplo de respuesta válida:
-CATEGORY: RESEARCH_ARTICLE
-CONFIDENCE: 0.9
-REASONING: El artículo presenta metodología clara, resultados experimentales y análisis de datos originales.
-
-NO agregues texto adicional antes o después de estas tres líneas."""
-    
-    def _create_classification_prompt(self, document: DocumentContent) -> str:
-        """Create the classification prompt from document content."""
-        # Build document summary for classification
-        doc_summary = []
-        
-        if document.title:
-            doc_summary.append(f"TÍTULO: {document.title}")
-        
-        if document.abstract:
-            abstract_preview = document.abstract[:500]
-            doc_summary.append(f"RESUMEN: {abstract_preview}")
-        
-        if document.sections:
-            doc_summary.append(f"SECCIONES IDENTIFICADAS: {', '.join(document.sections.keys())}")
-        
-        doc_summary.append(f"PALABRAS TOTALES: {document.word_count}")
-        
-        # Add content preview
-        content_preview = ' '.join(document.paragraphs[:5])[:1000]
-        doc_summary.append(f"CONTENIDO (primeros párrafos): {content_preview}")
-        
-        prompt = f"""Clasifica el siguiente artículo académico:
-
-{chr(10).join(doc_summary)}
-
-Analiza la estructura, contenido y características del artículo para determinar su categoría."""
-        
-        return prompt
-    
-    def _parse_classification_response(self, response_text: str) -> tuple:
-        """
-        Parse the LLM response to extract category, confidence, and reasoning.
-        
-        Args:
-            response_text: Raw text response from LLM
-            
-        Returns:
-            Tuple of (category, confidence, reasoning)
-        """
-        import re
-        
-        # Clean response text
-        response_text = response_text.strip()
-        
-        # Extract category (try multiple patterns)
-        category = ClassificationCategory.UNKNOWN
-        
-        # Pattern 1: Exact format "CATEGORY: RESEARCH_ARTICLE"
-        category_match = re.search(r'CATEGORY:\s*([A-Z_]+)', response_text, re.IGNORECASE)
-        if category_match:
-            category_str = category_match.group(1).upper()
-            # Try direct match
-            if category_str in ClassificationCategory.__members__:
-                category = ClassificationCategory[category_str]
-        
-        # Pattern 2: If not found, look for category names anywhere in first 200 chars
-        if category == ClassificationCategory.UNKNOWN:
-            first_part = response_text[:200].upper()
-            for cat_name in ClassificationCategory.__members__:
-                if cat_name in first_part:
-                    category = ClassificationCategory[cat_name]
-                    break
-        
-        # Extract confidence
-        confidence = 0.5  # Default
-        confidence_match = re.search(r'CONFIDENCE:\s*([\d.]+)', response_text, re.IGNORECASE)
-        if confidence_match:
-            try:
-                confidence = float(confidence_match.group(1))
-                confidence = max(0.0, min(1.0, confidence))  # Clamp to [0, 1]
-            except ValueError:
-                pass
-        
-        # Extract reasoning
-        reasoning = "Clasificación basada en análisis del contenido."
-        reasoning_match = re.search(r'REASONING:\s*(.+?)(?:\n\n|\n[A-Z]+:|\Z)', 
-                                   response_text, re.IGNORECASE | re.DOTALL)
-        if reasoning_match:
-            reasoning = reasoning_match.group(1).strip()
-            # Limit reasoning length
-            if len(reasoning) > 300:
-                reasoning = reasoning[:297] + "..."
-        
-        return category, confidence, reasoning
-
+        return ClassificationResult(
+            article_type=ArticleType.UNKNOWN,
+            article_size=article_size,
+            confidence=0.0,
+            reasoning="No se pudo clasificar el artículo"
+        )
 
 # Convenience function
 def classify_document(document: DocumentContent, 
@@ -205,3 +154,22 @@ def classify_document(document: DocumentContent,
     """
     classifier = ArticleClassifier(model_name=model_name)
     return classifier.classify_article(document)
+
+if __name__ == "__main__":
+    doc = DocumentContent(
+        word_count=6000,
+        char_count=35000,
+        title="Test Article",
+        abstract="This is a short scientific article with introduction, methods and discussion.",
+        paragraphs=[
+            "Este estudio analiza los efectos de X utilizando una metodología experimental.",
+            "Se aplicaron métodos cuantitativos con una muestra de 120 sujetos.",
+            "Los resultados muestran una correlación significativa.",
+            "Se discuten las implicaciones teóricas y prácticas de los hallazgos."
+        ]
+    )
+
+    classifier = ArticleClassifier()
+    result = classifier.classify_article(doc)
+    print(result)
+

@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 import json
 from docx import Document
-
+from domain.enums import ArticleType, ArticleSize, QualityLevel
 
 # Add project root to path
 project_root = Path(__file__).parent
@@ -39,6 +39,24 @@ from business_logic.structure_validator import StructureValidator
 from presentation.report_formatter import ReportFormatter
 from presentation.word_exporter import WordExporter, DOCX_AVAILABLE
 
+
+def main():
+    print("\n" + "=" * 80)
+    print("   SILVINA EDITORIAL ASSISTANT v0.7")
+    print("   Asistente de Análisis Editorial para Documentos Académicos")
+    print("=" * 80 + "\n")
+    
+    # Interactive input
+    if len(sys.argv) < 2:
+        document_path = input("📄 Por favor ingrese la ruta del documento: ").strip().strip('"')
+    else:
+        document_path = sys.argv[1]
+    
+    if not os.path.exists(document_path):
+        print(f"❌ Error: Archivo no existe: {document_path}")
+        sys.exit(1)
+
+ 
 
 class SilvinaEditorialAssistant:
     """Main orchestrator for the Silvina Editorial Assistant."""
@@ -418,18 +436,38 @@ def main():
         silvina.save_json_report(results, str(json_report_path))
         
         # Print summary
+        # Print summary
         print("\n" + "=" * 80)
         print("🎉 ANÁLISIS COMPLETADO")
         print("=" * 80)
-        print("\nResumen:")
-        print(f"  📄 Documento: {results['filename']}")
-        print(f"  📊 Categoría: {silvina._format_category(results['classification']['category'])}")
-        print(f"  ⭐ Calidad: {results['quality_analysis']['overall_score']:.1f}/10.0")
-        print(f"  📋 Estructura: {'✓ Válida' if results['structure_validation']['is_valid'] else '✗ Incompleta'}")
-        print(f"  📚 Citas: {results['citations_analysis']['total_citations']}")
-        print(f"\n  💾 Reportes guardados en: {output_dir}")
+        print("\nRESUMEN:")
+        print(f"  📄 Documento analizado: {results['filename']}")
+        print(f"  📊 Caracteres con espacios: {results['document_info']['char_count']:,}")
+        print(f"  📝 Total de palabras: {results['document_info']['word_count']:,}")
+        print(f"  📋 Total de párrafos: {results['document_info']['paragraph_count']}")
+
+        print(f"\n  🏷️  Tipo: {results['classification']['article_type'].value.upper()}")
+        print(f"  📏 Tamaño: {results['classification']['article_size'].value.upper()}")
+        print(f"  💭 Razonamiento: {results['classification']['reasoning']}")
+
+        print(f"\n  ⭐ ANÁLISIS DE CALIDAD: {results['quality_analysis']['overall_score']:.1f}/10")
+        for dim, data in results['quality_analysis']['dimension_scores'].items():
+            print(f"     • {dim.capitalize()}: {data['score']:.1f}/10 - {data['feedback']}")
+
+        print(f"\n  📋 ESTRUCTURA: {'✓ Válida' if results['structure_validation']['is_valid'] else '✗ Incompleta'}")
+        print(f"     {results['structure_validation']['justification']}")
+
+        print(f"\n  📚 CITAS: {results['citations_analysis']['total_citations']} detectadas")
+
+        print(f"\n  💡 ANÁLISIS FINAL:")
+        for rec in results['recommendations']:
+            color = {'critico': '🔴', 'moderado': '🟢', 'aceptable': '🟡', 'opcional': '🔵'}.get(rec['priority'], '⚪')
+            print(f"     {color} {rec['priority'].upper()}: {rec['message']}")
+
+        print(f"\n  💾 Reportes: {output_dir}")
         print("=" * 80 + "\n")
-        
+                
+                
     except KeyboardInterrupt:
         print("\n\n⚠ Análisis interrumpido por el usuario")
         sys.exit(0)

@@ -54,7 +54,17 @@ class ContentExtractor:
         # Calculate word count
         content.word_count = sum(len(p.split()) for p in paragraphs)
         
-        return content
+        word_count = sum(len(p.text.split()) for p in paragraphs if p.text.strip())
+        char_count = sum(len(p.text) for p in paragraphs if p.text.strip())  # ADD THIS
+
+        return DocumentContent(
+            title=title,
+            # ...
+            word_count=word_count,
+            char_count=char_count,  # ADD THIS
+            # ...
+        )
+
     
     def _extract_title(self, paragraphs: List[str]) -> Optional[str]:
         """Extract document title."""
