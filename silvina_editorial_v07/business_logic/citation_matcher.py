@@ -18,7 +18,7 @@ class CitationMatcher:
         # Build lookup keys
         self.citation_keys = {}
         for cit in citations:
-            key = cit.key
+            key = cit.text
             self.citation_keys[key] = cit
         
         self.reference_keys = {}
@@ -67,7 +67,7 @@ class CitationMatcher:
         """Citations without matching references."""
         orphaned = []
         for cit in self.citations:
-            if cit.key not in self.reference_keys:
+            if cit.text not in self.reference_keys:
                 orphaned.append(cit)
         return orphaned
     

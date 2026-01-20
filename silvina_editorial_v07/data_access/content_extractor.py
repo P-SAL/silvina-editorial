@@ -24,45 +24,39 @@ class ContentExtractor:
     def extract_content(self, paragraphs: List[str]) -> DocumentContent:
         """
         Extract structured content from document paragraphs.
-        
-        Args:
-            paragraphs: List of paragraph texts
-            
-        Returns:
-            DocumentContent object with extracted information
         """
-        content = DocumentContent()
-        
-        # Extract title (usually first non-empty paragraph or marked with TÍTULO)
-        content.title = self._extract_title(paragraphs)
-        
-        # Extract authors
-        content.authors = self._extract_authors(paragraphs)
-        
-        # Extract abstract
-        content.abstract = self._extract_abstract(paragraphs)
-        
-        # Extract keywords
-        content.keywords = self._extract_keywords(paragraphs)
-        
-        # Store all paragraphs
-        content.paragraphs = paragraphs
-        
-        # Extract sections
-        content.sections = self._extract_sections(paragraphs)
-        
-        # Calculate word count
-        content.word_count = sum(len(p.split()) for p in paragraphs)
-        
-        word_count = sum(len(p.text.split()) for p in paragraphs if p.text.strip())
-        char_count = sum(len(p.text) for p in paragraphs if p.text.strip())  # ADD THIS
 
+        # 1. Normalize paragraphs
+        clean_paragraphs = [
+            p.text.strip() if hasattr(p, "text") else str(p).strip()
+            for p in paragraphs
+            if (p.text if hasattr(p, "text") else str(p)).strip()
+        ]
+
+        if not clean_paragraphs:
+            raise ValueError("No valid paragraphs after cleaning")
+
+        # 2. STEP 2 — counts MUST come from clean_paragraphs
+        word_count = sum(len(p.split()) for p in clean_paragraphs)
+        char_count = sum(len(p) for p in clean_paragraphs)
+
+        # 3. Extract structured fields
+        title = self._extract_title(clean_paragraphs)
+        authors = self._extract_authors(clean_paragraphs)
+        abstract = self._extract_abstract(clean_paragraphs)
+        keywords = self._extract_keywords(clean_paragraphs)
+        sections = self._extract_sections(clean_paragraphs)
+
+        # 4. SINGLE DocumentContent (this is the key)
         return DocumentContent(
             title=title,
-            # ...
+            authors=authors,
+            abstract=abstract,
+            keywords=keywords,
+            sections=sections,
+            paragraphs=clean_paragraphs,
             word_count=word_count,
-            char_count=char_count,  # ADD THIS
-            # ...
+            char_count=char_count
         )
 
     

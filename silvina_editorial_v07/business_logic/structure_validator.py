@@ -6,6 +6,7 @@ from typing import List, Dict
 from domain.models import Section
 from config import REQUIRED_SECTIONS
 from domain.models import StructureValidationResult
+from domain.enums import ArticleType
 
 class StructureValidator:
     """Validates IMRyD structure in scientific articles."""
@@ -44,40 +45,38 @@ class StructureValidator:
     def validate_structure(self, document_content, article_type):
         if article_type == ArticleType.CIENTIFICO:
             required = ["Resumen", "Introducción", "Metodología", "Resultados", "Discusión", "Conclusiones", "Referencias"]
-            justification = "Científico requiere IMRyD con razonamiento crítico y citación académica"
         elif article_type == ArticleType.DIVULGACION:
             required = ["Resumen", "Introducción", "Desarrollo", "Conclusiones", "Referencias"]
-            justification = "Divulgación enfatiza reflexión crítica sin IMRyD rígido"
         elif article_type == ArticleType.OPINION:
             required = ["Introducción", "Argumentación", "Conclusiones"]
-            justification = "Opinión privilegia crítica reflexiva sin validación empírica"
         else:
             required = ["Introducción", "Conclusiones"]
-            justification = "Estructura mínima requerida"
-        
+
         present = self._extract_present_sections(document_content)
-        missing = [s for s in required if s.lower() not in [p.lower() for p in present]]
-        
-        details = {s: {'present': s.lower() in [p.lower() for p in present], 'required': True} 
-                for s in required}
-        
+
+        missing = [
+            s for s in required
+            if s.lower() not in [p.lower() for p in present]
+        ]
+
+        is_valid = len(missing) == 0
+
         return StructureValidationResult(
-            is_valid=len(missing) == 0,
-            missing_sections=missing,
-            section_details=details,
-            justification=justification
+            is_valid=is_valid,
+            missing_sections=missing
         )
 
-        def _get_required_sections(self, category):
-            """Get required sections based on article category."""
-            from domain.enums import ClassificationCategory
+          
+    def _get_required_sections(self, category):
+        """Get required sections based on article category."""
+        from domain.enums import ClassificationCategory
             
-            if category == ClassificationCategory.RESEARCH_ARTICLE:
-                return ["Resumen", "Introducción", "Metodología", "Resultados", "Discusión", "Conclusiones", "Referencias"]
-            elif category == ClassificationCategory.REVIEW_ARTICLE:
-                return ["Resumen", "Introducción", "Desarrollo", "Conclusiones", "Referencias"]
-            else:
-                return ["Introducción", "Desarrollo", "Conclusiones", "Referencias"]
+        if category == ClassificationCategory.RESEARCH_ARTICLE:
+              return ["Resumen", "Introducción", "Metodología", "Resultados", "Discusión", "Conclusiones", "Referencias"]
+        elif category == ClassificationCategory.REVIEW_ARTICLE:
+              return ["Resumen", "Introducción", "Desarrollo", "Conclusiones", "Referencias"]
+        else:
+              return ["Introducción", "Desarrollo", "Conclusiones", "Referencias"]
 
     def _extract_present_sections(self, document_content):
         """Extract section headers from document."""

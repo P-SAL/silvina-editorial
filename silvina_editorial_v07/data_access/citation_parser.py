@@ -5,6 +5,7 @@ Citation Parser - Extracts APA citations from Spanish text
 import re
 from typing import List
 from domain.models import Citation
+from domain.enums import CitationType
 
 
 class CitationParser:
@@ -40,14 +41,18 @@ class CitationParser:
             year = match.group(2)
             page = match.group(3) if match.lastindex >= 3 else None
             
+            citation_text = match.group(0)
+            authors = self._parse_authors(authors_raw)
+            author = authors[0] if authors else None
+
             citations.append(Citation(
-                authors=self._parse_authors(authors_raw),
-                year=year,
-                page=page,
-                paragraph_index=paragraph_index,
-                citation_type="parentética",
-                raw_text=match.group(0)
+                text=citation_text,
+                citation_type=CitationType.AUTHOR_YEAR,
+                location=paragraph_index,
+                author=author,
+                year=year
             ))
+
         
         # Narrative citations
         for match in self.pattern_narrative.finditer(text):
@@ -55,15 +60,19 @@ class CitationParser:
             year = match.group(2)
             page = match.group(3) if match.lastindex >= 3 else None
             
+            citation_text = match.group(0)
+            authors = self._parse_authors(authors_raw)
+            author = authors[0] if authors else None
+
             citations.append(Citation(
-                authors=self._parse_authors(authors_raw),
-                year=year,
-                page=page,
-                paragraph_index=paragraph_index,
-                citation_type="narrativa",
-                raw_text=match.group(0)
+                text=citation_text,
+                citation_type=CitationType.AUTHOR_YEAR,
+                location=paragraph_index,
+                author=author,
+                year=year
             ))
-        
+
+       
         return citations
     
     @staticmethod

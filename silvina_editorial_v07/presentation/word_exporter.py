@@ -215,7 +215,7 @@ class WordExporter:
                 doc.add_paragraph("Primeras citas sin referencia (máximo 10):").bold = True
                 
                 for i, unmatched in enumerate(citations['unmatched_citations'][:10], 1):
-                    citation_text = unmatched.get('citation_text', 'N/A')
+                    citation_text = unmatched
                     doc.add_paragraph(f"{i}. {citation_text}", style='List Bullet')
             
             doc.add_paragraph()  # Spacing

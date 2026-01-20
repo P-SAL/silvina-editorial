@@ -11,6 +11,7 @@ import json
 from typing import Dict, Any
 from domain.enums import ClassificationCategory, QualityLevel, get_quality_level_from_score
 from domain.models import DocumentContent, QualityResult
+from domain.models import QualityAnalysisResult
 
 
 class QualityAnalyzer:
@@ -26,6 +27,8 @@ class QualityAnalyzer:
             base_url: Base URL for Ollama API
         """
         self.model_name = model_name
+        import ollama
+        self.ollama = ollama
         self.base_url = base_url
         self.client = ollama.Client(host=self.base_url)
         
@@ -35,10 +38,10 @@ class QualityAnalyzer:
         # Strategic sampling
         parts = []
         parts.append(document_content.title or "")
-        parts.extend([p.text for p in document_content.paragraphs[:2]])
+        parts.extend(document_content.paragraphs[:2])
         mid = len(document_content.paragraphs) // 2
-        parts.extend([p.text for p in document_content.paragraphs[mid:mid+2]])
-        parts.extend([p.text for p in document_content.paragraphs[-2:]])
+        parts.extend(document_content.paragraphs[mid:mid+2])
+        parts.extend(document_content.paragraphs[-2:])
         text_sample = ' '.join(parts)[:3000]
         
         prompt = f"""Analiza calidad editorial de este artículo.
@@ -59,12 +62,11 @@ class QualityAnalyzer:
 
         try:
             response = self.ollama.generate(
-                model=self.model_name,
-                prompt=prompt,
-                options={'temperature': 0.3, 'num_predict': 600, 'num_ctx': 4096},
-                timeout=90
+            model=self.model_name,
+            prompt=prompt,
+            options={'temperature': 0.3, 'num_predict': 600, 'num_ctx': 4096}
             )
-            
+                  
             import json, re
             text = response['response'].strip()
             json_match = re.search(r'\{.*\}', text, re.DOTALL)
@@ -91,25 +93,25 @@ class QualityAnalyzer:
             
         except Exception as e:
             print(f"⚠️  Error: {e}")
-            default = {d: {"score": 7.0, "feedback": "Error en análisis"} 
+            default = {d: {"score": 7.0, "feedback": "Análisis no disponible"} 
                     for d in ["claridad", "coherencia", "argumentacion", "conclusiones", "formato"]}
             return QualityAnalysisResult(7.0, QualityLevel.ACCEPTABLE, default)
 
 
-   # Convenience function
-def analyze_document_quality(document: DocumentContent,
-                            category: ClassificationCategory,
-                            model_name: str = "llama3-gradient:8b-instruct-1048k-q4_K_M") -> QualityResult:
-    """
-    Analyze document quality using default analyzer.
-    
-    Args:
-        document: DocumentContent to analyze
-        category: Article classification
-        model_name: Ollama model to use
+    # Convenience function
+    def analyze_document_quality(document: DocumentContent,
+                                category: ClassificationCategory,
+                                model_name: str = "llama3-gradient:8b-instruct-1048k-q4_K_M") -> QualityResult:
+        """
+        Analyze document quality using default analyzer.
         
-    Returns:
-        QualityResult
-    """
-    analyzer = QualityAnalyzer(model_name=model_name)
-    return analyzer.analyze_quality(document, document.full_text, category)
+        Args:
+            document: DocumentContent to analyze
+            category: Article classification
+            model_name: Ollama model to use
+            
+        Returns:
+            QualityResult
+        """
+        analyzer = QualityAnalyzer(model_name=model_name)
+        return analyzer.analyze_quality(document, document.full_text, category)

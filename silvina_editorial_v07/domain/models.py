@@ -72,7 +72,12 @@ class ClassificationResult:
             f"Confidence: {self.confidence:.1%}"
         )
 
-   
+@dataclass
+class QualityAnalysisResult:
+    overall_score: float
+    quality_level: QualityLevel
+    dimension_scores: Dict[str, Dict]
+       
 @dataclass
 class QualityResult:
     """Result of quality analysis."""
@@ -132,7 +137,7 @@ class AnalysisResult:
             'filename': self.filename,
             'timestamp': self.timestamp.isoformat(),
             'classification': {
-                'category': self.classification.category.value,
+                'category': self.classification.article_type.value,
                 'confidence': self.classification.confidence,
                 'reasoning': self.classification.reasoning
             },

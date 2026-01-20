@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 import json
 from docx import Document
-from domain.enums import ArticleType, ArticleSize, QualityLevel
+from domain.enums import ArticleType, QualityLevel
 
 # Add project root to path
 project_root = Path(__file__).parent
@@ -20,8 +20,10 @@ sys.path.insert(0, str(project_root))
 from presentation.config import Config
 
 # Import domain models
-from domain.models import DocumentContent, AnalysisResult
 from domain.enums import ClassificationCategory, QualityLevel
+from domain.enums import ArticleType
+from domain.enums import ArticleSize
+
 
 # Import data access layer
 from data_access.word_reader import WordReader
@@ -39,24 +41,6 @@ from business_logic.structure_validator import StructureValidator
 from presentation.report_formatter import ReportFormatter
 from presentation.word_exporter import WordExporter, DOCX_AVAILABLE
 
-
-def main():
-    print("\n" + "=" * 80)
-    print("   SILVINA EDITORIAL ASSISTANT v0.7")
-    print("   Asistente de Análisis Editorial para Documentos Académicos")
-    print("=" * 80 + "\n")
-    
-    # Interactive input
-    if len(sys.argv) < 2:
-        document_path = input("📄 Por favor ingrese la ruta del documento: ").strip().strip('"')
-    else:
-        document_path = sys.argv[1]
-    
-    if not os.path.exists(document_path):
-        print(f"❌ Error: Archivo no existe: {document_path}")
-        sys.exit(1)
-
- 
 
 class SilvinaEditorialAssistant:
     """Main orchestrator for the Silvina Editorial Assistant."""
@@ -143,16 +127,16 @@ class SilvinaEditorialAssistant:
             # Step 4: Classify article
             print("\n[4/7] 🏷️  Clasificando tipo de artículo...")
             classification = self.article_classifier.classify_article(document_content)
-            category_name = self._format_category(classification.category)
+            
+            category_name = self._format_category(classification.article_type)
             print(f"      ✓ Categoría: {category_name}")
             print(f"      ✓ Confianza: {classification.confidence:.1%}")
             
             # Step 5: Analyze quality
             print("\n[5/7] ⭐ Analizando calidad...")
             quality_result = self.quality_analyzer.analyze_quality(
-                doc,
-                document_text,
-                classification.category
+                document_content,
+                classification
             )
             print(f"      ✓ Puntuación: {quality_result.overall_score:.1f}/10.0")
             print(f"      ✓ Nivel: {self._format_quality_level(quality_result.quality_level)}")
@@ -161,7 +145,7 @@ class SilvinaEditorialAssistant:
             print("\n[6/7] 📋 Validando estructura...")
             structure_result = self.structure_validator.validate_structure(
                 document_content,
-                classification.category
+                classification.article_type
             )
             status = "✓ VÁLIDA" if structure_result.is_valid else "✗ INCOMPLETA"
             print(f"      {status}")
@@ -194,10 +178,12 @@ class SilvinaEditorialAssistant:
                     'estimated_pages': document_content.word_count // 250  # ~250 words per page
                 },
                 'classification': {
-                    'category': classification.category,
+                    'category': classification.article_type,
+                    'article_size': classification.article_size,
                     'confidence': classification.confidence,
                     'reasoning': classification.reasoning
                 },
+     
                 'quality_analysis': {
                     'overall_score': quality_result.overall_score,
                     'quality_level': quality_result.quality_level,
@@ -214,7 +200,11 @@ class SilvinaEditorialAssistant:
                     'matched_count': citation_analysis.matched_count,
                     'unmatched_count': citation_analysis.unmatched_count,
                     'by_type': citation_analysis.citations_by_type,
-                    'unmatched_citations': citation_analysis.unmatched_citations[:20]  # First 20
+                    'unmatched_citations': [
+                        {'citation_text': c} if isinstance(c, str) else c
+                        for c in citation_analysis.unmatched_citations[:20]
+                    ]
+                   
                 },
                 'recommendations': self._generate_recommendations(
                     classification,
@@ -267,22 +257,16 @@ class SilvinaEditorialAssistant:
             return False
     
     def save_json_report(self, analysis_results: Dict[str, Any], output_path: str):
-        """Save analysis results as JSON for further processing."""
-        try:
-            print(f"💾 Guardando datos JSON: {output_path}")
-            
-            # Convert enums to strings for JSON serialization
-            json_data = self._prepare_for_json(analysis_results)
-            
-            with open(output_path, 'w', encoding='utf-8') as f:
-                json.dump(json_data, f, ensure_ascii=False, indent=2)
-            
-            print(f"   ✅ Datos JSON guardados exitosamente")
-            
-        except Exception as e:
-            print(f"   ❌ Error al guardar JSON: {e}")
-            raise
-    
+        print(f"💾 Guardando datos JSON: {output_path}")
+
+        json_data = self._prepare_for_json(analysis_results)
+
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(json_data, f, ensure_ascii=False, indent=2)
+
+        print("   ✅ Datos JSON guardados exitosamente")
+
+        
     def _generate_recommendations(
         self,
         classification,
@@ -347,60 +331,47 @@ class SilvinaEditorialAssistant:
         
         return recommendations
     
-    def _format_category(self, category: ClassificationCategory) -> str:
-        """Format category for display."""
-        names = {
-            ClassificationCategory.RESEARCH_ARTICLE: "Artículo de Investigación",
-            ClassificationCategory.REVIEW_ARTICLE: "Artículo de Revisión",
-            ClassificationCategory.REFLECTION_ARTICLE: "Artículo de Reflexión",
-            ClassificationCategory.SHORT_ARTICLE: "Artículo Corto",
-            ClassificationCategory.CASE_REPORT: "Reporte de Caso",
-            ClassificationCategory.UNKNOWN: "No Clasificado"
+    def _format_quality_level(self, quality_level):
+        return quality_level.value.replace("_", " ").title()
+
+    def _format_category(self, article_type: ArticleType) -> str:
+        """Format article type for display."""
+        mapping = {
+            "cientifico": "Artículo Científico",
+            "academico": "Artículo Académico",
+            "opinion": "Artículo de Opinión",
+            "unknown": "No Clasificado"
         }
-        return names.get(category, str(category))
-    
-    def _format_quality_level(self, level: QualityLevel) -> str:
-        """Format quality level for display."""
-        names = {
-            QualityLevel.EXCELLENT: "Excelente",
-            QualityLevel.GOOD: "Bueno",
-            QualityLevel.ACCEPTABLE: "Aceptable",
-            QualityLevel.NEEDS_IMPROVEMENT: "Necesita Mejoras",
-            QualityLevel.POOR: "Deficiente"
-        }
-        return names.get(level, str(level))
-    
+
+        return mapping.get(article_type.value, article_type.value.capitalize())
+
     def _prepare_for_json(self, data: Any) -> Any:
-        """Prepare data for JSON serialization by converting enums to strings."""
         if isinstance(data, dict):
             return {k: self._prepare_for_json(v) for k, v in data.items()}
         elif isinstance(data, list):
             return [self._prepare_for_json(item) for item in data]
-        elif isinstance(data, (ClassificationCategory, QualityLevel)):
+        elif isinstance(data, (ClassificationCategory, QualityLevel, ArticleType, ArticleSize)):
             return data.value
         else:
             return data
 
 
 def main():
+
     """Main execution function."""
     print("\n" + "=" * 80)
     print("   SILVINA EDITORIAL ASSISTANT v0.7")
     print("   Asistente de Análisis Editorial para Documentos Académicos")
     print("=" * 80 + "\n")
     
-    # Check for document path argument
+   # Obtener ruta del documento (modo interactivo o CLI)
     if len(sys.argv) < 2:
-        print("❌ Error: No se especificó un documento para analizar")
-        print("\nUso:")
-        print("   python main.py <ruta_al_documento.docx>")
-        print("\nEjemplo:")
-        print("   python main.py mi_articulo.docx")
-        print()
-        sys.exit(1)
-    
-    document_path = sys.argv[1]
-    
+        print("📄 SILVINA – Modo interactivo")
+        document_path = input("Ingrese la ruta del documento (.docx): ").strip().strip('"')
+    else:
+        document_path = sys.argv[1]
+
+      
     # Verify file exists
     if not os.path.exists(document_path):
         print(f"❌ Error: El archivo no existe: {document_path}")
@@ -442,20 +413,24 @@ def main():
         print("=" * 80)
         print("\nRESUMEN:")
         print(f"  📄 Documento analizado: {results['filename']}")
-        print(f"  📊 Caracteres con espacios: {results['document_info']['char_count']:,}")
+        print(f"  📝 Total de palabras: {results['document_info']['word_count']:,}")
+        
         print(f"  📝 Total de palabras: {results['document_info']['word_count']:,}")
         print(f"  📋 Total de párrafos: {results['document_info']['paragraph_count']}")
-
-        print(f"\n  🏷️  Tipo: {results['classification']['article_type'].value.upper()}")
+        print(f"\n  🏷️  Tipo: {results['classification']['category'].value.upper()}")
+               
         print(f"  📏 Tamaño: {results['classification']['article_size'].value.upper()}")
         print(f"  💭 Razonamiento: {results['classification']['reasoning']}")
 
         print(f"\n  ⭐ ANÁLISIS DE CALIDAD: {results['quality_analysis']['overall_score']:.1f}/10")
-        for dim, data in results['quality_analysis']['dimension_scores'].items():
+        for dim, data in results['quality_analysis']['dimensions'].items():
             print(f"     • {dim.capitalize()}: {data['score']:.1f}/10 - {data['feedback']}")
 
         print(f"\n  📋 ESTRUCTURA: {'✓ Válida' if results['structure_validation']['is_valid'] else '✗ Incompleta'}")
-        print(f"     {results['structure_validation']['justification']}")
+        if results['structure_validation']['missing_sections']:
+            print("     Missing sections:")
+            for sec in results['structure_validation']['missing_sections']:
+                print(f"       - {sec}")
 
         print(f"\n  📚 CITAS: {results['citations_analysis']['total_citations']} detectadas")
 
