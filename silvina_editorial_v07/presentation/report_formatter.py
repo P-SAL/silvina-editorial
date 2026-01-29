@@ -112,9 +112,11 @@ Documento analizado: {results.get('filename', 'N/A')}
 Título: {doc_info.get('title', 'No especificado')}
 Autor(es): {doc_info.get('authors', 'No especificado')}
 Total de palabras: {doc_info.get('word_count', 0):,}
+Total de caracteres (con espacios): {doc_info.get('char_count', 0):,}
 Total de párrafos: {doc_info.get('paragraph_count', 0)}
-Total de páginas estimadas: {doc_info.get('estimated_pages', 0)}
-        """
+Páginas estimadas: {doc_info.get('estimated_pages', 0)}
+
+     """
         return section.strip()
     
     def _generate_classification_section(self, results: Dict[str, Any]) -> str:

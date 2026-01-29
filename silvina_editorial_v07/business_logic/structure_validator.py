@@ -78,17 +78,28 @@ class StructureValidator:
         else:
               return ["Introducción", "Desarrollo", "Conclusiones", "Referencias"]
 
+    
     def _extract_present_sections(self, document_content):
-        """Extract section headers from document."""
+        """Extract section headers with flexible matching."""
         sections = []
-        keywords = ["resumen", "abstract", "introducción", "metodología", "método", 
-                    "resultados", "discusión", "conclusiones", "referencias", "bibliografía", "desarrollo"]
+        
+        # Flexible keyword mapping
+        section_map = {
+            'resumen': ['resumen', 'abstract'],
+            'introducción': ['introducción', 'introduccion', 'introduction'],
+            'desarrollo': ['desarrollo', 'development'],
+            'conclusiones': ['conclusiones', 'conclusión', 'conclusion'],
+            'referencias': ['referencias', 'bibliografía', 'fuentes bibliográficas']
+        }
         
         for para in document_content.paragraphs:
             text_lower = para.lower().strip()
-            for keyword in keywords:
-                if keyword in text_lower and len(text_lower) < 50:
-                    sections.append(para.strip())
-                    break
-    
+            
+            # Must be short (header-like) and bold-formatted
+            if len(text_lower) < 100:
+                for section_name, keywords in section_map.items():
+                    if any(kw in text_lower for kw in keywords):
+                        sections.append(section_name.capitalize())
+                        break
+        
         return sections

@@ -51,11 +51,11 @@ class ClassificationCategory(Enum):
 
 class QualityLevel(Enum):
     """Quality levels for article assessment."""
-    EXCELLENT = "excellent"              # 9.0 - 10.0
-    GOOD = "good"                        # 7.0 - 8.9
-    ACCEPTABLE = "acceptable"            # 5.0 - 6.9
-    NEEDS_IMPROVEMENT = "needs_improvement"  # 3.0 - 4.9
-    POOR = "poor"                        # 0.0 - 2.9
+    EXCELLENT = "Excelente"              # 9.0 - 10.0
+    GOOD = "Bueno"                       # 7.0 - 8.9
+    ACCEPTABLE = "Aceptable"             # 5.0 - 6.9
+    NEEDS_IMPROVEMENT = "Requiere mejoras"  # 3.0 - 4.9
+    POOR = "Deficiente"                  # 0.0 - 2.9
 
 
 class SectionType(Enum):
@@ -264,8 +264,6 @@ def get_required_sections_for_category(category: ClassificationCategory) -> list
     
     return required_sections.get(category, [])
 
-
-# Export all enums and helper functions
 
 # Export all enums and helper functions
 __all__ = [

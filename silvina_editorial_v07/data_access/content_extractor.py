@@ -7,6 +7,7 @@ Part of Silvina Editorial Assistant v0.7
 from typing import List, Dict, Optional
 import re
 from domain.models import DocumentContent
+from data_access.word_counter import WordCounter, WIN32COM_AVAILABLE
 
 
 class ContentExtractor:
@@ -21,9 +22,13 @@ class ContentExtractor:
             'authors': r'^(?:AUTOR|AUTORES|AUTHOR|AUTHORS)[:\s]*(.*)',
         }
     
-    def extract_content(self, paragraphs: List[str]) -> DocumentContent:
+    def extract_content(self, paragraphs: List[str], docx_path: str = None) -> DocumentContent:
         """
         Extract structured content from document paragraphs.
+        
+        Args:
+            paragraphs: List of paragraph objects or strings
+            docx_path: Optional path to .docx file for accurate counting
         """
 
         # 1. Normalize paragraphs
@@ -36,18 +41,29 @@ class ContentExtractor:
         if not clean_paragraphs:
             raise ValueError("No valid paragraphs after cleaning")
 
-        # 2. STEP 2 — counts MUST come from clean_paragraphs
+        # 2. Get initial counts from text
         word_count = sum(len(p.split()) for p in clean_paragraphs)
         char_count = sum(len(p) for p in clean_paragraphs)
+        paragraph_count = len(clean_paragraphs)  # Temporary
 
-        # 3. Extract structured fields
+        # 3. Try to get accurate Word counts
+        if docx_path and WIN32COM_AVAILABLE:
+            counter = WordCounter()
+            accurate_counts = counter.get_accurate_counts(docx_path)
+            if accurate_counts:
+                word_count = accurate_counts['word_count']
+                char_count = accurate_counts['char_count']
+                paragraph_count = accurate_counts['paragraph_count']
+                print(f"      ✓ Conteos precisos obtenidos desde Word")
+        
+        # 4. Extract structured fields
         title = self._extract_title(clean_paragraphs)
         authors = self._extract_authors(clean_paragraphs)
         abstract = self._extract_abstract(clean_paragraphs)
         keywords = self._extract_keywords(clean_paragraphs)
         sections = self._extract_sections(clean_paragraphs)
 
-        # 4. SINGLE DocumentContent (this is the key)
+        # 5. Return DocumentContent
         return DocumentContent(
             title=title,
             authors=authors,
@@ -56,10 +72,10 @@ class ContentExtractor:
             sections=sections,
             paragraphs=clean_paragraphs,
             word_count=word_count,
-            char_count=char_count
+            char_count=char_count,
+            paragraph_count=paragraph_count  # ✅ Now included
         )
 
-    
     def _extract_title(self, paragraphs: List[str]) -> Optional[str]:
         """Extract document title."""
         for para in paragraphs[:10]:  # Check first 10 paragraphs
@@ -75,14 +91,30 @@ class ContentExtractor:
         return None
     
     def _extract_authors(self, paragraphs: List[str]) -> Optional[str]:
-        """Extract author information."""
-        for para in paragraphs[:15]:
+        """Extract author information from first page after title."""
+        
+        # Skip first paragraph (usually title)
+        for i, para in enumerate(paragraphs[1:15], start=1):
+            
+            # Pattern 1: Explicit "Autor:" or "Author:"
             match = re.match(self.section_patterns['authors'], para, re.IGNORECASE)
             if match:
                 return match.group(1).strip()
+            
+            # Pattern 2: Name-like pattern after title
+            # Matches: "Adriana Baravalle" or "Juan Pérez, María González"
+            if i <= 3:  # Check first 3 paragraphs after title
+                # Check if looks like a name (capitalized words, short)
+                if (len(para.split()) <= 10 and 
+                    para[0].isupper() and 
+                    not para.isupper() and  # Not all caps (section header)
+                    not para.endswith(':') and  # Not a label
+                    re.search(r'^[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+', para)):  # Starts with capital
+                    return para.strip()
         
         return None
-    
+
+
     def _extract_abstract(self, paragraphs: List[str]) -> Optional[str]:
         """Extract abstract/resumen."""
         abstract_lines = []

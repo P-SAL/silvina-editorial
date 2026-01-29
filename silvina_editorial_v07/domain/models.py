@@ -42,6 +42,7 @@ class DocumentContent:
     """Represents the extracted content of a document."""
     word_count: int
     char_count: int
+    paragraph_count: int = 0  
 
     title: Optional[str] = None
     authors: Optional[str] = None

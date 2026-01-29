@@ -30,7 +30,52 @@ class CitationParser:
             rf'\(({self.YEAR_PATTERN})(?:,\s*{self.PAGE_PATTERN})?\)',
             re.IGNORECASE
         )
-    
+   
+
+    def extract_footnotes(self, doc) -> List[Citation]:
+        """Extract Markdown-style footnote references [^1], [^2], etc."""
+        citations = []
+        footnote_pattern = re.compile(r'\[\^(\d+)\]')
+        
+        seen_numbers = set()
+        
+        # Search in ALL paragraphs (including footnote section)
+        for i, para in enumerate(doc.paragraphs):
+            matches = footnote_pattern.findall(para.text)
+            for num in matches:
+                if num not in seen_numbers:
+                    seen_numbers.add(num)
+                    citations.append(Citation(
+                        text=f"[^{num}]",
+                        citation_type=CitationType.FOOTNOTE,
+                        location=i,
+                        author=None,
+                        year=None
+                    ))
+        
+        # Also search in tables (footnotes might be there)
+        for table in doc.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    matches = footnote_pattern.findall(cell.text)
+                    for num in matches:
+                        if num not in seen_numbers:
+                            seen_numbers.add(num)
+                            citations.append(Citation(
+                                text=f"[^{num}]",
+                                citation_type=CitationType.FOOTNOTE,
+                                location=-1,
+                                author=None,
+                                year=None
+                            ))
+        
+        if len(citations) > 0:
+            print(f"      ✓ {len(citations)} notas al pie detectadas [^1]-[^{max(seen_numbers)}]")
+            print(f"      ⚠️  FORMATO NO APA: Use citas parentéticas (Autor, Año)")
+        # REMOVED: paragraph count warning (was around line 75)
+        
+        return citations
+
     def parse(self, text: str, paragraph_index: int) -> List[Citation]:
         """Extract all citations from one paragraph."""
         citations = []

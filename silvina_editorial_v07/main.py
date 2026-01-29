@@ -24,7 +24,6 @@ from domain.enums import ClassificationCategory, QualityLevel
 from domain.enums import ArticleType
 from domain.enums import ArticleSize
 
-
 # Import data access layer
 from data_access.word_reader import WordReader
 from data_access.content_extractor import ContentExtractor
@@ -41,6 +40,13 @@ from business_logic.structure_validator import StructureValidator
 from presentation.report_formatter import ReportFormatter
 from presentation.word_exporter import WordExporter, DOCX_AVAILABLE
 
+try:
+    from eumic_verifier import verify_eumic_compliance
+except ImportError:
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).parent))
+    from eumic_verifier import verify_eumic_compliance
 
 class SilvinaEditorialAssistant:
     """Main orchestrator for the Silvina Editorial Assistant."""
@@ -86,96 +92,122 @@ class SilvinaEditorialAssistant:
     def analyze_document(self, document_path: str) -> Dict[str, Any]:
         """
         Perform complete analysis of a document.
-        
-        Args:
-            document_path: Path to the Word document (.docx)
-            
-        Returns:
-            Dictionary containing all analysis results
         """
         print(f"📄 Analizando documento: {Path(document_path).name}")
         print("=" * 80)
-        
+
         try:
             # Step 1: Read document
             print("\n[1/7] 📖 Leyendo documento...")
             doc = Document(document_path)
-            document_text = "\n".join(p.text for p in doc.paragraphs)
+
+            # Content paragraphs (filtered, analyzable)
             paragraphs = self.word_reader.read_word_document(document_path)
             if not paragraphs:
                 raise ValueError("El documento está vacío o no se pudo leer")
-            print(f"      ✓ {len(paragraphs)} párrafos leídos")
+
+            # Word paragraph count (editorial / formatting)
+            from data_access.word_counter import WordCounter
+            counter = WordCounter()
+            stats = counter.get_accurate_counts(document_path)
+
+            print(f"      ✓ Documento leído correctamente")
             
+           
             # Step 2: Extract content
             print("\n[2/7] 🔍 Extrayendo contenido estructurado...")
-            document_content = self.content_extractor.extract_content(paragraphs)
+            document_content = self.content_extractor.extract_content(
+                paragraphs, document_path
+            )
             print(f"      ✓ Título: {document_content.title or 'No especificado'}")
+            print(f"      ✓ Autor: {document_content.authors or 'No detectado'}")
             print(f"      ✓ Total de palabras: {document_content.word_count:,}")
-            
+            print(f"      ✓ Total de caracteres: {document_content.char_count:,}")
+
             # Step 3: Parse citations and references
             print("\n[3/7] 📚 Analizando citas y referencias...")
-            # Extract citations from all paragraphs
+
             citations = []
+            # 1. Extract Markdown footnotes [^1], [^2], etc.
+            footnote_citations = self.citation_parser.extract_footnotes(doc)
+            citations = list(footnote_citations) 
+
+            # 2. Extract in-text APA citations (Author, Year)
             for idx, paragraph in enumerate(paragraphs):
                 citations.extend(self.citation_parser.parse(paragraph, idx))
-            # Extract references from bibliography section
-            bibliography_text, section_type = self.reference_parser.extract_from_paragraphs(paragraphs)
-            references, _ = self.reference_parser.parse_section(bibliography_text)
-            print(f"      ✓ {len(citations)} citas encontradas")
-            print(f"      ✓ {len(references)} referencias encontradas")
             
+            # 3. Extract references
+            bibliography_text, section_type = self.reference_parser.extract_from_paragraphs(
+                paragraphs
+            )
+            references, _ = self.reference_parser.parse_section(bibliography_text)
+            print(f"      ✓ Total: {len(citations)} citas | {len(references)} referencias")
+
+            # If we have references but no detectable citations, warn about format
+            if len(references) > 0 and len(citations) == 0:
+                print(f"      ⚠️  ADVERTENCIA: Documento tiene {len(references)} referencias pero")
+                print(f"         0 citas detectables en texto. Posibles causas:")
+                print(f"         • Usa notas al pie nativas de Word (no detectables)")
+                print(f"         • Formato no cumple APA 7 (debe usar: Autor, Año)")
+                        
             # Step 4: Classify article
             print("\n[4/7] 🏷️  Clasificando tipo de artículo...")
             classification = self.article_classifier.classify_article(document_content)
-            
+
             category_name = self._format_category(classification.article_type)
             print(f"      ✓ Categoría: {category_name}")
             print(f"      ✓ Confianza: {classification.confidence:.1%}")
-            
+
             # Step 5: Analyze quality
             print("\n[5/7] ⭐ Analizando calidad...")
             quality_result = self.quality_analyzer.analyze_quality(
-                document_content,
-                classification
+                document_content, classification
             )
             print(f"      ✓ Puntuación: {quality_result.overall_score:.1f}/10.0")
             print(f"      ✓ Nivel: {self._format_quality_level(quality_result.quality_level)}")
-            
+
             # Step 6: Validate structure
             print("\n[6/7] 📋 Validando estructura...")
             structure_result = self.structure_validator.validate_structure(
-                document_content,
-                classification.article_type
+                document_content, classification.article_type
             )
             status = "✓ VÁLIDA" if structure_result.is_valid else "✗ INCOMPLETA"
             print(f"      {status}")
             if structure_result.missing_sections:
                 print(f"      ⚠ Secciones faltantes: {len(structure_result.missing_sections)}")
-            
+
             # Step 7: Match citations
             print("\n[7/7] 🔗 Relacionando citas con referencias...")
-            # Initialize citation matcher with extracted data
             self.citation_matcher = CitationMatcher(citations, references)
             citation_analysis = self.citation_matcher.match_citations_to_references(
                 section_type
             )
 
-            match_rate = (citation_analysis.matched_count / citation_analysis.total_citations * 100 
-                         if citation_analysis.total_citations > 0 else 0)
+            match_rate = (
+                citation_analysis.matched_count / citation_analysis.total_citations * 100
+                if citation_analysis.total_citations > 0 else 0
+            )
             print(f"      ✓ Tasa de coincidencia: {match_rate:.1f}%")
-            
-            # Compile results
+
             print("\n" + "=" * 80)
             print("✅ Análisis completado exitosamente\n")
-            
+
+            # VERIFICACIÓN EUMIC (solo imprime si hay problemas)
+            eumic_report = verify_eumic_compliance(doc, document_content)
+            if eumic_report:
+                print(eumic_report)
+
+            # ✅ FIX IS HERE: STORE BOTH COUNTS
             analysis_results = {
                 'filename': Path(document_path).name,
                 'document_info': {
                     'title': document_content.title,
                     'authors': document_content.authors,
                     'word_count': document_content.word_count,
-                    'paragraph_count': len(document_content.paragraphs),
-                    'estimated_pages': document_content.word_count // 250  # ~250 words per page
+                    'char_count': document_content.char_count,
+
+                   
+                    'estimated_pages': document_content.word_count // 250
                 },
                 'classification': {
                     'category': classification.article_type,
@@ -183,7 +215,6 @@ class SilvinaEditorialAssistant:
                     'confidence': classification.confidence,
                     'reasoning': classification.reasoning
                 },
-     
                 'quality_analysis': {
                     'overall_score': quality_result.overall_score,
                     'quality_level': quality_result.quality_level,
@@ -200,11 +231,7 @@ class SilvinaEditorialAssistant:
                     'matched_count': citation_analysis.matched_count,
                     'unmatched_count': citation_analysis.unmatched_count,
                     'by_type': citation_analysis.citations_by_type,
-                    'unmatched_citations': [
-                        {'citation_text': c} if isinstance(c, str) else c
-                        for c in citation_analysis.unmatched_citations[:20]
-                    ]
-                   
+                    'unmatched_citations': citation_analysis.unmatched_citations[:20]
                 },
                 'recommendations': self._generate_recommendations(
                     classification,
@@ -213,13 +240,13 @@ class SilvinaEditorialAssistant:
                     citation_analysis
                 )
             }
-            
+
             return analysis_results
-            
+
         except Exception as e:
             print(f"\n❌ Error durante el análisis: {e}")
             raise
-    
+ 
     def save_text_report(self, analysis_results: Dict[str, Any], output_path: str):
         """Save analysis results as a text report."""
         try:
@@ -407,16 +434,13 @@ def main():
         silvina.save_json_report(results, str(json_report_path))
         
         # Print summary
-        # Print summary
         print("\n" + "=" * 80)
         print("🎉 ANÁLISIS COMPLETADO")
         print("=" * 80)
         print("\nRESUMEN:")
         print(f"  📄 Documento analizado: {results['filename']}")
         print(f"  📝 Total de palabras: {results['document_info']['word_count']:,}")
-        
-        print(f"  📝 Total de palabras: {results['document_info']['word_count']:,}")
-        print(f"  📋 Total de párrafos: {results['document_info']['paragraph_count']}")
+        print(f"  📝 Total de caracteres: {results['document_info']['char_count']:,}")
         print(f"\n  🏷️  Tipo: {results['classification']['category'].value.upper()}")
                
         print(f"  📏 Tamaño: {results['classification']['article_size'].value.upper()}")
@@ -436,9 +460,9 @@ def main():
 
         print(f"\n  💡 ANÁLISIS FINAL:")
         for rec in results['recommendations']:
-            color = {'critico': '🔴', 'moderado': '🟢', 'aceptable': '🟡', 'opcional': '🔵'}.get(rec['priority'], '⚪')
+            color = {'alta': '🔴', 'media': '🟡', 'baja': '🟢'}.get(rec['priority'], '⚪')
             print(f"     {color} {rec['priority'].upper()}: {rec['message']}")
-
+        
         print(f"\n  💾 Reportes: {output_dir}")
         print("=" * 80 + "\n")
                 

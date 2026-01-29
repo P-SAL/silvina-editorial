@@ -26,6 +26,25 @@ class CitationMatcher:
             key = self._ref_key(ref)
             self.reference_keys[key] = ref
     
+
+    def extract_all_citations(self, doc_path: str, citation_parser) -> List[Citation]:
+        """Extract both in-text and footnote citations."""
+        from docx import Document
+        
+        all_citations = []
+        
+        # 1. Extract footnote citations
+        doc = Document(doc_path)
+        footnote_citations = citation_parser.extract_footnotes(doc)
+        all_citations.extend(footnote_citations)
+        
+        # 2. Extract in-text citations from paragraphs
+        for i, para in enumerate(doc.paragraphs):
+            text_citations = citation_parser.parse(para.text, i)
+            all_citations.extend(text_citations)
+        
+        return all_citations
+
     @staticmethod
     def _ref_key(reference: Reference) -> str:
         """Generate matching key with smart organizational handling."""

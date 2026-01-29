@@ -60,7 +60,6 @@ class WordExporter:
                 doc.add_paragraph(f"Autores: {authors_text}")
             
             doc.add_paragraph(f"Total de palabras: {info['word_count']:,}")
-            doc.add_paragraph(f"Párrafos: {info['paragraph_count']}")
             doc.add_paragraph(f"Páginas estimadas: {info['estimated_pages']}")
             
             doc.add_paragraph()  # Spacing
