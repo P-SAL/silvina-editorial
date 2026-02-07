@@ -1,7 +1,7 @@
 """
 content_extractor.py
 Extracts structured content from document paragraphs.
-Part of Silvina Editorial Assistant v0.7
+FIXED VERSION - Returns "Autor no identificado" + blacklist headers
 """
 
 from typing import List, Dict, Optional
@@ -12,6 +12,19 @@ from data_access.word_counter import WordCounter, WIN32COM_AVAILABLE
 
 class ContentExtractor:
     """Extracts structured content from raw document paragraphs."""
+    
+    # BLACKLIST: Common section headers that are NOT authors
+    AUTHOR_BLACKLIST = {
+        'RESUMEN', 'ABSTRACT', 'INTRODUCCIÓN', 'INTRODUCTION',
+        'METODOLOGÍA', 'METHODOLOGY', 'MÉTODOS', 'METHODS',
+        'RESULTADOS', 'RESULTS', 'DISCUSIÓN', 'DISCUSSION',
+        'CONCLUSIONES', 'CONCLUSIONS', 'CONCLUSIÓN', 'CONCLUSION',
+        'REFERENCIAS', 'REFERENCES', 'BIBLIOGRAFÍA', 'BIBLIOGRAPHY',
+        'PALABRAS CLAVE', 'KEYWORDS', 'AGRADECIMIENTOS', 'ACKNOWLEDGMENTS',
+        'APÉNDICE', 'APPENDIX', 'ANEXO', 'ANNEX',
+        'TABLA', 'TABLE', 'FIGURA', 'FIGURE',
+        'ÍNDICE', 'INDEX', 'CONTENIDO', 'CONTENTS'
+    }
     
     def __init__(self):
         """Initialize the content extractor."""
@@ -44,7 +57,7 @@ class ContentExtractor:
         # 2. Get initial counts from text
         word_count = sum(len(p.split()) for p in clean_paragraphs)
         char_count = sum(len(p) for p in clean_paragraphs)
-        paragraph_count = len(clean_paragraphs)  # Temporary
+        paragraph_count = len(clean_paragraphs)
 
         # 3. Try to get accurate Word counts
         if docx_path and WIN32COM_AVAILABLE:
@@ -73,12 +86,12 @@ class ContentExtractor:
             paragraphs=clean_paragraphs,
             word_count=word_count,
             char_count=char_count,
-            paragraph_count=paragraph_count  # ✅ Now included
+            paragraph_count=paragraph_count
         )
 
     def _extract_title(self, paragraphs: List[str]) -> Optional[str]:
         """Extract document title."""
-        for para in paragraphs[:10]:  # Check first 10 paragraphs
+        for para in paragraphs[:10]:
             # Check for explicit title marker
             match = re.match(self.section_patterns['title'], para, re.IGNORECASE)
             if match:
@@ -91,29 +104,44 @@ class ContentExtractor:
         return None
     
     def _extract_authors(self, paragraphs: List[str]) -> Optional[str]:
-        """Extract author information from first page after title."""
+        """
+        Extract author information from first page after title.
+        FIXED: Returns "Autor no identificado" if not found.
+        """
         
         # Skip first paragraph (usually title)
         for i, para in enumerate(paragraphs[1:15], start=1):
+            para_stripped = para.strip()
+            para_upper = para_stripped.upper()
+            
+            # BLACKLIST CHECK: Skip if it's a section header
+            if any(header in para_upper for header in self.AUTHOR_BLACKLIST):
+                continue
             
             # Pattern 1: Explicit "Autor:" or "Author:"
             match = re.match(self.section_patterns['authors'], para, re.IGNORECASE)
             if match:
-                return match.group(1).strip()
+                author_text = match.group(1).strip()
+                # Double-check it's not a blacklisted term
+                if not any(bl in author_text.upper() for bl in self.AUTHOR_BLACKLIST):
+                    return author_text
             
             # Pattern 2: Name-like pattern after title
             # Matches: "Adriana Baravalle" or "Juan Pérez, María González"
             if i <= 3:  # Check first 3 paragraphs after title
-                # Check if looks like a name (capitalized words, short)
+                # Check if looks like a name
                 if (len(para.split()) <= 10 and 
                     para[0].isupper() and 
-                    not para.isupper() and  # Not all caps (section header)
+                    not para.isupper() and  # Not all caps
                     not para.endswith(':') and  # Not a label
-                    re.search(r'^[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+', para)):  # Starts with capital
-                    return para.strip()
+                    re.search(r'^[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+', para)):
+                    
+                    # Final blacklist check
+                    if not any(bl in para_upper for bl in self.AUTHOR_BLACKLIST):
+                        return para_stripped
         
-        return None
-
+        # NOT FOUND: Return standard message
+        return "Autor no identificado"
 
     def _extract_abstract(self, paragraphs: List[str]) -> Optional[str]:
         """Extract abstract/resumen."""

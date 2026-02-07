@@ -1,7 +1,7 @@
 """
 quality_analyzer.py
 Analyzes document quality across multiple dimensions using LLM.
-Part of Silvina Editorial Assistant v0.7
+FIXED VERSION - Improved prompt to eliminate hallucinations
 """
 from __future__ import annotations
 
@@ -35,64 +35,73 @@ class QualityAnalyzer:
     def analyze_quality(self, document_content, article_type) -> QualityAnalysisResult:
         print("      ⏳ Analizando con Ollama...")
         
-        # Sample text - INCREASED from 3500 to 8000 for better context
+        # Sample text - strategic sampling
         parts = []
         parts.append(document_content.title or "")
-        parts.extend(document_content.paragraphs[:3])
+        parts.extend(document_content.paragraphs[:3])  # Intro
         mid = len(document_content.paragraphs) // 2
-        parts.extend(document_content.paragraphs[mid:mid+2])
-        parts.extend(document_content.paragraphs[-2:])
-        text_sample = ' '.join(parts)[:8000]  # INCREASED
+        parts.extend(document_content.paragraphs[mid:mid+2])  # Middle
+        parts.extend(document_content.paragraphs[-2:])  # Conclusion
+        text_sample = ' '.join(parts)[:8000]
         
-        prompt = f"""Analiza la calidad editorial de este artículo académico. Para cada dimensión, proporciona un análisis breve (máximo 70 palabras) y específico.
+        # IMPROVED PROMPT - eliminates hallucinations
+        prompt = f"""Eres un revisor editorial académico. Analiza este fragmento de artículo académico en CINCO dimensiones.
 
 TEXTO:
 {text_sample}
 
-FORMATO DE RESPUESTA (5 dimensiones):
+INSTRUCCIONES CRÍTICAS:
+1. SOLO analiza lo que REALMENTE VES en el texto
+2. NO inventes errores que no existen
+3. Si no encuentras errores, di "No se detectaron errores en esta muestra"
+4. Máximo 60 palabras por dimensión
+5. En Normativa: SOLO mencionar errores si los hay (máximo 2 ejemplos REALES)
 
-**1. Normativa**: (Corrección ortográfica y gramatical)
-[Análisis en 70 palabras máximo. Si hay errores, dar máximo 3 ejemplos con: Página, Error, Corrección, Tipo]
+FORMATO DE RESPUESTA:
+
+**1. Normativa**:
+[Si hay errores ortográficos/gramaticales: mencionar MAX 2 ejemplos REALES con página/ubicación. Si NO hay errores: escribir "No se detectaron errores ortográficos o gramaticales en esta muestra."]
 
 **2. Claridad del argumento**:
-[Análisis en 70 palabras máximo]
+[Evaluar si el argumento es claro y comprensible. MAX 60 palabras]
 
 **3. Coherencia**:
-[Análisis en 70 palabras máximo]
+[Evaluar conexión lógica entre ideas. MAX 60 palabras]
 
 **4. Argumentación**:
-[Análisis en 70 palabras máximo]
+[Evaluar solidez de argumentos y evidencia. MAX 60 palabras]
 
 **5. Conclusiones**:
-[Análisis en 70 palabras máximo]
+[Evaluar si hay conclusiones claras. MAX 60 palabras]
 
-INSTRUCCIONES:
-- Máximo 70 palabras por dimensión
-- En Normativa: máximo 3 ejemplos de errores
-- Conciso, específico, tono editorial académico
-- AL FINAL: Añadir "**RECOMENDACIÓN**: [APTO PARA PUBLICACIÓN / NO SE RECOMIENDA PUBLICAR] porque [razón breve]"
+REGLAS ESTRICTAS:
+- NO repitas el mismo comentario en múltiples dimensiones
+- NO inventes problemas
+- Sé específico y objetivo
+- Al final: "**RECOMENDACIÓN**: APTO PARA PUBLICACIÓN" o "NO SE RECOMIENDA PUBLICAR"
 """
 
         try:
             response = self.ollama.generate(
                 model=self.model_name,
                 prompt=prompt,
-                options={'temperature': 0.3, 'num_predict': 1000, 'num_ctx': 4096}
+                options={
+                    'temperature': 0.2,  # Lower = more factual
+                    'num_predict': 800,   # Shorter to avoid repetition
+                    'num_ctx': 4096
+                }
             )
             
             analysis_text = response.get('response', '').strip()
             
-            # Remove unwanted "Nota:" sections
+            # Clean up unwanted sections
             analysis_text = re.sub(r'\n*Nota:.*', '', analysis_text, flags=re.DOTALL | re.IGNORECASE)
             analysis_text = analysis_text.strip()
             
             word_count = len(analysis_text.split())
-            print(f"Generando análisis: {word_count} palabras")
-            print("✅ Análisis completado\n")
-            print(analysis_text)
+            print(f"      ✓ Análisis generado: {word_count} palabras\n")
             
-                        
-            # Parse the LLM response into structured scores
+            # Parse into structured scores
             scores = self._parse_llm_response(analysis_text)
             overall = sum(d["score"] for d in scores.values()) / len(scores)
             quality_level = get_quality_level_from_score(overall)
@@ -112,7 +121,10 @@ INSTRUCCIONES:
             return QualityAnalysisResult(7.0, QualityLevel.ACCEPTABLE, default)
 
     def _parse_llm_response(self, text: str) -> Dict[str, Dict[str, Any]]:
-        """Extract feedback from LLM response - IMPROVED VERSION."""
+        """
+        Extract feedback from LLM response.
+        FIXED VERSION - Better parsing, handles all formats.
+        """
         
         result = {
             "normativa": {"score": 7.0, "feedback": "No disponible"},
@@ -122,30 +134,52 @@ INSTRUCCIONES:
             "conclusiones": {"score": 7.0, "feedback": "No disponible"}
         }
         
-        # IMPROVED: More flexible pattern that handles variations
-        # Matches: **1. Name**: or **1. Name**:
-        # Captures everything until next **number. or end of text
-        pattern = r'\*\*\d+\.\s*([^:*\n]+)\**:\**\s*(.*?)(?=\n\*\*\d+\.|$)'
+        # IMPROVED REGEX: Handles multiple formats
+        
+        pattern = r'\*\*(?:\d+\.\s*)?([^:*\n]+)\**:?\s*\n(.*?)(?=\n\*\*(?:\d+\.)?|\n*$)'
         matches = re.findall(pattern, text, re.DOTALL)
         
         for name, content in matches:
             name_lower = name.strip().lower()
             
-            # Remove **RECOMENDACIÓN** sections
-            clean_content = re.sub(r'\*\*RECOMENDACIÓN\*\*:.*', '', content, flags=re.DOTALL)
-            clean_content = clean_content.strip()
+            # Remove recommendation sections
+            clean_content = re.sub(
+                r'\*\*RECOMENDACIÓN\*\*:.*',
+                '',
+                content,
+                flags=re.DOTALL | re.IGNORECASE
+            )
             
-            # Remove subtitle in parentheses if present
-            clean_content = re.sub(r'^\([^)]+\)\s*', '', clean_content)
+            # Remove subtitle in parentheses
+            clean_content = re.sub(r'^\([^)]+\)\s*', '', clean_content.strip())
             
-            # Limit length
-            clean_content = clean_content[:500]
+            # Normalize whitespace
+            clean_content = ' '.join(clean_content.split())
+                       
+            if len(clean_content) < 10:
+                clean_content = "Análisis no disponible para esta dimensión."
+
+            # Limit length at sentence boundary
             
-            # Only store if we actually got content
-            if len(clean_content) > 10:  # Minimum 10 chars to be valid
+            
+            # Ensure minimum feedback length
+            if len(clean_content) < 10:
+                clean_content = "Análisis no disponible para esta dimensión."
+
+            # Limit length at sentence boundary
+            if len(clean_content) > 500:
+                sentences = clean_content[:500].split('.')
+                if len(sentences) > 1:
+                    clean_content = '.'.join(sentences[:-1]) + '.'
+                else:
+                    clean_content = clean_content[:500] + '...'
+            
+            # Only store if valid content (min 10 chars)
+            if len(clean_content) >= 10:
+                # Map to dimension
                 if "normativ" in name_lower:
                     result["normativa"]["feedback"] = clean_content
-                elif "claridad" in name_lower:
+                elif "claridad" in name_lower or "argumento" in name_lower:
                     result["claridad"]["feedback"] = clean_content
                 elif "coherencia" in name_lower:
                     result["coherencia"]["feedback"] = clean_content
@@ -157,20 +191,20 @@ INSTRUCCIONES:
         return result
 
      
-    # Convenience function
-    def analyze_document_quality(document: DocumentContent,
-                                category: ClassificationCategory,
-                                model_name: str = "llama3-gradient:8b-instruct-1048k-q4_K_M") -> QualityResult:
-        """
-        Analyze document quality using default analyzer.
+# Convenience function
+def analyze_document_quality(document: DocumentContent,
+                            category: ClassificationCategory,
+                            model_name: str = "llama3-gradient:8b-instruct-1048k-q4_K_M") -> QualityResult:
+    """
+    Analyze document quality using default analyzer.
+    
+    Args:
+        document: DocumentContent to analyze
+        category: Article classification
+        model_name: Ollama model to use
         
-        Args:
-            document: DocumentContent to analyze
-            category: Article classification
-            model_name: Ollama model to use
-            
-        Returns:
-            QualityResult
-        """
-        analyzer = QualityAnalyzer(model_name=model_name)
-        return analyzer.analyze_quality(document, document.full_text, category)
+    Returns:
+        QualityResult
+    """
+    analyzer = QualityAnalyzer(model_name=model_name)
+    return analyzer.analyze_quality(document, document.full_text, category)

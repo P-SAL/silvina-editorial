@@ -296,7 +296,8 @@ class EumicVerifier:
         # FIXED: Use enumerate instead of index() to avoid ValueError
         for para_idx, para in enumerate(doc.paragraphs):
             text = para.text.strip()
-            if any(keyword in text.lower() for keyword in ['resumen', 'abstract', 'síntesis']):
+            # More lenient detection - also accept if abstract-like content exists
+            if any(keyword in text.lower() for keyword in ['resumen', 'abstract', 'síntesis', 'sumario']):
                 has_abstract = True
                 # Try to count words in next few paragraphs (likely the abstract content)
                 abstract_text = ""
@@ -305,14 +306,16 @@ class EumicVerifier:
                 abstract_word_count = len(abstract_text.split())
                 break
         
-        if not has_abstract:
+        # Only flag as CRITICAL if completely missing AND document is long enough
+        if not has_abstract and document_content.word_count > 1000:
             self.violations.append(EumicViolation(
                 category="Resumen y Palabras Clave",
                 message="Falta sección de Resumen/Abstract",
                 severity=EumicSeverity.CRITICAL,
                 details="El documento debe incluir un resumen de 150-250 palabras"
             ))
-        elif abstract_word_count < 100 or abstract_word_count > 300:
+        elif has_abstract and (abstract_word_count < 100 or abstract_word_count > 300):
+            # Only WARNING for wrong length
             self.violations.append(EumicViolation(
                 category="Resumen y Palabras Clave",
                 message="Extensión del resumen fuera de rango",
@@ -326,21 +329,23 @@ class EumicVerifier:
         
         for para in doc.paragraphs:
             text = para.text.lower()
-            if any(kw in text for kw in ['palabras clave', 'keywords', 'key words']):
+            if any(kw in text for kw in ['palabras clave', 'keywords', 'key words', 'descriptores']):
                 has_keywords = True
                 # Count keywords (separated by commas or semicolons)
                 keyword_text = text.split(':', 1)[-1] if ':' in text else text
                 keyword_count = len([k for k in re.split(r'[,;]', keyword_text) if k.strip()])
                 break
         
-        if not has_keywords:
+        # Only flag as CRITICAL if completely missing AND document is long enough
+        if not has_keywords and document_content.word_count > 1000:
             self.violations.append(EumicViolation(
                 category="Resumen y Palabras Clave",
                 message="Faltan palabras clave",
                 severity=EumicSeverity.CRITICAL,
                 details="Se requieren 3-5 palabras clave relevantes al contenido"
             ))
-        elif keyword_count < 3 or keyword_count > 5:
+        elif has_keywords and (keyword_count < 3 or keyword_count > 5):
+            # Only WARNING for wrong count
             self.violations.append(EumicViolation(
                 category="Resumen y Palabras Clave",
                 message="Número incorrecto de palabras clave",

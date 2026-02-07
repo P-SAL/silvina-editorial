@@ -56,9 +56,9 @@ class WordExporter:
             doc.add_paragraph(f"Título: {info.get('title', 'No especificado')}")
             
             if info.get('authors'):
-                authors_text = ", ".join(info['authors'])
-                doc.add_paragraph(f"Autores: {authors_text}")
-            
+                doc.add_paragraph(f"Autores: {info['authors']}")
+                    
+                                
             doc.add_paragraph(f"Total de palabras: {info['word_count']:,}")
             doc.add_paragraph(f"Páginas estimadas: {info['estimated_pages']}")
             

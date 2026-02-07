@@ -42,48 +42,84 @@ class WordCounter:
         if not os.path.exists(docx_path):
             return None
         
-        try:
-            # Launch Word
-            self.word_app = win32com.client.Dispatch("Word.Application")
-            # REMOVED DUPLICATE LINE
+        # Try up to 2 times (in case Word is busy)
+        for attempt in range(2):
             try:
-                self.word_app.Visible = False
-            except:
-                pass  # Some Windows versions don't allow setting Visible
-                        
-            
-            # Open document (read-only)
-            self.doc = self.word_app.Documents.Open(
-                os.path.abspath(docx_path),
-                ReadOnly=True
-            )
-            
-            # Get counts
-            char_count = self._get_character_count()
-            word_count = self._get_word_count()
-            paragraph_count = self._get_paragraph_count()
-            
-            # Close document
-            self.doc.Close(False)
-            self.word_app.Quit()
-            
-            return {
-                'char_count': char_count,
-                'word_count': word_count,
-                'paragraph_count': paragraph_count
-            }
-            
-        except Exception as e:
-            print(f"   ⚠ Error obteniendo conteos de Word: {e}")
-            # Clean up
-            try:
-                if self.doc:
-                    self.doc.Close(False)
-                if self.word_app:
-                    self.word_app.Quit()
-            except:
-                pass
-            return None
+                # Kill any existing Word instances that might interfere
+                if attempt == 1:
+                    try:
+                        import pythoncom
+                        pythoncom.CoUninitialize()
+                        pythoncom.CoInitialize()
+                    except:
+                        pass
+                
+                # Launch Word with DispatchEx for isolated instance
+                self.word_app = win32com.client.DispatchEx("Word.Application")
+                self.word_app.DisplayAlerts = 0  # Suppress all alerts
+                
+                try:
+                    self.word_app.Visible = False
+                except:
+                    pass  # Some Windows versions don't allow setting Visible
+                            
+                
+                # Open document (read-only, no updates)
+                self.doc = self.word_app.Documents.Open(
+                    os.path.abspath(docx_path),
+                    ReadOnly=True,
+                    AddToRecentFiles=False,
+                    ConfirmConversions=False
+                )
+                
+                # Get counts
+                char_count = self._get_character_count()
+                word_count = self._get_word_count()
+                paragraph_count = self._get_paragraph_count()
+                
+                # Close document
+                self.doc.Close(False)
+                self.word_app.Quit()
+                
+                # Clean up COM
+                self.word_app = None
+                self.doc = None
+                
+                return {
+                    'char_count': char_count,
+                    'word_count': word_count,
+                    'paragraph_count': paragraph_count
+                }
+                
+            except Exception as e:
+                # Clean up on error
+                try:
+                    if self.doc:
+                        self.doc.Close(False)
+                except:
+                    pass
+                
+                try:
+                    if self.word_app:
+                        self.word_app.Quit()
+                except:
+                    pass
+                
+                # Reset
+                self.word_app = None
+                self.doc = None
+                
+                # If this was the last attempt, report error
+                if attempt == 1:
+                    print(f"   ⚠ No se pudo obtener conteos precisos de Word")
+                    print(f"   ℹ️  Usando conteo aproximado desde python-docx")
+                    return None
+                
+                # Otherwise retry
+                import time
+                time.sleep(0.5)
+        
+        return None
     
     def _get_character_count(self) -> int:
         """Get accurate Word character count (including footnotes/endnotes)."""

@@ -15,17 +15,22 @@ class CitationMatcher:
         self.citations = citations
         self.references = references
         
-        # Build lookup keys
+        # Build lookup keys using normalized author names
         self.citation_keys = {}
         for cit in citations:
-            key = cit.text
+            # Skip footnotes
+            if cit.citation_type.value == 'footnote' or not cit.author:
+                continue
+            
+            # Normalize author name
+            key = self._normalize_author(cit.author)
             self.citation_keys[key] = cit
         
         self.reference_keys = {}
         for ref in references:
-            key = self._ref_key(ref)
+            # Normalize author from reference text
+            key = self._normalize_author(ref.text)
             self.reference_keys[key] = ref
-    
 
     def extract_all_citations(self, doc_path: str, citation_parser) -> List[Citation]:
         """Extract both in-text and footnote citations."""
@@ -45,48 +50,63 @@ class CitationMatcher:
         
         return all_citations
 
-    @staticmethod
-    def _ref_key(reference: Reference) -> str:
-        """Generate matching key with smart organizational handling."""
-        # Remove bullets/dashes
-        clean_text = re.sub(r'^[-–—•]+\s*', '', reference.text)
+    def _normalize_author(self, text: str) -> str:
+        """Extract and normalize author from citation or reference.
         
-        # Try to match organizational pattern with year
-        org_pattern = r'^([A-ZÁ-ÚÑ][A-Za-záéíóúñ\s&,\-]{5,}?)\s+\((\d{4}[a-z]?)'
-        match = re.search(org_pattern, clean_text)
+        Handles two main formats:
+        1. References: "Author, I. (Year). Title..." - author at START
+        2. Citations: "Author (Year)" or "Author et al. (Year)"
+        """
+        import re
         
-        if match:
-            org_name = match.group(1).strip()
-            year = match.group(2)
+        # Step 1: Find the year pattern and extract text before it
+        # Matches: (2021) or (17 de julio de 2021)
+        year_match = re.search(r'\((?:\d{1,2}\s+de\s+\w+\s+de\s+)?\d{4}[a-z]?\)', text)
+        
+        if year_match:
+            # Get everything before the year parenthesis
+            text_before_year = text[:year_match.start()].strip()
             
-            # Check for abbreviation in parentheses
-            abbrev_match = re.search(r'[-–—]\s*([A-Z]{2,})\s*[-–—]', org_name)
-            if abbrev_match:
-                # Use abbreviation: "Central Intelligence Agency -CIA-" → "cia"
-                key_word = abbrev_match.group(1).lower()
-            else:
-                # Use last word: "Ministerio de Economía" → "economía"
-                words = org_name.split()
-                skip_words = {'de', 'del', 'la', 'el', 'los', 'las', 'y'}
-                significant_words = [w for w in words if w.lower() not in skip_words]
-                key_word = significant_words[-1].lower() if significant_words else words[-1].lower()
-            
-            return f"{key_word}_{year}"
+            # For references: author is at the start (before first comma)
+            # For citations: author is the whole text before year
+            author_text = text_before_year
+        else:
+            # Fallback: for in-text citations without year pattern
+            author_text = re.sub(r'\([^)]*\)', '', text).strip()
         
-        # Fallback: personal author
-        match = re.match(r'([A-ZÁ-ÚÑ][a-zá-úñ\-]+)', clean_text)
-        if match:
-            first_author = match.group(1).lower()
-            year = reference.year if hasattr(reference, "year") else "n.d."
-            return f"{first_author}_{year if year else 'unknown'}"
+        # Step 2: Clean up the author text
+        # Remove initials (e.g., "D.", "I.")
+        author_text = re.sub(r'\b[A-ZÁÉÍÓÚÑ]\.\s*', '', author_text)
         
-        return "unknown_unknown"
+        # Remove punctuation
+        author_text = re.sub(r'[,&.()\[\]]', '', author_text)
+        
+        # Replace " y " or " e " or " et al" (Spanish/English "and") with space
+        author_text = re.sub(r'\s+(?:y|e|et\s+al\.?)\s+', ' ', author_text)
+        
+        # Clean up multiple spaces
+        author_text = re.sub(r'\s+', ' ', author_text).strip()
+        
+        # Step 3: Keep only first and last names (ignore middle names)
+        names = author_text.split()
+        if len(names) >= 2:
+            author_text = f"{names[0]} {names[-1]}"
+        elif len(names) == 1:
+            author_text = names[0]
+        
+        return author_text.lower().strip()
     
     def find_orphaned_citations(self) -> List[Citation]:
         """Citations without matching references."""
         orphaned = []
         for cit in self.citations:
-            if cit.text not in self.reference_keys:
+            # Skip footnotes
+            if cit.citation_type.value == 'footnote' or not cit.author:
+                continue
+            
+            # Check normalized author
+            key = self._normalize_author(cit.author)
+            if key not in self.reference_keys:
                 orphaned.append(cit)
         return orphaned
     
@@ -94,7 +114,8 @@ class CitationMatcher:
         """References never cited in text."""
         orphaned = []
         for ref in self.references:
-            if self._ref_key(ref) not in self.citation_keys:
+            key = self._normalize_author(ref.text)
+            if key not in self.citation_keys:
                 orphaned.append(ref)
         return orphaned
     
@@ -145,18 +166,20 @@ class CitationMatcher:
         
         return '\n'.join(report)
     
-    def match_citations_to_references(self, section_type: str):
+    def match_citations_to_references(self, section_type: str = "Referencias"):
         from domain.models import CitationAnalysisResult
-
+                      
+        # Find orphaned citations
         orphaned_citations = self.find_orphaned_citations()
 
+        # Count non-footnote citations
+        valid_citations = [c for c in self.citations if c.citation_type.value != 'footnote' and c.author]
+
         return CitationAnalysisResult(
-            total_citations=len(self.citations),
+            total_citations=len(valid_citations),
             total_references=len(self.references),
-            matched_count=len(self.citations) - len(orphaned_citations),
+            matched_count=max(0, len(valid_citations) - len(orphaned_citations)),
             unmatched_count=len(orphaned_citations),
             citations_by_type={},
-            unmatched_citations=[c.text for c in orphaned_citations]
+            unmatched_citations=[c.text for c in orphaned_citations],
         )
-  
-    

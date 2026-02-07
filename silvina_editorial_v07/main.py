@@ -42,6 +42,7 @@ from presentation.word_exporter import WordExporter, DOCX_AVAILABLE
 
 try:
     from eumic_verifier import verify_eumic_compliance
+    from apa_validator import validate_apa_citations
 except ImportError:
     import sys
     from pathlib import Path
@@ -127,29 +128,43 @@ class SilvinaEditorialAssistant:
             # Step 3: Parse citations and references
             print("\n[3/7] 📚 Analizando citas y referencias...")
 
-            citations = []
-            # 1. Extract Markdown footnotes [^1], [^2], etc.
+            # 1. Extract citations from XML (NEW METHOD - gets ALL citations)
+            citations = self.citation_parser.extract_from_docx(document_path)
+
+            # 2. Extract footnotes (still use doc object)
             footnote_citations = self.citation_parser.extract_footnotes(doc)
-            citations = list(footnote_citations) 
+            citations.extend(footnote_citations)
 
-            # 2. Extract in-text APA citations (Author, Year)
-            for idx, paragraph in enumerate(paragraphs):
-                citations.extend(self.citation_parser.parse(paragraph, idx))
-            
-            # 3. Extract references
-            bibliography_text, section_type = self.reference_parser.extract_from_paragraphs(
-                paragraphs
-            )
-            references, _ = self.reference_parser.parse_section(bibliography_text)
+            # 3. Extract references from XML (NEW METHOD - finds bibliography)
+            references, section_type = self.reference_parser.parse_from_docx(document_path)
+
+            print(f"      ✓ {len(citations)} citas detectadas")
+            print(f"      ✓ {len(references)} referencias detectadas")
             print(f"      ✓ Total: {len(citations)} citas | {len(references)} referencias")
+                                 
+            # 3.5: Validate APA 7 format compliance (NEW)
+            print("\n      🔍 Validando formato APA 7...")
+            from apa_validator import validate_apa_citations
 
-            # If we have references but no detectable citations, warn about format
-            if len(references) > 0 and len(citations) == 0:
-                print(f"      ⚠️  ADVERTENCIA: Documento tiene {len(references)} referencias pero")
-                print(f"         0 citas detectables en texto. Posibles causas:")
-                print(f"         • Usa notas al pie nativas de Word (no detectables)")
-                print(f"         • Formato no cumple APA 7 (debe usar: Autor, Año)")
-                        
+            # Prepare citations for validation (text, location)
+            citation_tuples = [(c.text, c.location) for c in citations if c.citation_type.value == 'author_year']
+
+            # Only validate if we have citations to check
+            if len(citation_tuples) == 0:
+                print(f"      ℹ️  No se detectaron citas en texto para validar formato APA")
+                apa_violations = []
+                apa_report = ""
+            else:
+                # Run validation
+                apa_violations, apa_report = validate_apa_citations(citation_tuples)
+                
+                # Display summary
+                if apa_violations:
+                    print(f"      ⚠️  {len(apa_violations)} errores de formato APA 7 detectados")
+                else:
+                    print(f"      ✅ Formato APA 7 correcto ({len(citation_tuples)} citas validadas)")
+
+                                   
             # Step 4: Classify article
             print("\n[4/7] 🏷️  Clasificando tipo de artículo...")
             classification = self.article_classifier.classify_article(document_content)
@@ -171,6 +186,12 @@ class SilvinaEditorialAssistant:
             structure_result = self.structure_validator.validate_structure(
                 document_content, classification.article_type
             )
+            if len(references) > 0 and "Referencias" in structure_result.missing_sections:
+                structure_result.missing_sections.remove("Referencias")
+            if "Desarrollo" in structure_result.missing_sections:
+                structure_result.missing_sections.remove("Desarrollo")
+            structure_result.is_valid = len(structure_result.missing_sections) == 0
+            
             status = "✓ VÁLIDA" if structure_result.is_valid else "✗ INCOMPLETA"
             print(f"      {status}")
             if structure_result.missing_sections:
@@ -197,7 +218,11 @@ class SilvinaEditorialAssistant:
             if eumic_report:
                 print(eumic_report)
 
-            # ✅ FIX IS HERE: STORE BOTH COUNTS
+             # VERIFICACIÓN APA 7 (solo imprime si hay errores)
+            if apa_violations:
+                print(apa_report)      
+
+            # STORE BOTH COUNTS
             analysis_results = {
                 'filename': Path(document_path).name,
                 'document_info': {
@@ -205,8 +230,6 @@ class SilvinaEditorialAssistant:
                     'authors': document_content.authors,
                     'word_count': document_content.word_count,
                     'char_count': document_content.char_count,
-
-                   
                     'estimated_pages': document_content.word_count // 250
                 },
                 'classification': {
@@ -226,13 +249,29 @@ class SilvinaEditorialAssistant:
                     'details': structure_result.section_details
                 },
                 'citations_analysis': {
-                    'total_citations': citation_analysis.total_citations,
-                    'total_references': citation_analysis.total_references,
-                    'matched_count': citation_analysis.matched_count,
-                    'unmatched_count': citation_analysis.unmatched_count,
-                    'by_type': citation_analysis.citations_by_type,
-                    'unmatched_citations': citation_analysis.unmatched_citations[:20]
-                },
+                'total_citations': citation_analysis.total_citations,
+                'total_references': citation_analysis.total_references,
+                'matched_count': citation_analysis.matched_count,
+                'unmatched_count': citation_analysis.unmatched_count,
+                'by_type': citation_analysis.citations_by_type,
+                'unmatched_citations': citation_analysis.unmatched_citations[:20],
+                'apa_violations': len(apa_violations),  
+                'apa_compliant': len(apa_violations) == 0  
+            },
+                'apa_validation': {  
+                    'violations': [
+                        {
+                            'citation': v.citation_text,
+                            'error_type': v.error_type.value,
+                            'location': v.location,
+                            'explanation': v.explanation,
+                            'correction': v.correction
+                        }
+                        for v in apa_violations
+                    ],
+                    'report': apa_report
+            },
+                
                 'recommendations': self._generate_recommendations(
                     classification,
                     quality_result,
@@ -420,7 +459,7 @@ def main():
         base_name = Path(document_path).stem
         output_dir = Path(document_path).parent
         
-        text_report_path = output_dir / f"{base_name}_analisis.txt"
+        # text_report_path = output_dir / f"{base_name}_analisis.txt"
         word_report_path = output_dir / f"{base_name}_analisis.docx"
         json_report_path = output_dir / f"{base_name}_analisis.json"
         
@@ -429,7 +468,7 @@ def main():
         print("📊 GENERANDO REPORTES")
         print("=" * 80 + "\n")
         
-        silvina.save_text_report(results, str(text_report_path))
+        # silvina.save_text_report(results, str(text_report_path))
         silvina.save_word_report(results, str(word_report_path))
         silvina.save_json_report(results, str(json_report_path))
         
