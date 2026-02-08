@@ -24,7 +24,6 @@ class APAErrorType(Enum):
     YEAR_FORMAT_ERROR = "Formato de año incorrecto"
     PARENTHESES_ERROR = "Paréntesis incorrectos"
 
-
 @dataclass
 class APAViolation:
     """Represents an APA format violation"""
@@ -33,6 +32,7 @@ class APAViolation:
     location: int  # Paragraph index
     explanation: str
     correction: str
+    paragraph_preview: str = ""  # First 30 chars of paragraph
 
 
 class APAValidator:
@@ -57,7 +57,7 @@ class APAValidator:
             'page_multiple': 'pp.',
         }
     
-    def validate_citation(self, citation_text: str, paragraph_index: int) -> List[APAViolation]:
+    def validate_citation(self, citation_text: str, paragraph_index: int, paragraph_text: str = "") -> List[APAViolation]:
         """
         Validate a single citation for APA 7 compliance.
         
@@ -69,18 +69,21 @@ class APAValidator:
             List of violations found (empty if compliant)
         """
         violations = []
-        
+                
         # Determine citation type
         is_parenthetical = citation_text.startswith('(') and citation_text.endswith(')')
         
+        # Create preview (first 30 chars)
+        preview = paragraph_text[:30] + "..." if len(paragraph_text) > 30 else paragraph_text
+
         if is_parenthetical:
-            violations.extend(self._validate_parenthetical(citation_text, paragraph_index))
+            violations.extend(self._validate_parenthetical(citation_text, paragraph_index, preview))
         else:
-            violations.extend(self._validate_narrative(citation_text, paragraph_index))
-        
+            violations.extend(self._validate_narrative(citation_text, paragraph_index, preview))
+
         return violations
     
-    def _validate_parenthetical(self, citation: str, location: int) -> List[APAViolation]:
+    def _validate_parenthetical(self, citation: str, location: int, preview: str = "") -> List[APAViolation]:
         """Validate parenthetical citation: (Author, Year)"""
         violations = []
         
@@ -94,9 +97,10 @@ class APAValidator:
                 error_type=APAErrorType.CONJUNCTION_ERROR,
                 location=location,
                 explanation='APA 7 español requiere "y" en lugar de "&" para citas parentéticas',
-                correction=citation.replace(' & ', ' y ')
+                correction=citation.replace(' & ', ' y '),
+                paragraph_preview=preview
             ))
-        
+                                
         # Check 2: Missing comma between author and year
         # Pattern: (Author Year) instead of (Author, Year)
         pattern_no_comma = r'\(([A-ZÁÉÍÓÚÑ][a-záéíóúñA-ZÁÉÍÓÚÑ\-]+)\s+(\d{4}[a-z]?)\)'
@@ -108,7 +112,8 @@ class APAValidator:
                 error_type=APAErrorType.COMMA_ERROR,
                 location=location,
                 explanation='Falta coma entre autor y año',
-                correction=f'({author}, {year})'
+                correction=f'({author}, {year})',
+                paragraph_preview=preview
             ))
         
         # Check 3: Lowercase author name
@@ -120,7 +125,8 @@ class APAValidator:
                 error_type=APAErrorType.CAPITALIZATION_ERROR,
                 location=location,
                 explanation='El apellido debe comenzar con mayúscula',
-                correction=citation.capitalize()  # Simplified
+                correction=citation.capitalize(),  # Simplified
+                paragraph_preview=preview
             ))
         
         # Check 4: Et al. format errors
@@ -132,7 +138,8 @@ class APAValidator:
                     error_type=APAErrorType.ET_AL_FORMAT_ERROR,
                     location=location,
                     explanation='Formato incorrecto: debe ser "et al." (sin punto en "et")',
-                    correction=citation.replace('et. al', 'et al')
+                    correction=citation.replace('et. al', 'et al'),
+                    paragraph_preview=preview
                 ))
             
             # Check for missing period after "al"
@@ -142,7 +149,8 @@ class APAValidator:
                     error_type=APAErrorType.ET_AL_FORMAT_ERROR,
                     location=location,
                     explanation='Falta punto después de "al": debe ser "et al."',
-                    correction=citation.replace('et al', 'et al.')
+                    correction=citation.replace('et al', 'et al.'),
+                    paragraph_preview=preview
                 ))
         
         # Check 5: Page format errors
@@ -152,7 +160,8 @@ class APAValidator:
                 error_type=APAErrorType.PAGE_FORMAT_ERROR,
                 location=location,
                 explanation='Usar abreviatura en inglés: "p." para página única, "pp." para múltiples',
-                correction=citation.replace('pág.', 'p.').replace('págs.', 'pp.')
+                correction=citation.replace('pág.', 'p.').replace('págs.', 'pp.'),
+                paragraph_preview=preview
             ))
         
         # Check 6: Excessive spacing
@@ -162,12 +171,13 @@ class APAValidator:
                 error_type=APAErrorType.SPACING_ERROR,
                 location=location,
                 explanation='Espaciado excesivo detectado',
-                correction=' '.join(citation.split())
+                correction=' '.join(citation.split()),
+                paragraph_preview=preview
             ))
         
         return violations
     
-    def _validate_narrative(self, citation: str, location: int) -> List[APAViolation]:
+    def _validate_narrative(self, citation: str, location: int, preview: str = "") -> List[APAViolation]:
         """Validate narrative citation: Author (Year)"""
         violations = []
         
@@ -188,7 +198,8 @@ class APAValidator:
                 error_type=APAErrorType.CONJUNCTION_ERROR,
                 location=location,
                 explanation='APA 7 español requiere "y" en lugar de "&" para citas narrativas',
-                correction=citation.replace(' & ', ' y ')
+                correction=citation.replace(' & ', ' y '),
+                paragraph_preview=preview
             ))
         
         # Check 2: Et al. format
@@ -199,7 +210,8 @@ class APAValidator:
                     error_type=APAErrorType.ET_AL_FORMAT_ERROR,
                     location=location,
                     explanation='Formato incorrecto: debe ser "et al." (sin punto en "et")',
-                    correction=citation.replace('et. al', 'et al')
+                    correction=citation.replace('et. al', 'et al'),
+                    paragraph_preview=preview
                 ))
         
         # Check 3: Space before parenthesis
@@ -209,25 +221,26 @@ class APAValidator:
                 error_type=APAErrorType.SPACING_ERROR,
                 location=location,
                 explanation='Debe haber un espacio entre el autor y el año',
-                correction=re.sub(r'([A-Za-z])\(', r'\1 (', citation)
+                correction=re.sub(r'([A-Za-z])\(', r'\1 (', citation),
+                paragraph_preview=preview
             ))
         
         return violations
     
-    def validate_all_citations(self, citations: List[Tuple[str, int]]) -> List[APAViolation]:
+    def validate_all_citations(self, citations: List[Tuple[str, int, str]]) -> List[APAViolation]:
         """
         Validate multiple citations.
         
         Args:
-            citations: List of (citation_text, paragraph_index) tuples
+            citations: List of (citation_text, paragraph_index, paragraph_text) tuples
             
         Returns:
             List of all violations found
         """
         all_violations = []
         
-        for citation_text, location in citations:
-            violations = self.validate_citation(citation_text, location)
+        for citation_text, location, paragraph_text in citations:
+            violations = self.validate_citation(citation_text, location, paragraph_text)
             all_violations.extend(violations)
         
         return all_violations
@@ -260,7 +273,10 @@ class APAValidator:
         for error_type, error_list in by_type.items():
             report += f"\n🔴 {error_type.upper()} ({len(error_list)}):\n"
             for i, violation in enumerate(error_list[:5], 1):  # Show max 5 per type
-                report += f"   {i}. Ubicación: Párrafo {violation.location + 1}\n"
+                if violation.paragraph_preview:
+                    report += f"   {i}. Ubicación: \"{violation.paragraph_preview}\"\n"
+                else:
+                    report += f"   {i}. Ubicación: Párrafo {violation.location + 1}\n"
                 report += f"      Citación: {violation.citation_text}\n"
                 report += f"      Problema: {violation.explanation}\n"
                 report += f"      Corrección: {violation.correction}\n"
@@ -273,7 +289,7 @@ class APAValidator:
         return report
 
 
-def validate_apa_citations(citations: List[Tuple[str, int]]) -> Tuple[List[APAViolation], str]:
+def validate_apa_citations(citations: List[Tuple[str, int, str]]) -> Tuple[List[APAViolation], str]:
     """
     Convenience function to validate citations and get report.
     

@@ -67,7 +67,7 @@ class ContentExtractor:
                 word_count = accurate_counts['word_count']
                 char_count = accurate_counts['char_count']
                 paragraph_count = accurate_counts['paragraph_count']
-                print(f"      ✓ Conteos precisos obtenidos desde Word")
+                
         
         # 4. Extract structured fields
         title = self._extract_title(clean_paragraphs)

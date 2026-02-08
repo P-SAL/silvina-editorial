@@ -163,13 +163,14 @@ class EumicVerifier:
                 figure_captions.append(text)
         
         if len(figure_captions) < image_count:
+            img_text = "imagen detectada" if image_count == 1 else "imágenes detectadas"
             self.violations.append(EumicViolation(
                 category="Figuras",
-                message="Figuras sin título descriptivo",
+                message="Figuras sin título formal",
                 severity=EumicSeverity.WARNING,
-                details=f"{image_count} imágenes detectadas, {len(figure_captions)} títulos encontrados"
+                details=f"{image_count} {img_text}. Se requiere formato \"Figura 1. Título descriptivo\" según normas APA"
             ))
-        
+
         # Check numbering (Figura 1, Figura 2, etc.)
         numbered_correctly = True
         expected_num = 1

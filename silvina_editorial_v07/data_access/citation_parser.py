@@ -22,9 +22,6 @@ class CitationParser:
         """
         Extract citations directly from DOCX XML with proper HTML decoding.
         
-        This method is CRITICAL because python-docx's paragraph.text loses
-        HTML entities like &amp; which breaks author name detection.
-        
         Args:
             docx_path: Path to .docx file
             
@@ -32,27 +29,40 @@ class CitationParser:
             List of Citation objects
         """
         try:
-            # Extract raw XML from the DOCX (which is a ZIP file)
+            # Extract raw XML from the DOCX
             with zipfile.ZipFile(docx_path, 'r') as zip_ref:
                 doc_xml = zip_ref.read('word/document.xml').decode('utf-8')
             
-            # Extract all text elements from XML
-            text_pattern = r'<w:t[^>]*>([^<]+)</w:t>'
-            all_texts = re.findall(text_pattern, doc_xml)
+            # Parse XML properly
+            import xml.etree.ElementTree as ET
+            root = ET.fromstring(doc_xml)
             
-            # CRITICAL: Decode HTML entities (&amp; -> &, etc.)
-            all_texts = [html.unescape(text) for text in all_texts]
+            # Define namespace
+            ns = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
             
-            # Join into full document text
-            full_text = ' '.join(all_texts)
             
+            # Extract text paragraph by paragraph
+            paragraphs = []
+            for para in root.findall('.//w:p', ns):
+                texts = []
+                for t in para.findall('.//w:t', ns):
+                    if t.text:
+                        texts.append(html.unescape(t.text))
+                para_text = ''.join(texts)  # Join within paragraph (no spaces needed)
+                if para_text.strip():
+                    paragraphs.append(para_text)
+            
+            # Join paragraphs with space
+            full_text = ' '.join(paragraphs)
+            
+                       
             # Extract citations from full text
             return self._extract_citations(full_text)
             
         except Exception as e:
-            print(f"      ⚠️  Error extracting citations from XML: {e}")
+            print(f"      ⚠️ Error extracting citations from XML: {e}")
             return []
-    
+
     def _extract_citations(self, full_text: str) -> List[Citation]:
         """
         Extract all APA citations from document text.
@@ -99,46 +109,95 @@ class CitationParser:
                 ))
         
         # ========== NARRATIVE CITATIONS ==========
-        # Pattern: Author Name (Year)
-        # Craig & Snook (2023) | Hansen y Keltner (2023)
         
-        narrative_pattern = r'\b([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\s+[ye&]\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+)+)\s+\((\d{4}[a-z]?)\)'
+        # Initialize tracking dictionaries
+        multi_author_names = {}
+        first_authors_by_year = {}
         
-        for match in re.finditer(narrative_pattern, full_text):
+        # Pre-process: Extract first authors from parenthetical multi-author citations
+        # This prevents false positives like "Dhingra (2021)" when we already have 
+        # "(Dhingra, Samo, Schaninger, & Schrimper, 2021)"
+        for cite in citations:
+            if cite.text.startswith('(') and ('&' in cite.author or ',' in cite.author):
+                # Multi-author parenthetical - get first author
+                first_author = re.match(r'([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+)', cite.author)
+                if first_author:
+                    if cite.year not in first_authors_by_year:
+                        first_authors_by_year[cite.year] = set()
+                    first_authors_by_year[cite.year].add(first_author.group(1))
+        
+        # Pattern 1: Multi-author narrative citations
+        # "Craig y Snook (2023)" | "Hansen y Keltner (2023)" | "Ramos e Iñaki Vélaez (2023)"
+        
+        narrative_multi = r'(?<![a-záéíóúñ])\b([A-ZÁÉÍÓÚÑ][a-záéíóúñA-ZÁÉÍÓÚÑ]+(?:\s+[ye&]\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñA-ZÁÉÍÓÚÑ\s]+?)+)\s+\((\d{4}[a-z]?)\)'
+        
+        for match in re.finditer(narrative_multi, full_text):
             author = match.group(1).strip()
             year = match.group(2)
+            
+            # Skip if too long (captured too much context)
+            if len(author) > 100:
+                continue
+            
+            # Skip if starts with common intro phrases
+            if re.match(r'^(Como|Según|Si|No|En|El|La|Los|Las|Un|Una)\s', author, re.IGNORECASE):
+                continue
             
             citation_key = f"{author}|{year}"
             if citation_key not in seen:
                 seen.add(citation_key)
-                citations.append(Citation(
-                    text=f"{author} ({year})",
-                    citation_type=CitationType.AUTHOR_YEAR,
-                    location=-1,
-                    author=author,
-                    year=year
-                ))
-        
-        # Single author narrative (only specific cases, not last names from multi-author)
-        single_author_pattern = r'\b(Schein|Coleman)\s+\((\d{4}[a-z]?)\)'
-
-        for match in re.finditer(single_author_pattern, full_text):
-            author = match.group(1).strip()
-            year = match.group(2)
-            
-            citation_key = f"{author}|{year}"
-            if citation_key not in seen:
-                seen.add(citation_key)
-                citations.append(Citation(
-                    text=f"{author} ({year})",
-                    citation_type=CitationType.AUTHOR_YEAR,
-                    location=-1,
-                    author=author,
-                    year=year
-                ))
                 
+                # Store all individual authors from this citation to avoid duplicates
+                individual_authors = re.findall(r'[A-ZÁÉÍÓÚÑ][a-záéíóúñA-ZÁÉÍÓÚÑ]+', author)
+                if year not in multi_author_names:
+                    multi_author_names[year] = set()
+                multi_author_names[year].update(individual_authors)
+                
+                citations.append(Citation(
+                    text=f"{author} ({year})",
+                    citation_type=CitationType.AUTHOR_YEAR,
+                    location=-1,
+                    author=author,
+                    year=year
+                ))
+        
+        # Pattern 2: Single author narrative citations
+        # "Coleman (2023)" | "Schein (1982)"
+        # But NOT if they're already part of a multi-author citation
+
+        single_narrative = r'(?<![(\[])\b([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+)\s+\((\d{4}[a-z]?)\)'
+
+        
+        for match in re.finditer(single_narrative, full_text):
+            author = match.group(1).strip()
+            year = match.group(2)
+            
+            # Check 1: First author of multi-work?
+            if year in first_authors_by_year and author in first_authors_by_year[year]:
+                continue
+            
+            # Check 2: Already in a multi-author narrative?
+            if year in multi_author_names and author in multi_author_names[year]:
+                continue
+            
+            # Check 3: Already added?
+            citation_key = f"{author}|{year}"
+            if citation_key in seen:
+                continue
+            
+            # All checks passed - add it!
+            seen.add(citation_key)
+            citations.append(Citation(
+                text=f"{author} ({year})",
+                citation_type=CitationType.AUTHOR_YEAR,
+                location=-1,
+                author=author,
+                year=year
+            ))
+              
         return citations
-    
+
+
     def extract_footnotes(self, doc) -> List[Citation]:
         """
         Extract Word footnote references from document.
@@ -216,19 +275,20 @@ class CitationParser:
                     year=year
                 ))
         
-        # Narrative citations
-        narrative_pattern = r'\b([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\s+[ye&]\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+)+)\s+\((\d{4}[a-z]?)\)'
+        # Narrative citations (simplified for single paragraph)
+        narrative_pattern = r'\b([A-ZÁÉÍÓÚÑ][a-záéíóúñA-ZÁÉÍÓÚÑ\s]+?)\s+\((\d{4}[a-z]?)\)'
         
         for match in re.finditer(narrative_pattern, text):
             author = match.group(1).strip()
             year = match.group(2)
             
-            citations.append(Citation(
-                text=f"{author} ({year})",
-                citation_type=CitationType.AUTHOR_YEAR,
-                location=paragraph_index,
-                author=author,
-                year=year
-            ))
+            if len(author) < 100:  # Sanity check
+                citations.append(Citation(
+                    text=f"{author} ({year})",
+                    citation_type=CitationType.AUTHOR_YEAR,
+                    location=paragraph_index,
+                    author=author,
+                    year=year
+                ))
         
         return citations
