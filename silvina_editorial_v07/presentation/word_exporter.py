@@ -1,21 +1,25 @@
 """
 word_exporter.py
-Export analysis results to Word (.docx) format.
+Export analysis results to professionally formatted Word (.docx) document.
+PROFESSIONAL VERSION - Tables, colors, proper formatting
 """
-
 try:
     from docx import Document
     from docx.shared import Pt, RGBColor, Inches
     from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.enum.table import WD_ALIGN_VERTICAL  # CORRECT location
+    from docx.oxml.ns import qn
+    from docx.oxml import OxmlElement
     DOCX_AVAILABLE = True
 except ImportError:
     DOCX_AVAILABLE = False
 
 from typing import Dict, Any
+from datetime import datetime
 
 
 class WordExporter:
-    """Export analysis results to formatted Word document."""
+    """Export analysis results to professionally formatted Word document."""
     
     def __init__(self):
         if not DOCX_AVAILABLE:
@@ -23,7 +27,7 @@ class WordExporter:
     
     def export_to_word(self, analysis_results: Dict[str, Any], output_path: str) -> bool:
         """
-        Export analysis to Word document.
+        Export analysis to professionally formatted Word document.
         
         Args:
             analysis_results: Dictionary with all analysis data
@@ -33,232 +37,95 @@ class WordExporter:
             True if successful, False otherwise
         """
         try:
+          
             doc = Document()
+
+            # Set default font and spacing for entire document
+            style = doc.styles['Normal']
+            font = style.font
+            font.name = 'Calibri'
+            font.size = Pt(12)  # Increased from 11 to 12
+           
+            # Set line spacing to 1.15 (tighter)
+            paragraph_format = style.paragraph_format
+            paragraph_format.line_spacing = 1.15
+            paragraph_format.space_after = Pt(0)
+            paragraph_format.space_before = Pt(0)
+                        
+            # Add logo to header (all pages)
+            import os
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            logo_path = os.path.join(script_dir, '..', 'assets', 'logo.jpg')
+
+            print(f"      DEBUG: script_dir = {script_dir}")
+            print(f"      DEBUG: logo_path = {logo_path}")
+            print(f"      DEBUG: exists = {os.path.exists(logo_path)}")
+
+            if os.path.exists(logo_path):
+                self._add_header_logo(doc, logo_path)
+            else:
+                print(f"      ⚠️  Logo not found at: {logo_path}")
             
+            # Add page numbers to footer
+            self._add_page_numbers(doc)            
+                                    
             # ============================================================
-            # HEADER
+            # TITLE PAGE with Executive Summary (no page break)
             # ============================================================
-            title = doc.add_heading('INFORME DE ANÁLISIS EDITORIAL', 0)
-            title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            self._add_title_page(doc, analysis_results)
+                           
+
+            # ============================================================
+            # EXECUTIVE SUMMARY
+            # ============================================================
+            self._add_executive_summary(doc, analysis_results)
             
-            subtitle = doc.add_heading('Silvina Editorial Assistant v0.7', level=2)
-            subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            
-            doc.add_paragraph()  # Spacing
             
             # ============================================================
             # DOCUMENT INFO
             # ============================================================
-            doc.add_heading('📄 Información del Documento', level=1)
-            info = analysis_results['document_info']
-            
-            doc.add_paragraph(f"Archivo: {analysis_results['filename']}")
-            doc.add_paragraph(f"Título: {info.get('title', 'No especificado')}")
-            
-            if info.get('authors'):
-                doc.add_paragraph(f"Autores: {info['authors']}")
-                    
-                                
-            doc.add_paragraph(f"Total de palabras: {info['word_count']:,}")
-            doc.add_paragraph(f"Páginas estimadas: {info['estimated_pages']}")
-            
-            doc.add_paragraph()  # Spacing
-            
-            # ============================================================
-            # PUBLISHABILITY DECISION - MOST IMPORTANT SECTION
-            # ============================================================
-            doc.add_heading('🎯 DECISIÓN DE PUBLICACIÓN', level=1)
-            
-            can_publish, reason = self._determine_publishability(analysis_results)
-            
-            # Create decision paragraph with colored text
-            decision_para = doc.add_paragraph()
-            decision_run = decision_para.add_run(
-                "✅ RECOMENDACIÓN: APTO PARA PUBLICACIÓN" if can_publish 
-                else "❌ RECOMENDACIÓN: REQUIERE REVISIÓN ANTES DE PUBLICACIÓN"
-            )
-            decision_run.bold = True
-            decision_run.font.size = Pt(14)
-            decision_run.font.color.rgb = RGBColor(0, 128, 0) if can_publish else RGBColor(192, 0, 0)
-            
-            doc.add_paragraph()
-            
-            # Justification
-            justification = doc.add_paragraph()
-            justification.add_run("Justificación: ").bold = True
-            justification.add_run(reason)
-            
-            doc.add_paragraph()  # Spacing
+            self._add_document_info(doc, analysis_results)
             
             # ============================================================
             # CLASSIFICATION
             # ============================================================
-            doc.add_heading('🏷️ Clasificación del Artículo', level=1)
-            classification = analysis_results['classification']
-            
-            category_name = self._format_category(classification['category'])
-            doc.add_paragraph(f"Categoría: {category_name}")
-            doc.add_paragraph(f"Confianza: {classification['confidence']:.1%}")
-            
-            if classification.get('reasoning'):
-                reasoning = doc.add_paragraph()
-                reasoning.add_run("Razonamiento: ").bold = True
-                reasoning.add_run(classification['reasoning'])
-            
-            doc.add_paragraph()  # Spacing
+            self._add_classification(doc, analysis_results)
             
             # ============================================================
             # QUALITY ANALYSIS
             # ============================================================
-            doc.add_heading('⭐ Análisis de Calidad', level=1)
-            quality = analysis_results['quality_analysis']
+            self._add_quality_analysis(doc, analysis_results)
             
-            # Overall score
-            score_para = doc.add_paragraph()
-            score_para.add_run("Puntuación general: ").bold = True
-            score_run = score_para.add_run(f"{quality['overall_score']:.1f}/10.0")
-            score_run.bold = True
             
-            # Quality level
-            level_text = self._format_quality_level(quality['quality_level'])
-            level_para = doc.add_paragraph()
-            level_para.add_run("Nivel de calidad: ").bold = True
-            level_para.add_run(level_text)
+            # ============================================================
+            # GRAMMAR & SPELLING
+            # ============================================================
+            self._add_grammar_analysis(doc, analysis_results)
             
-            # Dimension scores
-            if quality.get('dimensions'):
-                doc.add_paragraph()
-                doc.add_paragraph("Puntuación por dimensión:").bold = True
-                
-                for dim_name, dim_data in quality['dimensions'].items():
-                    score = dim_data.get('score', 0)
-                    feedback = dim_data.get('feedback', '')
-                    
-                    dim_para = doc.add_paragraph(style='List Bullet')
-                    dim_para.add_run(f"{dim_name.capitalize()}: ").bold = True
-                    dim_para.add_run(f"{score:.1f}/10.0")
-                    
-                    if feedback:
-                        feedback_para = doc.add_paragraph(f"  → {feedback}", style='List Bullet 2')
-            
-            doc.add_paragraph()  # Spacing
+            # ============================================================
+            # APA VALIDATION
+            # ============================================================
+            self._add_apa_validation(doc, analysis_results)
             
             # ============================================================
             # STRUCTURE VALIDATION
             # ============================================================
-            doc.add_heading('📋 Validación de Estructura', level=1)
-            structure = analysis_results['structure_validation']
-            
-            # Status
-            status_para = doc.add_paragraph()
-            if structure['is_valid']:
-                status_run = status_para.add_run("✓ Estructura válida según normas EUMIC")
-                status_run.font.color.rgb = RGBColor(0, 128, 0)
-            else:
-                status_run = status_para.add_run("✗ Estructura incompleta")
-                status_run.font.color.rgb = RGBColor(192, 0, 0)
-            status_run.bold = True
-            
-            # Missing sections
-            if structure.get('missing_sections'):
-                doc.add_paragraph()
-                doc.add_paragraph("Secciones faltantes:").bold = True
-                for section in structure['missing_sections']:
-                    doc.add_paragraph(f"• {section}", style='List Bullet')
-            
-            # Section details
-            if structure.get('details'):
-                doc.add_paragraph()
-                doc.add_paragraph("Detalle de secciones:").bold = True
-                for section_name, section_info in structure['details'].items():
-                    status_icon = "✓" if section_info.get('present') else "✗"
-                    doc.add_paragraph(f"{status_icon} {section_name}", style='List Bullet')
-            
-            doc.add_paragraph()  # Spacing
+            self._add_structure_validation(doc, analysis_results)
             
             # ============================================================
             # CITATIONS ANALYSIS
             # ============================================================
-            doc.add_heading('📚 Análisis de Citas y Referencias', level=1)
-            citations = analysis_results['citations_analysis']
-            
-            doc.add_paragraph(f"Total de citas en el texto: {citations['total_citations']}")
-            doc.add_paragraph(f"Total de referencias bibliográficas: {citations['total_references']}")
-            doc.add_paragraph(f"Citas con referencia encontrada: {citations['matched_count']}")
-            doc.add_paragraph(f"Citas sin referencia: {citations['unmatched_count']}")
-            
-            # Match rate
-            if citations['total_citations'] > 0:
-                match_rate = citations['matched_count'] / citations['total_citations'] * 100
-                rate_para = doc.add_paragraph()
-                rate_para.add_run("Tasa de coincidencia: ").bold = True
-                rate_run = rate_para.add_run(f"{match_rate:.1f}%")
-                
-                if match_rate >= 90:
-                    rate_run.font.color.rgb = RGBColor(0, 128, 0)
-                elif match_rate >= 70:
-                    rate_run.font.color.rgb = RGBColor(255, 140, 0)
-                else:
-                    rate_run.font.color.rgb = RGBColor(192, 0, 0)
-            
-            # Citations by type
-            if citations.get('by_type'):
-                doc.add_paragraph()
-                doc.add_paragraph("Distribución por tipo de cita:").bold = True
-                for cite_type, count in citations['by_type'].items():
-                    doc.add_paragraph(f"• {cite_type}: {count}", style='List Bullet')
-            
-            # Unmatched citations (first 10)
-            if citations.get('unmatched_citations'):
-                doc.add_paragraph()
-                doc.add_paragraph("Primeras citas sin referencia (máximo 10):").bold = True
-                
-                for i, unmatched in enumerate(citations['unmatched_citations'][:10], 1):
-                    citation_text = unmatched
-                    doc.add_paragraph(f"{i}. {citation_text}", style='List Bullet')
-            
-            doc.add_paragraph()  # Spacing
+            self._add_citations_analysis(doc, analysis_results)
             
             # ============================================================
             # RECOMMENDATIONS
             # ============================================================
-            if analysis_results.get('recommendations'):
-                doc.add_heading('💡 Recomendaciones', level=1)
-                
-                recommendations = analysis_results['recommendations']
-                
-                # Group by priority
-                high_priority = [r for r in recommendations if r.get('priority') == 'alta']
-                medium_priority = [r for r in recommendations if r.get('priority') == 'media']
-                low_priority = [r for r in recommendations if r.get('priority') == 'baja']
-                
-                if high_priority:
-                    doc.add_paragraph("Prioridad Alta:").bold = True
-                    for rec in high_priority:
-                        para = doc.add_paragraph(rec['message'], style='List Bullet')
-                        para.runs[0].font.color.rgb = RGBColor(192, 0, 0)
-                
-                if medium_priority:
-                    doc.add_paragraph()
-                    doc.add_paragraph("Prioridad Media:").bold = True
-                    for rec in medium_priority:
-                        para = doc.add_paragraph(rec['message'], style='List Bullet')
-                        para.runs[0].font.color.rgb = RGBColor(255, 140, 0)
-                
-                if low_priority:
-                    doc.add_paragraph()
-                    doc.add_paragraph("Prioridad Baja:").bold = True
-                    for rec in low_priority:
-                        doc.add_paragraph(rec['message'], style='List Bullet')
+            self._add_recommendations(doc, analysis_results)
             
             # ============================================================
             # FOOTER
             # ============================================================
-            doc.add_paragraph()
-            doc.add_paragraph("─" * 60)
-            footer = doc.add_paragraph()
-            footer.add_run("Generado por Silvina Editorial Assistant v0.7").italic = True
-            footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            self._add_footer(doc)
             
             # Save document
             doc.save(output_path)
@@ -270,97 +137,506 @@ class WordExporter:
             traceback.print_exc()
             return False
     
+    def _add_title_page(self, doc, results):
+        """Add professional title page matching EUMIC style."""
+        # DON'T add "Generado por..." here anymore - it's in the header
+        
+        # Main title (centered, large, blue with underline)
+        title = doc.add_heading('INFORME DE ANÁLISIS EDITORIAL', 0)
+        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        for run in title.runs:
+            run.font.size = Pt(22)
+            run.font.color.rgb = RGBColor(0, 51, 102)
+            run.font.bold = True
+            run.font.underline = True
+        
+        doc.add_paragraph()  # Space
+        
+        # Document name (centered, bold)
+        doc_name = doc.add_paragraph()
+        doc_name.add_run(results['filename']).bold = True
+        doc_name.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        doc_name.runs[0].font.size = Pt(12)
+
+    def _add_header_logo(self, doc, logo_path: str):
+        """Add logo and text to header (appears on all pages)."""
+        try:
+            import os
+            if not os.path.exists(logo_path):
+                print(f"      ⚠️ Logo no encontrado")
+                return
+            
+            # Access the header
+            section = doc.sections[0]
+            header = section.header
+            
+            # Clear existing content
+            header.paragraphs[0].clear()
+            
+            # Create table for two-column layout
+            table = header.add_table(rows=1, cols=2, width=Inches(6.5))
+            
+            # Left cell - "Generado por..." text
+            left_cell = table.rows[0].cells[0]
+            left_cell.width = Inches(4.5)
+            left_cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER  # ADD THIS
+            left_para = left_cell.paragraphs[0]
+            left_para.alignment = WD_ALIGN_PARAGRAPH.LEFT
+            
+            # Add text
+            run = left_para.add_run('Generado por Silvina Revisor Editorial v0.7\n')
+            run.italic = True
+            run.font.size = Pt(9)
+            run.font.color.rgb = RGBColor(128, 128, 128)
+            
+            # Add date
+            date_run = left_para.add_run(datetime.now().strftime('%d de %B de %Y'))
+            date_run.font.size = Pt(9)
+            date_run.font.color.rgb = RGBColor(128, 128, 128)
+            
+            # Right cell - Logo
+            right_cell = table.rows[0].cells[1]
+            right_cell.width = Inches(2.0)
+            right_cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER  # ADD THIS
+            right_para = right_cell.paragraphs[0]
+            right_para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                        
+            # Add logo
+            logo_run = right_para.add_run()
+            logo_run.add_picture(logo_path, width=Inches(1.8))
+            
+            # Remove table borders
+            from docx.oxml import OxmlElement
+            from docx.oxml.ns import qn
+            
+            tbl = table._element
+            tblPr = tbl.tblPr
+            if tblPr is None:
+                tblPr = OxmlElement('w:tblPr')
+                tbl.insert(0, tblPr)
+            
+            tblBorders = OxmlElement('w:tblBorders')
+            for border_name in ['top', 'left', 'bottom', 'right', 'insideH', 'insideV']:
+                border = OxmlElement(f'w:{border_name}')
+                border.set(qn('w:val'), 'none')
+                border.set(qn('w:sz'), '0')
+                border.set(qn('w:space'), '0')
+                border.set(qn('w:color'), 'auto')
+                tblBorders.append(border)
+            tblPr.append(tblBorders)
+            
+            print(f"      ✅ Logo agregado exitosamente")
+            
+        except Exception as e:
+            print(f"      ⚠️ Error al agregar logo: {e}")
+
+    def _add_page_numbers(self, doc):
+        """Add page numbers in 'X de Y' format to footer."""
+        try:
+            from docx.oxml import OxmlElement
+            from docx.oxml.ns import qn
+            
+            section = doc.sections[0]
+            footer = section.footer
+            
+            # Clear existing footer content
+            footer.paragraphs[0].clear()
+            
+            # Create centered paragraph
+            para = footer.paragraphs[0]
+            para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            
+            # Add page number field
+            run = para.add_run()
+            
+            # Create field for current page number
+            fldChar1 = OxmlElement('w:fldChar')
+            fldChar1.set(qn('w:fldCharType'), 'begin')
+            run._element.append(fldChar1)
+            
+            instrText = OxmlElement('w:instrText')
+            instrText.set(qn('xml:space'), 'preserve')
+            instrText.text = 'PAGE'
+            run._element.append(instrText)
+            
+            fldChar2 = OxmlElement('w:fldChar')
+            fldChar2.set(qn('w:fldCharType'), 'end')
+            run._element.append(fldChar2)
+            
+            # Add " de "
+            run = para.add_run(' de ')
+            run.font.size = Pt(10)
+            
+            # Create field for total pages
+            run = para.add_run()
+            
+            fldChar3 = OxmlElement('w:fldChar')
+            fldChar3.set(qn('w:fldCharType'), 'begin')
+            run._element.append(fldChar3)
+            
+            instrText2 = OxmlElement('w:instrText')
+            instrText2.set(qn('xml:space'), 'preserve')
+            instrText2.text = 'NUMPAGES'
+            run._element.append(instrText2)
+            
+            fldChar4 = OxmlElement('w:fldChar')
+            fldChar4.set(qn('w:fldCharType'), 'end')
+            run._element.append(fldChar4)
+            
+            # Set font size
+            for run in para.runs:
+                run.font.size = Pt(10)
+                run.font.color.rgb = RGBColor(128, 128, 128)
+            
+            print(f"      ✅ Números de página agregados")
+            
+        except Exception as e:
+            print(f"      ⚠️ Error al agregar números de página: {e}")
+
+
+    def _add_executive_summary(self, doc, results):
+        """Add one-page executive summary."""
+        heading = doc.add_heading('RESUMEN EJECUTIVO', 1)
+        for run in heading.runs:
+            run.font.color.rgb = RGBColor(0, 51, 102)
+        
+        # Publishability decision
+        can_publish, reason = self._determine_publishability(results)
+        
+        decision_para = doc.add_paragraph()
+        decision_run = decision_para.add_run(
+            "✅ APTO PARA PUBLICACIÓN" if can_publish 
+            else "⚠️ REQUIERE REVISIÓN"
+        )
+        decision_run.bold = True
+        decision_run.font.size = Pt(16)
+        decision_run.font.color.rgb = RGBColor(0, 128, 0) if can_publish else RGBColor(192, 0, 0)
+        
+        doc.add_paragraph(reason)
+        doc.add_paragraph()
+        
+        # Key metrics table - EXACTLY 6 rows, no more
+        table = doc.add_table(rows=6, cols=2)
+        table.style = 'Light Grid Accent 1'
+
+        # Header row
+        hdr_cells = table.rows[0].cells
+        hdr_cells[0].text = 'Métrica'
+        hdr_cells[1].text = 'Valor'
+        for cell in hdr_cells:
+            for paragraph in cell.paragraphs:
+                for run in paragraph.runs:
+                    run.font.bold = True
+
+        # Data rows
+        quality = results['quality_analysis']
+        citations = results['citations_analysis']
+
+        # Row 1: Calidad General
+        table.rows[1].cells[0].text = 'Calidad General'
+        table.rows[1].cells[1].text = f"{quality['overall_score']:.1f}/10"
+
+        # Row 2: Gramática
+        table.rows[2].cells[0].text = 'Gramática y Ortografía'
+        table.rows[2].cells[1].text = f"{quality['gramatica']['score']:.1f}/10"
+
+        # Row 3: Estructura
+        table.rows[3].cells[0].text = 'Estructura'
+        table.rows[3].cells[1].text = "✓ Válida" if results['structure_validation']['is_valid'] else "✗ Incompleta"
+
+        # Row 4: Errores APA
+        table.rows[4].cells[0].text = 'Errores APA 7'
+        apa_count = citations.get('apa_violations', 0)
+        table.rows[4].cells[1].text = f"{apa_count} detectados" if apa_count > 0 else "Sin errores"
+
+        # Row 5: Tasa de Coincidencia
+        table.rows[5].cells[0].text = 'Tasa de Coincidencia'
+        if citations['total_citations'] > 0:
+            match_rate = citations['matched_count'] / citations['total_citations'] * 100
+            table.rows[5].cells[1].text = f"{match_rate:.1f}%"
+        else:
+            table.rows[5].cells[1].text = "N/A"
+
+        # END OF TABLE - DO NOT ADD MORE ROWS
+
+
+        doc.add_paragraph()
+    
+    def _add_document_info(self, doc, results):
+        """Add document information section."""
+        heading = doc.add_heading('📄 INFORMACIÓN DEL DOCUMENTO', 1)
+        for run in heading.runs:
+            run.font.color.rgb = RGBColor(0, 51, 102)
+        
+        info = results['document_info']
+        
+        p = doc.add_paragraph()
+        p.add_run('Título: ').bold = True
+        p.add_run(info.get('title', 'No especificado'))
+        
+        p = doc.add_paragraph()
+        p.add_run('Autor(es): ').bold = True
+        p.add_run(info.get('authors', 'No identificado'))
+        
+        p = doc.add_paragraph()
+        p.add_run('Total de palabras: ').bold = True
+        p.add_run(f"{info['word_count']:,}")
+        
+        p = doc.add_paragraph()
+        p.add_run('Total de caracteres: ').bold = True
+        p.add_run(f"{info['char_count']:,}")
+        
+        p = doc.add_paragraph()
+        p.add_run('Páginas estimadas: ').bold = True
+        p.add_run(str(info['estimated_pages']))
+        
+           
+    def _add_classification(self, doc, results):
+        """Add classification section."""
+        heading = doc.add_heading('🏷️ CLASIFICACIÓN DEL ARTÍCULO', 1)
+        for run in heading.runs:
+            run.font.color.rgb = RGBColor(0, 51, 102)
+        
+        classification = results['classification']
+        
+        p = doc.add_paragraph()
+        p.add_run('Categoría: ').bold = True
+        p.add_run(classification['category'].value.upper())
+        
+        p = doc.add_paragraph()
+        p.add_run('Confianza: ').bold = True
+        p.add_run(f"{classification['confidence']:.1%}")
+        
+        if classification.get('reasoning'):
+            p = doc.add_paragraph()
+            p.add_run('Razonamiento: ').bold = True
+            p.add_run(classification['reasoning'])
+        
+        
+    
+    def _add_quality_analysis(self, doc, results):
+        """Add quality analysis with paragraphs instead of table."""
+        heading = doc.add_heading('⭐ ANÁLISIS DE CALIDAD SEMÁNTICA', 1)
+        for run in heading.runs:
+            run.font.color.rgb = RGBColor(0, 51, 102)
+        
+        quality = results['quality_analysis']
+        
+        # Overall score
+        p = doc.add_paragraph()
+        p.add_run('Puntuación General: ').bold = True
+        score_run = p.add_run(f"{quality['overall_score']:.1f}/10")
+        score_run.bold = True
+        score_run.font.size = Pt(14)
+        if quality['overall_score'] >= 8:
+            score_run.font.color.rgb = RGBColor(0, 128, 0)
+        elif quality['overall_score'] >= 6:
+            score_run.font.color.rgb = RGBColor(255, 140, 0)
+        else:
+            score_run.font.color.rgb = RGBColor(192, 0, 0)
+        
+        # Dimensions as headings with paragraphs
+        if quality.get('dimensions'):
+            for dim_name, dim_data in quality['dimensions'].items():
+                # Dimension as subheading
+                dim_heading = doc.add_heading(dim_name.capitalize(), level=3)
+                
+                # Score
+                p = doc.add_paragraph()
+                p.add_run('Puntuación: ').bold = True
+                p.add_run(f"{dim_data['score']:.1f}/10")
+                
+                # Feedback
+                if dim_data.get('feedback'):
+                    p = doc.add_paragraph(dim_data['feedback'])
+
+    def _add_grammar_analysis(self, doc, results):
+        """Add grammar and spelling analysis."""
+        heading = doc.add_heading('📝 GRAMÁTICA Y ORTOGRAFÍA', 1)
+        for run in heading.runs:
+            run.font.color.rgb = RGBColor(0, 51, 102)
+        
+        grammar = results['quality_analysis']['gramatica']
+        
+        p = doc.add_paragraph()
+        p.add_run('Puntuación: ').bold = True
+        p.add_run(f"{grammar['score']:.1f}/10")
+        
+        p = doc.add_paragraph()
+        p.add_run('Estado: ').bold = True
+        p.add_run(grammar['feedback'])
+        
+        # Detailed errors
+        if grammar.get('errors') and len(grammar['errors']) > 0:
+            doc.add_paragraph()
+            doc.add_paragraph('Errores Detectados:').bold = True
+            
+            for err in grammar['errors'][:5]:
+                # Error message (List Number style already adds numbering)
+                doc.add_paragraph(err['message'], style='List Number')
+           
+                           
+                # Full context (no truncation)
+                context_text = err['context'] if len(err['context']) < 150 else err['context'][:150] + "..."
+                p = doc.add_paragraph(f"   Contexto: \"{context_text}\"", style='List Bullet 2')
+                
+                # Suggestions
+                if err.get('replacements'):
+                    doc.add_paragraph(f"   Sugerencia: {', '.join(err['replacements'][:3])}", style='List Bullet 2')
+                        
+     
+    def _add_apa_validation(self, doc, results):
+        """Add APA 7 validation section."""
+        heading = doc.add_heading('📖 VALIDACIÓN APA 7 (ESPAÑOL)', 1)
+        for run in heading.runs:
+            run.font.color.rgb = RGBColor(0, 51, 102)
+        
+        apa = results.get('apa_validation', {})
+        violations = apa.get('violations', [])
+        
+        if len(violations) == 0:
+            p = doc.add_paragraph()
+            p.add_run('✅ Sin errores de formato APA 7 detectados').font.color.rgb = RGBColor(0, 128, 0)
+        else:
+            p = doc.add_paragraph()
+            p.add_run(f'⚠️ {len(violations)} errores de formato APA 7 detectados').font.color.rgb = RGBColor(192, 0, 0)
+            
+            doc.add_paragraph()
+            
+            # Group by error type
+            from collections import defaultdict
+            by_type = defaultdict(list)
+            for v in violations:
+                by_type[v['error_type']].append(v)
+            
+
+            for error_type, errors in by_type.items():
+                # Change heading to "CITACIÓN INCORRECTA" instead of error_type
+                doc.add_paragraph(f"CITACIÓN INCORRECTA ({len(errors)}):", style='Heading 3')
+                
+                # Manual numbering (restart from 1)
+                for i, err in enumerate(errors[:5], 1):
+                    doc.add_paragraph(f"{i}. Citación: {err['citation']}")
+                    doc.add_paragraph(f"   Ubicación: \"{err['location']}\"", style='List Bullet 2')
+                    doc.add_paragraph(f"   Problema: {err['explanation']}", style='List Bullet 2')
+                    if err.get('correction'):
+                        doc.add_paragraph(f"   Corrección: {err['correction']}", style='List Bullet 2')
+
+    
+    def _add_structure_validation(self, doc, results):
+        """Add structure validation section."""
+        heading = doc.add_heading('📋 VALIDACIÓN DE ESTRUCTURA (EUMIC)', 1)
+        for run in heading.runs:
+            run.font.color.rgb = RGBColor(0, 51, 102)
+        
+        structure = results['structure_validation']
+        
+        if structure['is_valid']:
+            p = doc.add_paragraph()
+            p.add_run('✓ Estructura válida según normas EUMIC').font.color.rgb = RGBColor(0, 128, 0)
+        else:
+            p = doc.add_paragraph()
+            p.add_run('✗ Estructura incompleta').font.color.rgb = RGBColor(192, 0, 0)
+            
+            if structure.get('missing_sections'):
+                doc.add_paragraph()
+                doc.add_paragraph('Secciones faltantes:').bold = True
+                for section in structure['missing_sections']:
+                    doc.add_paragraph(f"• {section}", style='List Bullet')
+        
+        
+    
+    def _add_citations_analysis(self, doc, results):
+        """Add citations analysis section."""
+        heading = doc.add_heading('📚 ANÁLISIS DE CITAS Y REFERENCIAS', 1)
+        for run in heading.runs:
+            run.font.color.rgb = RGBColor(0, 51, 102)
+        
+        citations = results['citations_analysis']
+        
+        # Summary table
+        table = doc.add_table(rows=4, cols=2)
+        table.style = 'Light Grid Accent 1'
+        
+        table.rows[0].cells[0].text = 'Total de citas en texto'
+        table.rows[0].cells[1].text = str(citations['total_citations'])
+        
+        table.rows[1].cells[0].text = 'Total de referencias bibliográficas'
+        table.rows[1].cells[1].text = str(citations['total_references'])
+        
+        table.rows[2].cells[0].text = 'Citas con referencia'
+        table.rows[2].cells[1].text = str(citations['matched_count'])
+        
+        table.rows[3].cells[0].text = 'Tasa de coincidencia'
+        if citations['total_citations'] > 0:
+            rate = citations['matched_count'] / citations['total_citations'] * 100
+            table.rows[3].cells[1].text = f"{rate:.1f}%"
+        else:
+            table.rows[3].cells[1].text = "N/A"
+        
+       
+    
+    def _add_recommendations(self, doc, results):
+        """Add recommendations section."""
+        if not results.get('recommendations'):
+            return
+        
+        heading = doc.add_heading('💡 RECOMENDACIONES', 1)
+        for run in heading.runs:
+            run.font.color.rgb = RGBColor(0, 51, 102)
+        
+        recommendations = results['recommendations']
+        
+        # Final recommendation first
+        final_rec = [r for r in recommendations if r.get('priority') in ['critica', 'advertencia', 'aprobado']]
+        if final_rec:
+            rec = final_rec[0]
+            p = doc.add_paragraph()
+            p.add_run(rec['message']).bold = True
+            p.runs[0].font.size = Pt(12)
+            if rec['priority'] == 'critica':
+                p.runs[0].font.color.rgb = RGBColor(192, 0, 0)
+            elif rec['priority'] == 'advertencia':
+                p.runs[0].font.color.rgb = RGBColor(192, 0, 0)
+            else:
+                p.runs[0].font.color.rgb = RGBColor(0, 128, 0)
+            
+           
+        
+        # Other recommendations
+        others = [r for r in recommendations if r.get('priority') not in ['critica', 'advertencia', 'aprobado']]
+        if others:
+            doc.add_paragraph('Recomendaciones específicas:').bold = True
+            for rec in others:
+                priority_icon = {'alta': '🔴', 'media': '🟡', 'baja': '🟢'}.get(rec['priority'], '⚪')
+                doc.add_paragraph(f"{priority_icon} {rec['message']}", style='List Bullet')
+    
+    def _add_footer(self, doc):
+        """Add professional footer."""
+        doc.add_paragraph()
+        doc.add_paragraph("─" * 80)
+        
+        footer = doc.add_paragraph()
+        footer.add_run("Generado por Silvina Editorial Assistant v0.7 | ").italic = True
+        footer.add_run(datetime.now().strftime('%d/%m/%Y %H:%M')).italic = True
+        footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        footer.runs[0].font.size = Pt(9)
+        footer.runs[0].font.color.rgb = RGBColor(128, 128, 128)
+        footer.runs[1].font.size = Pt(9)
+        footer.runs[1].font.color.rgb = RGBColor(128, 128, 128)
+    
     def _determine_publishability(self, results: Dict[str, Any]) -> tuple:
-        """
-        Determine if document can be published based on analysis.
-        
-        Returns:
-            (can_publish: bool, reason: str)
-        """
+        """Determine if document can be published."""
         quality_score = results['quality_analysis']['overall_score']
+        grammar_score = results['quality_analysis']['gramatica']['score']
         is_structure_valid = results['structure_validation']['is_valid']
-        citations_matched = results['citations_analysis']['matched_count']
-        citations_total = results['citations_analysis']['total_citations']
+        apa_violations = results['citations_analysis'].get('apa_violations', 0)
         
-        # Calculate citation match rate
-        if citations_total > 0:
-            citation_rate = citations_matched / citations_total
-        else:
-            citation_rate = 1.0  # No citations is acceptable for some article types
-        
-        # Decision logic based on EUMIC standards
-        if quality_score >= 7.0 and is_structure_valid and citation_rate >= 0.9:
-            return (
-                True, 
-                f"El documento cumple con los estándares de calidad (puntuación: {quality_score:.1f}/10), "
-                f"estructura completa, y referencias adecuadas ({citation_rate:.1%} de coincidencia) "
-                "requeridos por las normas EUMIC y APA 7."
-            )
-        
-        elif quality_score >= 6.5 and is_structure_valid and citation_rate >= 0.85:
-            return (
-                False, 
-                f"Calidad aceptable ({quality_score:.1f}/10) y estructura válida, pero requiere "
-                f"mejoras menores en las referencias (tasa de coincidencia: {citation_rate:.1%}). "
-                "Se recomienda revisión antes de publicación."
-            )
-        
+        if quality_score >= 7.0 and grammar_score >= 7.0 and is_structure_valid and apa_violations == 0:
+            return (True, "El documento cumple con todos los estándares de calidad, estructura y formato APA 7 requeridos por las normas EUMIC.")
+        elif apa_violations > 0 or grammar_score < 7.0 or quality_score < 7.0:
+            return (False, f"El documento requiere revisión. Calidad: {quality_score:.1f}/10, Gramática: {grammar_score:.1f}/10, Errores APA: {apa_violations}.")
         elif not is_structure_valid:
-            missing = ", ".join(results['structure_validation']['missing_sections'])
-            return (
-                False, 
-                f"Estructura incompleta según normas EUMIC. Faltan las siguientes secciones obligatorias: {missing}. "
-                f"Calidad actual: {quality_score:.1f}/10."
-            )
-        
-        elif citation_rate < 0.8:
-            return (
-                False,
-                f"Inconsistencias importantes en las referencias bibliográficas. "
-                f"Solo {citation_rate:.1%} de las citas tienen referencia correspondiente. "
-                f"Revise el formato APA 7 y asegure que todas las citas estén referenciadas."
-            )
-        
+            return (False, "Estructura incompleta según normas EUMIC. Complete las secciones faltantes.")
         else:
-            return (
-                False, 
-                f"Calidad insuficiente ({quality_score:.1f}/10). El documento requiere revisión "
-                "sustancial en claridad, coherencia, argumentación y/o metodología antes de publicación."
-            )
-    
-    def _format_category(self, category: str) -> str:
-        """Format category name for display."""
-        category_names = {
-            'RESEARCH_ARTICLE': 'Artículo Científico (Investigación)',
-            'REVIEW_ARTICLE': 'Artículo de Revisión',
-            'REFLECTION_ARTICLE': 'Artículo de Reflexión',
-            'SHORT_ARTICLE': 'Artículo Corto',
-            'CASE_REPORT': 'Reporte de Caso',
-            'DIVULGATION': 'Artículo de Divulgación',
-            'UNKNOWN': 'No Clasificado'
-        }
-        return category_names.get(category, category)
-    
-    def _format_quality_level(self, quality_level):
-        """
-        Convert QualityLevel enum to Spanish readable text.
-        ALWAYS returns a string.
-        """
-        level_names = {
-            'EXCELLENT': 'Excelente',
-            'GOOD': 'Bueno',
-            'ACCEPTABLE': 'Aceptable',
-            'NEEDS_IMPROVEMENT': 'Necesita Mejoras',
-            'POOR': 'Deficiente'
-        }
-
-        # Case 1: Enum → use .name
-        if hasattr(quality_level, "name"):
-            return level_names.get(quality_level.name, quality_level.name)
-
-        # Case 2: Already a string
-        if isinstance(quality_level, str):
-            return level_names.get(quality_level, quality_level)
-
-        # Fallback (safety)
-        return str(quality_level)
+            return (False, "El documento requiere mejoras antes de la publicación.")

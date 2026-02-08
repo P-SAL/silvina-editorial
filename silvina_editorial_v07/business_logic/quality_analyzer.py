@@ -98,6 +98,13 @@ NO agregues notas adicionales después de la recomendación.
             
             analysis_text = response.get('response', '').strip()
 
+                        # TEMP DEBUG
+            print(f"\n{'='*70}")
+            print("DEBUG: LLM OUTPUT (first 600 chars)")
+            print(f"{'='*70}")
+            print(analysis_text[:600])
+            print(f"{'='*70}\n")
+                       
             # Clean up unwanted sections
             # 1. Remove everything after RECOMENDACIÓN FINAL
             analysis_text = re.sub(
