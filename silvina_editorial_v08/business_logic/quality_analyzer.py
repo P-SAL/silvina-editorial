@@ -92,19 +92,14 @@ NO agregues notas adicionales después de la recomendación.
                 options={
                     'temperature': 0.2,  # Lower = more factual
                     'num_predict': 800,   # Shorter to avoid repetition
-                    'num_ctx': 4096
-                }
-            )
+                    'num_ctx': 4096,
+                    'timeout': 120}  # 120 seconds timeout
+)
+            
+            
             
             analysis_text = response.get('response', '').strip()
 
-                        # TEMP DEBUG
-            print(f"\n{'='*70}")
-            print("DEBUG: LLM OUTPUT (first 600 chars)")
-            print(f"{'='*70}")
-            print(analysis_text[:600])
-            print(f"{'='*70}\n")
-                       
             # Clean up unwanted sections
             # 1. Remove everything after RECOMENDACIÓN FINAL
             analysis_text = re.sub(

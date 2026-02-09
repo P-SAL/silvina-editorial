@@ -57,10 +57,6 @@ class WordExporter:
             script_dir = os.path.dirname(os.path.abspath(__file__))
             logo_path = os.path.join(script_dir, '..', 'assets', 'logo.jpg')
 
-            print(f"      DEBUG: script_dir = {script_dir}")
-            print(f"      DEBUG: logo_path = {logo_path}")
-            print(f"      DEBUG: exists = {os.path.exists(logo_path)}")
-
             if os.path.exists(logo_path):
                 self._add_header_logo(doc, logo_path)
             else:

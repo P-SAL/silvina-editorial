@@ -378,18 +378,32 @@ def create_interface():
         )
         
         # Event handlers
-        def analyze_and_store_name(file):
+        def analyze_and_store_name(file, progress=gr.Progress()):
             """Run analysis and store document name"""
-            status, html, word, json_path = process_document(file)
-            doc_name = Path(file.name).name if file else ""
-            return status, html, word, json_path, doc_name
+            if file is None:
+                return "⚠️ Seleccione un documento primero", "", None, None, ""
+            
+            # Show progress bar
+            progress(0, desc="Iniciando análisis...")
+            
+            # Run analysis with progress updates
+            try:
+                progress(0.1, desc="📖 Leyendo documento...")
+                status, html, word, json_path = process_document(file)
+                doc_name = Path(file.name).name if file else ""
+                progress(1.0, desc="✅ Completado")
+                return status, html, word, json_path, doc_name
+            except Exception as e:
+                progress(0, desc="❌ Error")
+                return f"❌ Error: {str(e)}", "", None, None, ""
         
         analyze_btn.click(
             fn=analyze_and_store_name,
             inputs=[file_input],
             outputs=[status_msg, results_display, word_download, json_download, document_name_state]
         )
-        
+
+                
         feedback_btn.click(
             fn=save_expert_feedback,
             inputs=[document_name_state, expert_evaluation, expert_comments],
@@ -397,14 +411,30 @@ def create_interface():
         )
         
         # Footer
+        gr.Markdown("---")
+        
+        # Close Instructions
+        with gr.Accordion("🔴 Cerrar Silvina", open=False):
+            gr.Markdown("""
+            ### ¿Cómo cerrar la aplicación correctamente?
+            
+            Cuando termine de usar Silvina, siga estos pasos:
+            
+            1. **Cierre esta pestaña del navegador** (Chrome)
+            2. **Vaya a la ventana del terminal** (ventana negra que se abrió con Silvina)
+            3. **Presione `Ctrl+C`** en el terminal
+            4. **Cierre la ventana del terminal**
+            
+            ⚠️ **Importante:** Si no cierra el terminal, Silvina seguirá ejecutándose en segundo plano.
+            """)
+        
         gr.Markdown("""
-        ---
         <div style="text-align: center; color: #666; font-size: 12px; padding: 20px;">
             <p><strong>Silvina Editorial Assistant v0.8</strong> | Desarrollado para EUMIC</p>
             <p>Para soporte técnico o reportar problemas, contacte al equipo de desarrollo</p>
         </div>
         """)
-    
+
     return interface
 
 # ============================================
