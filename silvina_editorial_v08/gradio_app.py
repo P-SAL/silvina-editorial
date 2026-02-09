@@ -1,0 +1,455 @@
+"""
+gradio_app.py
+Gradio web interface for Silvina Editorial Assistant v0.8
+Provides a user-friendly interface for non-technical editorial staff.
+"""
+
+import gradio as gr
+import os
+import sys
+import json
+from pathlib import Path
+from datetime import datetime
+import base64
+import webbrowser
+
+# Add project root to path
+project_root = Path(__file__).parent
+sys.path.insert(0, str(project_root))
+
+# Import Silvina's main class
+from main import SilvinaEditorialAssistant
+
+# ============================================
+# CONFIGURATION
+# ============================================
+EUMIC_COLORS = {
+    "primary": "#2C3E50",
+    "success": "#27AE60",
+    "warning": "#F39C12",
+    "danger": "#E74C3C",
+}
+
+# ============================================
+# CORE ANALYSIS FUNCTION
+# ============================================
+def process_document(uploaded_file):
+    """
+    Wraps Silvina's analysis pipeline for Gradio.
+    Returns: (status_message, results_html, word_report_path, json_report_path)
+    """
+    if uploaded_file is None:
+        return (
+            "⚠️ Por favor, cargue un documento Word (.docx)",
+            "",
+            None,
+            None
+        )
+    
+    try:
+        # Initialize Silvina
+        silvina = SilvinaEditorialAssistant()
+        
+        # Run analysis on uploaded file
+        print(f"\n🔍 Procesando: {uploaded_file.name}")
+        results = silvina.analyze_document(uploaded_file.name)
+        
+        # Generate report filenames
+        base_name = Path(uploaded_file.name).stem
+        output_dir = Path(uploaded_file.name).parent
+        
+        word_report_path = output_dir / f"{base_name}_analisis.docx"
+        json_report_path = output_dir / f"{base_name}_analisis.json"
+        
+        # Save reports
+        silvina.save_word_report(results, str(word_report_path))
+        silvina.save_json_report(results, str(json_report_path))
+        
+        # Create visual results display
+        results_html = create_results_display(results)
+        
+        success_msg = "✅ Análisis completado exitosamente"
+        
+        return (
+            success_msg,
+            results_html,
+            str(word_report_path),
+            str(json_report_path)
+        )
+        
+    except Exception as e:
+        error_msg = f"❌ Error al procesar el documento: {str(e)}"
+        print(f"\n{error_msg}")
+        import traceback
+        traceback.print_exc()
+        return (error_msg, "", None, None)
+
+# ============================================
+# RESULTS DISPLAY
+# ============================================
+def create_results_display(results):
+    """
+    Creates professional HTML display of analysis results.
+    """
+    
+    # Extract key metrics
+    doc_info = results['document_info']
+    classification = results['classification']
+    quality = results['quality_analysis']
+    structure = results['structure_validation']
+    citations = results['citations_analysis']
+    recommendations = results['recommendations']
+    
+    # Determine overall status from final recommendation
+    final_rec = recommendations[-1]  # Last recommendation is the final verdict
+    
+    if final_rec['priority'] == 'aprobado':
+        status = "APTO PARA PUBLICACIÓN"
+        status_color = EUMIC_COLORS["success"]
+        status_icon = "✅"
+    elif final_rec['priority'] == 'advertencia':
+        status = "REQUIERE REVISIÓN"
+        status_color = EUMIC_COLORS["warning"]
+        status_icon = "⚠️"
+    else:  # critica
+        status = "NO APTO"
+        status_color = EUMIC_COLORS["danger"]
+        status_icon = "❌"
+    
+    # Count errors
+    grammar_errors = len(quality['gramatica'].get('errors', []))
+    apa_errors = citations.get('apa_violations', 0)
+    missing_sections = len(structure['missing_sections'])
+    unmatched_citations = citations.get('unmatched_count', 0)
+    
+    # Grammar and semantic scores
+    grammar_score = quality['gramatica']['score']
+    semantic_score = quality['overall_score']
+    
+    html = f"""
+    <div style="font-family: 'Segoe UI', Arial, sans-serif; padding: 20px; background: white; border-radius: 8px;">
+        
+        <!-- Document Header -->
+        <div style="background: #f8f9fa; padding: 15px; border-radius: 6px; margin-bottom: 20px;">
+            <h3 style="margin: 0 0 10px 0; color: {EUMIC_COLORS['primary']};">
+                📄 {doc_info.get('title', 'Sin título')}
+            </h3>
+            <p style="margin: 0; color: #666;">
+                <strong>Autor:</strong> {doc_info.get('authors', 'No especificado')} | 
+                <strong>Palabras:</strong> {doc_info['word_count']:,} | 
+                <strong>Tipo:</strong> {classification['category'].value.upper()}
+            </p>
+        </div>
+        
+        <!-- Overall Status -->
+        <div style="background: {status_color}; color: white; padding: 25px; border-radius: 8px; margin-bottom: 25px; text-align: center;">
+            <h2 style="margin: 0; font-size: 32px;">{status_icon} {status}</h2>
+            <p style="margin: 10px 0 0 0; font-size: 16px; opacity: 0.95;">{final_rec['message']}</p>
+        </div>
+        
+        <!-- Quality Scores -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;">
+            <div style="background: #f8f9fa; padding: 20px; border-radius: 6px; text-align: center;">
+                <div style="font-size: 18px; color: #666; margin-bottom: 8px;">Gramática y Ortografía</div>
+                <div style="font-size: 42px; font-weight: bold; color: {EUMIC_COLORS['primary']};">
+                    {grammar_score:.1f}<span style="font-size: 24px; color: #999;">/10</span>
+                </div>
+                <div style="color: #666; margin-top: 5px; font-size: 14px;">
+                    {quality['gramatica']['feedback']}
+                </div>
+            </div>
+            <div style="background: #f8f9fa; padding: 20px; border-radius: 6px; text-align: center;">
+                <div style="font-size: 18px; color: #666; margin-bottom: 8px;">Calidad Semántica</div>
+                <div style="font-size: 42px; font-weight: bold; color: {EUMIC_COLORS['primary']};">
+                    {semantic_score:.1f}<span style="font-size: 24px; color: #999;">/10</span>
+                </div>
+                <div style="color: #666; margin-top: 5px; font-size: 14px;">
+                    {quality['quality_level'].value.replace('_', ' ').title()}
+                </div>
+            </div>
+        </div>
+        
+        <!-- Error Summary -->
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 25px;">
+            <div style="background: #fff3cd; padding: 15px; border-radius: 6px; text-align: center; border: 2px solid #ffc107;">
+                <div style="font-size: 28px; font-weight: bold; color: #856404;">{grammar_errors}</div>
+                <div style="color: #856404; margin-top: 5px; font-size: 13px;">Errores gramaticales</div>
+            </div>
+            <div style="background: #fff3cd; padding: 15px; border-radius: 6px; text-align: center; border: 2px solid #ffc107;">
+                <div style="font-size: 28px; font-weight: bold; color: #856404;">{apa_errors}</div>
+                <div style="color: #856404; margin-top: 5px; font-size: 13px;">Errores APA 7</div>
+            </div>
+            <div style="background: #fff3cd; padding: 15px; border-radius: 6px; text-align: center; border: 2px solid #ffc107;">
+                <div style="font-size: 28px; font-weight: bold; color: #856404;">{unmatched_citations}</div>
+                <div style="color: #856404; margin-top: 5px; font-size: 13px;">Citas sin referencia</div>
+            </div>
+            <div style="background: #fff3cd; padding: 15px; border-radius: 6px; text-align: center; border: 2px solid #ffc107;">
+                <div style="font-size: 28px; font-weight: bold; color: #856404;">{missing_sections}</div>
+                <div style="color: #856404; margin-top: 5px; font-size: 13px;">Secciones faltantes</div>
+            </div>
+        </div>
+        
+        <!-- Semantic Dimensions -->
+        <div style="background: #f8f9fa; padding: 20px; border-radius: 6px; margin-bottom: 20px;">
+            <h4 style="margin: 0 0 15px 0; color: {EUMIC_COLORS['primary']};">Dimensiones Semánticas</h4>
+            {''.join([f'''
+            <div style="margin-bottom: 10px;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                    <span style="font-weight: 500;">{dim.capitalize()}</span>
+                    <span style="font-weight: bold; color: {EUMIC_COLORS['primary']};">{data['score']:.1f}/10</span>
+                </div>
+                <div style="background: #dee2e6; height: 8px; border-radius: 4px; overflow: hidden;">
+                    <div style="background: {EUMIC_COLORS['primary']}; height: 100%; width: {data['score']*10}%;"></div>
+                </div>
+                <div style="font-size: 13px; color: #666; margin-top: 4px;">{data.get('feedback', '')}</div>
+            </div>
+            ''' for dim, data in quality['dimensions'].items()])}
+        </div>
+        
+        <!-- Critical Issues -->
+        {f'''
+        <div style="background: #f8d7da; border-left: 4px solid {EUMIC_COLORS['danger']}; padding: 15px; margin-bottom: 20px; border-radius: 4px;">
+            <h4 style="margin: 0 0 10px 0; color: #721c24;">⚠️ Problemas Críticos Detectados</h4>
+            <ul style="margin: 0; padding-left: 20px; color: #721c24;">
+                {''.join([f'<li>{rec["message"]}</li>' for rec in recommendations if rec['priority'] in ['alta', 'critica']])}
+            </ul>
+        </div>
+        ''' if any(rec['priority'] in ['alta', 'critica'] for rec in recommendations[:-1]) else ''}
+        
+        <!-- Instructions -->
+        <div style="background: #e7f3ff; border-left: 4px solid {EUMIC_COLORS['primary']}; padding: 15px; border-radius: 4px;">
+            <p style="margin: 0; color: #004085; line-height: 1.6;">
+                <strong>Próximos pasos:</strong><br>
+                1. Descargue el <strong>informe detallado en Word</strong> para revisar observaciones específicas<br>
+                2. Proporcione su <strong>evaluación experta</strong> a continuación<br>
+                3. Sus comentarios ayudarán a <strong>mejorar futuros análisis</strong>
+            </p>
+        </div>
+    </div>
+    """
+    
+    return html
+
+# ============================================
+# FEEDBACK HANDLER
+# ============================================
+def save_expert_feedback(document_name, evaluation, comments):
+    """
+    Saves expert feedback for system improvement.
+    """
+    if not evaluation:
+        return "⚠️ Por favor, seleccione una evaluación"
+    
+    feedback = {
+        "timestamp": datetime.now().isoformat(),
+        "document": document_name,
+        "expert_evaluation": evaluation,
+        "comments": comments or "Sin comentarios adicionales"
+    }
+    
+    # Save to feedback log
+    feedback_file = project_root / "feedback_log.jsonl"
+    
+    try:
+        with open(feedback_file, 'a', encoding='utf-8') as f:
+            f.write(json.dumps(feedback, ensure_ascii=False) + '\n')
+        
+        return "✅ Gracias. Su evaluación ha sido registrada y contribuirá a mejorar el sistema."
+    except Exception as e:
+        return f"❌ Error al guardar evaluación: {str(e)}"
+
+# ============================================
+# GRADIO INTERFACE
+# ============================================
+def create_interface():
+    """
+    Creates the Gradio web interface.
+    """
+    # Load logo as base64
+    try:
+        logo_path = project_root / "assets" / "SILVINA V08.png"
+        with open(logo_path, "rb") as f:
+            logo_data = base64.b64encode(f.read()).decode()
+        logo_src = f"data:image/png;base64,{logo_data}"
+    except Exception as e:
+        print(f"⚠️ No se pudo cargar el logo: {e}")
+        logo_src = ""
+
+    with gr.Blocks(
+        title="Silvina - Asistente Editorial EUMIC V0.8",
+        
+    ) as interface:
+        
+        # Store document name for feedback
+        document_name_state = gr.State("")
+        
+        # Header with logo
+        if logo_src:
+            gr.HTML(f"""
+            <div class="logo-container">
+                <img src="{logo_src}" alt="EUMIC Logo" style="max-height: 100px; display: block; margin: 0 auto;">
+                <h1>Silvina - Asistente Editorial</h1>
+                <p>Sistema de análisis automatizado para manuscritos académicos EUMIC/APA 7</p>
+            </div>
+            """)
+        else:
+            gr.HTML(f"""
+            <div class="logo-container">
+                <h1>Silvina - Asistente Editorial</h1>
+                <p>Sistema de análisis automatizado para manuscritos académicos EUMIC/APA 7</p>
+            </div>
+            """)
+                                
+        gr.Markdown("---")
+        
+        # Step 1: Upload
+        gr.Markdown("### 📄 Paso 1: Cargar Documento")
+        gr.Markdown("Seleccione el manuscrito en formato Word (.docx) que desea analizar.")
+        
+        file_input = gr.File(
+            label="Documento Word",
+            file_types=[".docx"],
+            type="filepath"
+        )
+        
+        analyze_btn = gr.Button(
+            "🔍 Analizar Documento",
+            variant="primary",
+            size="lg"
+        )
+        
+        status_msg = gr.Textbox(
+            label="Estado del Análisis",
+            interactive=False,
+            show_label=True
+        )
+        
+        gr.Markdown("---")
+        
+        # Step 2: Results
+        gr.Markdown("### 📊 Paso 2: Resultados del Análisis")
+        
+        results_display = gr.HTML()
+        
+        with gr.Row():
+            word_download = gr.File(
+                label="📥 Informe Detallado (Word)",
+                interactive=False
+            )
+            json_download = gr.File(
+                label="📥 Datos Técnicos (JSON)",
+                interactive=False
+            )
+        
+        gr.Markdown("---")
+        
+        # Step 3: Expert Feedback
+        gr.Markdown("### 💬 Paso 3: Evaluación Experta")
+        gr.Markdown("""
+        Como especialista editorial, su evaluación es fundamental para mejorar el sistema.
+        Por favor, indique su opinión sobre la precisión del análisis realizado.
+        """)
+        
+        expert_evaluation = gr.Radio(
+            choices=[
+                "El análisis es correcto y preciso",
+                "El análisis es mayormente correcto, con observaciones menores",
+                "El análisis tiene errores significativos que debo señalar"
+            ],
+            label="¿Qué tan preciso fue el análisis?",
+            info="Su evaluación ayuda a mejorar futuros análisis"
+        )
+        
+        expert_comments = gr.Textbox(
+            label="Comentarios Adicionales (opcional)",
+            placeholder="Describa cualquier error específico, aspecto que el sistema pasó por alto, o sugerencia de mejora...",
+            lines=5
+        )
+        
+        feedback_btn = gr.Button(
+            "Enviar Evaluación",
+            variant="secondary"
+        )
+        
+        feedback_status = gr.Textbox(
+            label="",
+            interactive=False,
+            show_label=False
+        )
+        
+        # Event handlers
+        def analyze_and_store_name(file):
+            """Run analysis and store document name"""
+            status, html, word, json_path = process_document(file)
+            doc_name = Path(file.name).name if file else ""
+            return status, html, word, json_path, doc_name
+        
+        analyze_btn.click(
+            fn=analyze_and_store_name,
+            inputs=[file_input],
+            outputs=[status_msg, results_display, word_download, json_download, document_name_state]
+        )
+        
+        feedback_btn.click(
+            fn=save_expert_feedback,
+            inputs=[document_name_state, expert_evaluation, expert_comments],
+            outputs=[feedback_status]
+        )
+        
+        # Footer
+        gr.Markdown("""
+        ---
+        <div style="text-align: center; color: #666; font-size: 12px; padding: 20px;">
+            <p><strong>Silvina Editorial Assistant v0.8</strong> | Desarrollado para EUMIC</p>
+            <p>Para soporte técnico o reportar problemas, contacte al equipo de desarrollo</p>
+        </div>
+        """)
+    
+    return interface
+
+# ============================================
+# LAUNCH
+# ============================================
+if __name__ == "__main__":
+    print("\n" + "=" * 80)
+    print("   SILVINA EDITORIAL ASSISTANT v0.8 - Interfaz Web")
+    print("=" * 80 + "\n")
+    
+    app = create_interface()
+    
+    print("🚀 Iniciando servidor Gradio...")
+    print("📍 La aplicación estará disponible en: http://127.0.0.1:7861")
+    print("⏹️  Presione Ctrl+C para detener el servidor\n")
+    
+    # Function to open Chrome after server starts
+    def open_in_chrome():
+        import time
+        time.sleep(1)  # Wait for server to start
+        chrome_path = "C:/Program Files/Google/Chrome/Application/chrome.exe"
+        try:
+            webbrowser.register('chrome', None, webbrowser.BackgroundBrowser(chrome_path))
+            webbrowser.get('chrome').open('http://127.0.0.1:7861')
+            print("✅ Abriendo en Google Chrome...")
+        except:
+            print("⚠️ Abra Chrome manualmente en: http://127.0.0.1:7861")
+    
+    # Start browser opening in background thread
+    import threading
+    threading.Thread(target=open_in_chrome, daemon=True).start()
+    
+    # Launch server
+    app.launch(
+        server_name="127.0.0.1",
+        server_port=7861,
+        share=False,
+        show_error=True,
+        inbrowser=False,
+        theme=gr.themes.Soft(primary_hue="slate"),
+        css="""
+        .logo-container {text-align: center; padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);}
+        .logo-container img {max-width: 180px; max-height: 100px;}
+        .logo-container h1 {color: white; margin: 15px 0 5px 0;}
+        .logo-container p {color: rgba(255,255,255,0.9); margin: 0;}
+        footer {display: none !important;}
+        """
+    )
