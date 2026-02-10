@@ -14,4 +14,3 @@ echo Para cerrar Silvina: presione Ctrl+C aqui.
 echo.
 call ..\venv312\Scripts/activate.bat
 python gradio_app.py
-pause

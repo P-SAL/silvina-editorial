@@ -346,7 +346,7 @@ def create_interface():
         # Step 3: Expert Feedback
         gr.Markdown("### 💬 Paso 3: Evaluación Experta")
         gr.Markdown("""
-        Como especialista editorial, su evaluación es fundamental para mejorar el sistema.
+        Estimado usuario, su evaluación es fundamental para mejorar el sistema.
         Por favor, indique su opinión sobre la precisión del análisis realizado.
         """)
         
@@ -410,31 +410,61 @@ def create_interface():
             outputs=[feedback_status]
         )
         
-        # Footer
         gr.Markdown("---")
         
-        # Close Instructions
-        with gr.Accordion("🔴 Cerrar Silvina", open=False):
-            gr.Markdown("""
-            ### ¿Cómo cerrar la aplicación correctamente?
-            
-            Cuando termine de usar Silvina, siga estos pasos:
-            
-            1. **Cierre esta pestaña del navegador** (Chrome)
-            2. **Vaya a la ventana del terminal** (ventana negra que se abrió con Silvina)
-            3. **Presione `Ctrl+C`** en el terminal
-            4. **Cierre la ventana del terminal**
-            
-            ⚠️ **Importante:** Si no cierra el terminal, Silvina seguirá ejecutándose en segundo plano.
-            """)
+        # Shutdown Section
+        gr.Markdown("### 🔴 Cerrar Silvina")
+        gr.Markdown("Cuando termine de trabajar, presione el botón para cerrar la aplicación.")
         
+        shutdown_btn = gr.Button(
+            "🔴 Cerrar Silvina",
+            variant="stop",
+            size="lg"
+        )
+        
+        shutdown_msg = gr.HTML("")
+        
+        def shutdown_server():
+            """Closes browser tab and stops the server."""
+            import threading
+            import os
+            
+            def delayed_shutdown():
+                import time
+                time.sleep(3)
+                os._exit(0)
+            
+            threading.Thread(target=delayed_shutdown, daemon=True).start()
+            
+            return """
+            <div style="background: #f8d7da; border: 2px solid #dc3545; padding: 25px; 
+                        border-radius: 8px; text-align: center;">
+                <h3 style="color: #721c24; margin: 0 0 10px 0;">
+                    🔴 Silvina se está cerrando...
+                </h3>
+                <p style="color: #721c24; margin: 0 0 10px 0;">
+                    El servidor se cerrará en 3 segundos.
+                </p>
+                <p style="color: #721c24; margin: 0; font-weight: bold;">
+                    ✋ Por favor cierre esta pestaña de Chrome manualmente.
+                </p>
+            </div>
+            """
+
+        shutdown_btn.click(
+            fn=shutdown_server,
+            inputs=[],
+            outputs=[shutdown_msg]
+        )
+        
+        # Footer
         gr.Markdown("""
         <div style="text-align: center; color: #666; font-size: 12px; padding: 20px;">
             <p><strong>Silvina Editorial Assistant v0.8</strong> | Desarrollado para EUMIC</p>
-            <p>Para soporte técnico o reportar problemas, contacte al equipo de desarrollo</p>
         </div>
         """)
-
+        
+    
     return interface
 
 # ============================================
