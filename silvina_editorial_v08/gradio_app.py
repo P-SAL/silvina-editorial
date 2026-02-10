@@ -454,7 +454,7 @@ if __name__ == "__main__":
     # Function to open Chrome after server starts
     def open_in_chrome():
         import time
-        time.sleep(1)  # Wait for server to start
+        time.sleep(4)  # Wait for server to start
         chrome_path = "C:/Program Files/Google/Chrome/Application/chrome.exe"
         try:
             webbrowser.register('chrome', None, webbrowser.BackgroundBrowser(chrome_path))
