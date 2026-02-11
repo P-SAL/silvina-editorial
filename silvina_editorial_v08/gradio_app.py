@@ -379,24 +379,73 @@ def create_interface():
         
         # Event handlers
         def analyze_and_store_name(file, progress=gr.Progress()):
-            """Run analysis and store document name"""
+            """Run analysis with step-by-step progress display"""
+            import threading
+            import time
+            
             if file is None:
                 return "⚠️ Seleccione un documento primero", "", None, None, ""
             
-            # Show progress bar
-            progress(0, desc="Iniciando análisis...")
+            # Container to share results between threads
+            result_container = {'result': None, 'error': None, 'done': False}
             
-            # Run analysis with progress updates
-            try:
-                progress(0.1, desc="📖 Leyendo documento...")
-                status, html, word, json_path = process_document(file)
-                doc_name = Path(file.name).name if file else ""
-                progress(1.0, desc="✅ Completado")
-                return status, html, word, json_path, doc_name
-            except Exception as e:
-                progress(0, desc="❌ Error")
-                return f"❌ Error: {str(e)}", "", None, None, ""
+            # Run analysis in background thread
+            def run_analysis():
+                try:
+                    result_container['result'] = process_document(file)
+                except Exception as e:
+                    result_container['error'] = str(e)
+                finally:
+                    result_container['done'] = True
+            
+            thread = threading.Thread(target=run_analysis)
+            thread.start()
+            
+            # Show progress steps while analysis runs in background
+            # Times (seconds) are estimates per step
+            steps = [
+                (0.05, "🔧 Iniciando Silvina...",              2),
+                (0.15, "[1/7] 📖 Leyendo documento...",        3),
+                (0.25, "[2/7] 🔍 Extrayendo contenido...",     3),
+                (0.40, "[3/7] 📚 Analizando citas y APA...",   8),
+                (0.55, "[4/7] 🏷️  Clasificando artículo...",   10),
+                (0.75, "[5/7] ⭐ Analizando calidad...",       45),
+                (0.88, "[6/7] 📋 Validando estructura...",      3),
+                (0.93, "[7/7] 🔗 Relacionando citas...",        3),
+                (0.97, "💾 Generando reportes Word y JSON...", 3),
+            ]
+            
+            for progress_val, desc, wait_seconds in steps:
+                if result_container['done']:
+                    break
+                progress(progress_val, desc=desc)
+                
+                # Wait in small intervals so we can detect early completion
+                elapsed = 0
+                while elapsed < wait_seconds and not result_container['done']:
+                    time.sleep(0.3)
+                    elapsed += 0.3
+            
+            # Wait for thread to finish if still running
+            thread.join()
+            
+            # Handle errors
+            if result_container['error']:
+                return f"❌ Error: {result_container['error']}", "", None, None, ""
+            
+            # Unpack results
+            progress(1.0, desc="✅ Análisis completado")
+            status, html, word, json_path = result_container['result']
+            doc_name = Path(file.name).name if hasattr(file, 'name') else Path(file).name
+            
+            return status, html, word, json_path, doc_name
         
+        analyze_btn.click(
+            fn=analyze_and_store_name,
+            inputs=[file_input],
+            outputs=[status_msg, results_display, word_download, json_download, document_name_state]
+        )
+
         analyze_btn.click(
             fn=analyze_and_store_name,
             inputs=[file_input],
@@ -446,7 +495,7 @@ def create_interface():
                     El servidor se cerrará en 3 segundos.
                 </p>
                 <p style="color: #721c24; margin: 0; font-weight: bold;">
-                    ✋ Por favor cierre esta pestaña de Chrome manualmente.
+                    ✋ Por favor cierre esta ventana haciendo clic en la <strong>X</strong> de l pestaña de Chrome o (Ctrl+ W)
                 </p>
             </div>
             """
