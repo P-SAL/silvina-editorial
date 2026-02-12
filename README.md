@@ -1,148 +1,164 @@
 # Silvina Editorial Assistant v0.7
 
-[![Version](https://img.shields.io/badge/version-v0.7-blue)](https://github.com/P-SAL/silvina-editorial)
-[![Python](https://img.shields.io/badge/python-3.12-blue)](https://www.python.org/)
-[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Status](https://img.shields.io/badge/status-Active%20Development-yellow)](https://github.com/P-SAL/silvina-editorial)
+![Version](https://img.shields.io/badge/version-0.7-blue) ![Python](https://img.shields.io/badge/python-3.8+-green) ![License](https://img.shields.io/badge/license-MIT-orange)
 
-**AI-powered manuscript review for Spanish academic journals** | EUMIC compliance • APA 7 validation • Modular architecture • LLM-powered quality analysis
+AI-powered manuscript review for Spanish academic journals | EUMIC compliance • APA 7 validation • Professional reports • Two-tier quality analysis
 
 ---
 
 ## 📖 Overview
 
-Silvina is an intelligent editorial assistant for **Revista Visión Conjunta** (Facultad Militar Conjunta - Universidad de la Defensa Nacional, Argentina). It automates academic manuscript review using **deterministic structural validation** and **selective AI-powered analysis**.
+Silvina is an intelligent editorial assistant for **Revista Visión Conjunta** (Facultad Militar Conjunta - Universidad de la Defensa Nacional, Argentina). It automates academic manuscript review using deterministic validation and selective AI-powered analysis.
 
-**Current Version:** v0.7 (January 2026)  
-**Architecture:** Modular 4-layer design (Domain → Data Access → Business Logic → Presentation)  
-**LLM Integration:** Ollama (llama3-gradient:8b-instruct-1048k-q4_K_M)
-
----
-
-## ✨ Key Features
-
-### 🏗️ **Modular Architecture (NEW in v0.7)**
-
-**4-Layer Design:**
-```
-domain/           # Core models & enums (DocumentContent, Citation, Reference)
-data_access/      # Document parsing (Word reader, citation/reference extraction)
-business_logic/   # Analysis engines (classifier, quality analyzer, structure validator)
-presentation/     # Output formatting (text/Word/JSON reports)
-```
-
-**Benefits:**
-- Clean separation of concerns
-- Easy testing and maintenance
-- Scalable for future features
-- Type-safe with dataclasses
+**Current Version:** v0.7 (February 2026)  
+**Architecture:** Modular 3-layer design (Data Access → Business Logic → Presentation)  
+**LLM Integration:** Ollama (llama3.2:3b)  
+**Grammar Engine:** LanguageTool (Spanish)
 
 ---
 
-### 📚 **Document Analysis Pipeline**
+## ✨ What's New in v0.7
+
+### 🎨 Professional Word Reports
+- **Institutional branding**: EUMIC logo in header (all pages)
+- **Executive summary**: Key metrics table with publishability decision
+- **Detailed sections**: Color-coded, properly formatted with tables
+- **Error details**: Exact locations, context, and suggestions for grammar/APA errors
+- **Page numbering**: "X de Y" format in footer
+- **Professional styling**: Calibri 12pt, proper spacing, aligned layouts
+
+### 🔍 Enhanced Analysis
+- **Two-tier quality system**:
+  - **Tier 1 (Deterministic)**: Grammar & spelling with LanguageTool
+  - **Tier 2 (LLM)**: Semantic dimensions (clarity, coherence, argumentation, conclusions)
+- **Grammar error details**: Shows context, exact location, and correction suggestions
+- **APA 7 validation**: Detects conjunction errors (& vs y) with specific citations
+- **Robust citation parser**: Correctly detects narrative citations (e.g., "Coleman (2023)")
+
+### 🛠️ Technical Improvements
+- **XML-based extraction**: Direct parsing from Word XML for accurate citation detection
+- **Flexible LLM parser**: Handles format variations in Ollama output
+- **Cleaner architecture**: Separated Data/Business/Presentation layers
+- **Better error handling**: Graceful fallbacks, informative messages
+
+---
+
+## 🎯 Core Features
+
+### 📚 Comprehensive Analysis Pipeline
 
 **7-Step Process:**
+1. **Document Reading** - Extracts paragraphs from `.docx` files
+2. **Content Extraction** - Identifies title, authors, sections, word count
+3. **Citation & Reference Parsing** - Extracts in-text citations and bibliography (XML-based)
+4. **Article Classification** - Científico vs Divulgación (LLM-powered)
+5. **Quality Analysis** - Two-tier: deterministic grammar + LLM semantics
+6. **Structure Validation** - Verifies required sections per EUMIC standards
+7. **Citation Matching** - Links citations to references, calculates match rate
 
-1. **📖 Document Reading** - Extracts paragraphs from .docx files
-2. **🔍 Content Extraction** - Identifies title, authors, sections, word count
-3. **📚 Citation & Reference Parsing** - Extracts in-text citations and bibliography
-4. **🏷️ Article Classification** - Científico vs Divulgación (LLM-powered)
-5. **⭐ Quality Analysis** - 6 dimensions: clarity, coherence, argumentation, methodology, conclusions, format
-6. **📋 Structure Validation** - Verifies required sections per article type (EUMIC standards)
-7. **🔗 Citation Matching** - Links citations to references, identifies orphaned entries
+### ⭐ Two-Tier Quality Analysis
 
----
+**Tier 1 - Deterministic (LanguageTool):**
+- Grammar and spelling errors
+- Context and suggestions provided
+- Score: 0-10 based on error count
 
-### 🎯 **Classification System**
+**Tier 2 - Semantic (LLM):**
+- **Claridad**: Is the argument comprehensible?
+- **Coherencia**: Are ideas logically connected?
+- **Argumentación**: Is there evidence supporting claims?
+- **Conclusiones**: Do conclusions derive from content?
+- Overall score: 0-10 (average of 4 dimensions)
 
-**Article Types (EUMIC-compliant):**
-- **Artículo Científico** - Research with IMRyD structure, 3000-6000 words
-- **Artículo de Divulgación** - Literature review, flexible structure
-- **Artículo de Opinión** - Opinion/analysis piece
-- **Artículo Corto** - Brief communication, 1000-2000 words
+### 📋 EUMIC Structure Validation
 
-**Classification Method:** LLM-based with confidence scoring (0-100%)
-
----
-
-### ⭐ **Quality Analysis**
-
-**6 Evaluation Dimensions:**
-- **Claridad** - Writing clarity and readability
-- **Coherencia** - Logical flow and consistency
-- **Argumentación** - Strength of arguments and evidence
-- **Metodología** - Research methods rigor (if applicable)
-- **Conclusiones** - Quality and relevance of conclusions
-- **Formato** - Compliance with EUMIC/APA 7 standards
-
-**Output:** Overall score (0-10), quality level (Excellent/Good/Acceptable/Needs Improvement/Poor)
-
----
-
-### 📋 **Structure Validation**
-
-**Required Sections by Type:**
+**Required Sections by Article Type:**
 
 | Article Type | Required Sections |
-|--------------|-------------------|
-| Científico | Resumen, Introducción, Metodología, Resultados, Discusión, Conclusiones, Referencias |
-| Divulgación | Resumen, Introducción, Desarrollo, Conclusiones, Referencias |
-| Opinión | Introducción, Desarrollo, Conclusiones, Referencias |
+|-------------|-------------------|
+| **Científico** | Resumen, Introducción, Metodología, Resultados, Discusión, Conclusiones, Referencias |
+| **Divulgación** | Resumen, Introducción, Desarrollo, Conclusiones, Referencias |
+| **Opinión** | Introducción, Desarrollo, Conclusiones, Referencias |
 
-**Validation:** Detects missing sections, provides actionable feedback
+### 📖 APA 7 (Spanish) Validation
 
----
+**Checks:**
+- Conjunction errors: `&` → `y` for Spanish
+- Parenthetical format: `(Autor, 2020)`
+- Narrative format: `Autor (2020)`
+- Multiple authors: `Autor1 y Autor2 (2020)`
+- Et al. format: `Autor et al. (2020)`
 
-### 🔗 **Citation-Reference Matching**
+**Output:** Specific errors with location, explanation, and correction
+
+### 🔗 Citation-Reference Matching
 
 **Features:**
-- Extracts APA 7 Spanish citations: `(Autor, 2020)`, `Autor (2020)`
-- Handles `et al.`, organizational authors, multiple citations
+- Detects 13 types of citations (parenthetical, narrative, single/multi-author)
 - Matches citations to bibliography entries
-- Identifies unmatched citations (red flag for publication)
+- Identifies unmatched citations
 - Calculates match rate percentage
+- Flags missing references
 
 ---
 
-### 📊 **Multi-Format Reports**
+## 📊 Report Formats
 
-**3 Output Formats:**
-1. **📄 Text Report** (`.txt`) - Complete analysis in plain text
-2. **📘 Word Report** (`.docx`) - Formatted document with color-coded sections
-3. **📊 JSON Data** (`.json`) - Structured data for further processing
+### 📄 Professional Word Report (.docx)
 
-**Report Includes:**
-- ✅/❌ **Publishability decision** (NEW in v0.7)
-- Document metadata (title, authors, word count)
-- Classification results with confidence
-- Quality scores by dimension
-- Structure validation status
-- Citation analysis with match rate
-- Prioritized recommendations (High/Medium/Low)
+**Sections:**
+1. **Title Page**: Document name, institutional logo
+2. **Executive Summary**: Key metrics table, publishability decision
+3. **Document Information**: Title, author, word count, pages
+4. **Classification**: Article type with confidence
+5. **Quality Analysis**: 
+   - Grammar (Tier 1) with error details
+   - Semantic dimensions (Tier 2) with feedback
+6. **APA 7 Validation**: Specific errors with corrections
+7. **Structure Validation**: Missing sections (if any)
+8. **Citations Analysis**: Match rate, unmatched citations
+9. **Recommendations**: Prioritized action items
+
+**Styling:**
+- EUMIC logo in header (all pages)
+- Color-coded status indicators (red/yellow/green)
+- Tables for structured data
+- Page numbers: "X de Y" format
+- Professional fonts: Calibri 12pt
+
+### 📊 JSON Export (.json)
+
+Complete structured data including:
+- Document metadata
+- All analysis results
+- Raw scores and feedback
+- Citation/reference lists
+- Recommendations
 
 ---
 
 ## 🛠️ Technology Stack
 
 | Component | Technology |
-|-----------|------------|
-| **Language** | Python 3.12 |
-| **Document Parsing** | python-docx (Word .docx files) |
-| **LLM Integration** | Ollama (local inference) |
-| **Data Models** | Dataclasses with type hints |
-| **Architecture** | Modular 4-layer design |
-| **Output** | python-docx for Word reports |
+|-----------|-----------|
+| **Language** | Python 3.8+ |
+| **Document Parsing** | python-docx (Word .docx) |
+| **Grammar Check** | LanguageTool (Spanish) |
+| **LLM** | Ollama (llama3.2:3b) |
+| **Architecture** | Modular 3-layer design |
+| **Output** | Word reports with formatting |
 
 ---
 
 ## 📦 Installation
 
 ### Prerequisites
-- Python 3.12+
-- [Ollama](https://ollama.ai/) installed and running
-- 8GB+ RAM (16GB recommended)
+- Python 3.8+
+- Ollama installed and running
+- 8GB+ RAM recommended
 
 ### Setup
+
 ```bash
 # 1. Clone repository
 git clone https://github.com/P-SAL/silvina-editorial.git
@@ -153,214 +169,178 @@ python -m venv venv312
 source venv312/bin/activate  # Windows: venv312\Scripts\activate
 
 # 3. Install dependencies
-pip install python-docx ollama
+pip install -r requirements.txt
 
 # 4. Pull LLM model (one-time)
-ollama pull llama3-gradient:8b-instruct-1048k-q4_K_M
+ollama pull llama3.2:3b
 
-# 5. Verify installation
-python -c "import ollama; print('✅ Ollama ready')"
+# 5. Add institutional logo (optional)
+# Place logo as: assets/logo.jpg
 ```
 
 ---
 
 ## 🚀 Usage
 
-### Basic Analysis
+### Interactive Mode
+```bash
+python main.py
+```
+System will prompt for document path.
+
+### Command Line
 ```bash
 python main.py "path/to/document.docx"
 ```
 
-**Example:**
-```bash
-python main.py "C:\Users\usuario\Desktop\mi_articulo.docx"
-```
+### Output Files
+Generated in same directory as input:
+- `document_analisis.docx` - Professional Word report
+- `document_analisis.json` - Structured JSON data
 
-**Output:** 3 files in the same directory as input:
-- `mi_articulo_analisis.txt`
-- `mi_articulo_analisis.docx`
-- `mi_articulo_analisis.json`
-
----
-
-### Console Output Example
+### Example Console Output
 ```
 ================================================================================
    SILVINA EDITORIAL ASSISTANT v0.7
-   Asistente de Análisis Editorial para Documentos Académicos
 ================================================================================
 
 📄 Analizando documento: mi_articulo.docx
-================================================================================
 
 [1/7] 📖 Leyendo documento...
-      ✓ 45 párrafos leídos
-
-[2/7] 🔍 Extrayendo contenido estructurado...
-      ✓ Título: El impacto de la inteligencia artificial...
-      ✓ Total de palabras: 4,523
+      ✓ Documento leído correctamente
 
 [3/7] 📚 Analizando citas y referencias...
-      ✓ 23 citas encontradas
-      ✓ 25 referencias encontradas
+      ✓ 13 citas detectadas
+      ✓ 17 referencias detectadas
 
-[4/7] 🏷️  Clasificando tipo de artículo...
-      ✓ Categoría: Artículo Científico
-      ✓ Confianza: 85.0%
+      🔍 Validando formato APA 7...
+      ⚠️  3 errores de formato APA 7 detectados
+
+      🔍 Validando gramática y ortografía...
+      ✓ Gramática: 8.5/10.0 - ⚠️ 2 errores menores detectados
 
 [5/7] ⭐ Analizando calidad...
       ✓ Puntuación: 8.2/10.0
       ✓ Nivel: Bueno
 
-[6/7] 📋 Validando estructura...
-      ✓ VÁLIDA
-
-[7/7] 🔗 Relacionando citas con referencias...
-      ✓ Tasa de coincidencia: 95.7%
-
-================================================================================
 ✅ Análisis completado exitosamente
-================================================================================
 ```
 
 ---
 
 ## 📁 Project Structure
+
 ```
 silvina_editorial_v07/
-├── main.py                      # Entry point, orchestrates analysis
+├── assets/
+│   └── logo.jpg                    # Institutional logo (EUMIC)
 ├── domain/
-│   ├── models.py                # Core data models (DocumentContent, Citation, etc.)
-│   └── enums.py                 # Enumerations (ClassificationCategory, QualityLevel)
+│   ├── models.py                   # Data models (DocumentContent, Citation)
+│   └── enums.py                    # Enumerations (ArticleType, QualityLevel)
 ├── data_access/
-│   ├── word_reader.py           # Reads .docx files
-│   ├── content_extractor.py     # Extracts title, authors, sections
-│   ├── citation_parser.py       # Parses APA citations
-│   └── reference_parser.py      # Parses bibliography
+│   ├── word_reader.py              # .docx file reader
+│   ├── content_extractor.py        # Content extraction
+│   ├── citation_parser.py          # XML-based citation parser
+│   └── reference_parser.py         # Bibliography parser
 ├── business_logic/
-│   ├── article_classifier.py    # LLM-based classification
-│   ├── quality_analyzer.py      # Multi-dimension quality scoring
-│   ├── structure_validator.py   # EUMIC structure compliance
-│   └── citation_matcher.py      # Citation-reference linking
-└── presentation/
-    ├── report_formatter.py      # Text report generation
-    ├── word_exporter.py         # Word document export
-    └── config.py                # Configuration settings
+│   ├── article_classifier.py       # LLM classification
+│   ├── quality_analyzer.py         # Semantic analysis (Tier 2)
+│   ├── gramatica_checker.py        # Grammar check (Tier 1)
+│   ├── structure_validator.py      # EUMIC validation
+│   └── citation_matcher.py         # Citation-reference matching
+├── presentation/
+│   ├── word_exporter.py            # Professional Word reports
+│   ├── report_formatter.py         # Text formatting
+│   └── config.py                   # Configuration
+├── apa_validator.py                # APA 7 Spanish validator
+├── eumic_verifier.py               # EUMIC standards checker
+└── main.py                         # Entry point
 ```
 
 ---
 
-## 🎯 Validation Standards
+## 🎯 Publishability Decision Criteria
 
-### EUMIC Guidelines
-- Character count requirements (Científico: 30,000-50,000)
-- Required sections per article type
-- Spanish APA 7 citation format
-
-### APA 7 (Spanish)
-- Author format: `Apellido, N.`
-- Conjunction: `y` (not `&`)
-- Date format: `(2020)`, `(2020a)`, `(2020, 15 de enero)`
-- Page references: `(p. 23)`, `(pp. 45-67)`
+| Status | Conditions |
+|--------|-----------|
+| ✅ **APTO** | Quality ≥7, Grammar ≥7, Structure valid, No APA errors |
+| ⚠️ **REQUIERE REVISIÓN** | Quality 6-7, or 1-3 APA errors |
+| ❌ **NO APTO** | Quality <5, incomplete structure, or >5 critical errors |
 
 ---
 
 ## 🔄 Version History
 
-### v0.7 (January 2026) - Current
-- ✨ **NEW:** Modular 4-layer architecture
-- ✨ **NEW:** Publishability decision in reports
-- ✨ **NEW:** JSON export for data integration
-- 🚀 Faster processing with batched LLM calls
-- 🐛 Fixed citation parser for Spanish APA
-- 📊 Enhanced Word report formatting
+### v0.7 (February 2026) - Current
+- ✨ Professional Word reports with EUMIC branding
+- ✨ Two-tier quality analysis (Grammar + Semantics)
+- ✨ Grammar error details with context and suggestions
+- ✨ APA 7 validation with specific error locations
+- 🔧 Robust citation parser (handles narrative formats)
+- 🔧 Flexible LLM parser (handles output variations)
+- 🎨 Improved report formatting (tables, colors, spacing)
+- 📊 JSON export for data integration
 
 ### v0.6 (December 2025)
 - Citation-reference integrity validation
 - IMRyD structure detection
-- Organizational author support
-- Two-tier analysis strategy
+- Basic LLM quality analysis
+- Text-only reports
 
 ### v0.5 and earlier
-- Basic character counting
-- Simple LLM review
-- Text-only output
+- Basic document analysis
+- Simple character counting
+- Minimal validation
 
 ---
 
 ## 🗺️ Roadmap
 
 ### v0.8 (Planned - Q1 2026)
-- 🎨 **Gradio web interface** for user-friendly access
+- 🎨 **Gradio web interface** for non-technical users
 - 📱 Drag-and-drop file upload
-- 📊 Interactive result visualization
-- 💾 Batch processing for multiple documents
+- 📊 Interactive visualization
+- 💾 Batch processing
 
 ### v0.9 (Planned - Q2 2026)
-- 📧 Email integration for automatic notifications
-- 🔄 Version comparison (track revisions)
-- 📈 Analytics dashboard for editorial team
-- 🌐 Multi-language support (English, Portuguese)
+- 📧 Email notifications
+- 🔄 Version comparison
+- 📈 Analytics dashboard
+- 🌐 English support
 
 ### v1.0 (Planned - Q3 2026)
-- 🏢 Production deployment at Universidad de la Defensa
-- 📚 Integration with journal submission system
+- 🏢 Production deployment at UNDEF
+- 📚 Journal submission integration
 - 👥 Multi-user authentication
-- 📊 Editorial workflow management
-
----
-
-## 🧪 Testing
-
-### Current Status
-- ✅ Citation extraction: Working
-- ✅ Reference parsing: Working
-- ✅ Document classification: 85%+ accuracy
-- ✅ Structure validation: Functional
-- ⚠️ Citation matching: Needs refinement
-- ⚠️ Quality analysis: Testing with diverse documents
-
-### Test Documents
-Located in `test_documents/` (not in repo for privacy):
-- Scientific articles with IMRyD structure
-- Review articles with flexible structure
-- Documents with citation issues
-- Documents with structural gaps
 
 ---
 
 ## 🤝 Contributing
 
-This project is currently in active development for internal use at Universidad de la Defensa Nacional, Argentina.
+Currently in active development for Universidad de la Defensa Nacional, Argentina.
 
-**Contact:** Pablo Salonio (P-SAL) - plsalonio@gmail.com 
+**Contact:** Pablo Salonio (P-SAL)  
+**Email:** plsalonio@gmail.com  
 **Repository:** https://github.com/P-SAL/silvina-editorial
 
 ---
 
 ## 📄 License
 
-MIT License - See [LICENSE](LICENSE) file for details
+MIT License - See LICENSE file
 
 ---
 
 ## 🙏 Acknowledgments
 
-- **Revista Visión Conjunta** - Editorial team for requirements and testing
+- **Revista Visión Conjunta** - Editorial requirements and testing
 - **Facultad Militar Conjunta** - Universidad de la Defensa Nacional
 - **Ollama Team** - Local LLM infrastructure
-- **Claude (Anthropic)** - Development assistance and code review
+- **LanguageTool** - Open-source grammar checking
+- **Claude (Anthropic)** - Development assistance
 
 ---
 
-## 📞 Support
-
-For issues, questions, or suggestions:
-- 🐛 [Open an issue](https://github.com/P-SAL/silvina-editorial/issues)
-- 📧 Contact: [via GitHub](https://github.com/P-SAL)
-
----
-
-**Last Updated:** January 17, 2026  
+**Last Updated:** February 8, 2026  
 **Version:** 0.7  
-**Status:** Active Development 🚀
+**Status:** Production Ready 🚀

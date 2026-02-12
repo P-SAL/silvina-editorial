@@ -289,14 +289,14 @@ def create_interface():
             <div class="logo-container">
                 <img src="{logo_src}" alt="EUMIC Logo" style="max-height: 100px; display: block; margin: 0 auto;">
                 <h1>Silvina - Asistente Editorial</h1>
-                <p>Sistema de análisis automatizado para manuscritos académicos EUMIC/APA 7</p>
+                <p>Sistema de revisión automatizado para manuscritos académicos EUMIC</p>
             </div>
             """)
         else:
             gr.HTML(f"""
             <div class="logo-container">
                 <h1>Silvina - Asistente Editorial</h1>
-                <p>Sistema de análisis automatizado para manuscritos académicos EUMIC/APA 7</p>
+                <p>Sistema de revisión automatizado para manuscritos académicos EUMIC</p>
             </div>
             """)
                                 
@@ -384,12 +384,10 @@ def create_interface():
             import time
             
             if file is None:
-                return "⚠️ Seleccione un documento primero", "", None, None, ""
+                return "⚠️ Seleccione un documento primero", "", None, None, "", gr.Button(interactive=True)
             
-            # Container to share results between threads
             result_container = {'result': None, 'error': None, 'done': False}
             
-            # Run analysis in background thread
             def run_analysis():
                 try:
                     result_container['result'] = process_document(file)
@@ -401,45 +399,44 @@ def create_interface():
             thread = threading.Thread(target=run_analysis)
             thread.start()
             
-            # Show progress steps while analysis runs in background
-            # Times (seconds) are estimates per step
             steps = [
-                (0.05, "🔧 Iniciando Silvina...",              2),
-                (0.15, "[1/7] 📖 Leyendo documento...",        3),
-                (0.25, "[2/7] 🔍 Extrayendo contenido...",     3),
-                (0.40, "[3/7] 📚 Analizando citas y APA...",   8),
-                (0.55, "[4/7] 🏷️  Clasificando artículo...",   10),
-                (0.75, "[5/7] ⭐ Analizando calidad...",       45),
-                (0.88, "[6/7] 📋 Validando estructura...",      3),
-                (0.93, "[7/7] 🔗 Relacionando citas...",        3),
-                (0.97, "💾 Generando reportes Word y JSON...", 3),
+                (0.05, "🔧 Iniciando Silvina...",             2),
+                (0.15, "[1/7] 📖 Leyendo documento...",       3),
+                (0.25, "[2/7] 🔍 Extrayendo contenido...",    3),
+                (0.40, "[3/7] 📚 Analizando citas y APA...",  8),
+                (0.55, "[4/7] 🏷️  Clasificando artículo...",  10),
+                (0.75, "[5/7] ⭐ Analizando calidad...",      45),
+                (0.88, "[6/7] 📋 Validando estructura...",     3),
+                (0.93, "[7/7] 🔗 Relacionando citas...",       3),
+                (0.97, "💾 Generando reportes...",             3),
             ]
             
             for progress_val, desc, wait_seconds in steps:
                 if result_container['done']:
                     break
                 progress(progress_val, desc=desc)
-                
-                # Wait in small intervals so we can detect early completion
                 elapsed = 0
                 while elapsed < wait_seconds and not result_container['done']:
                     time.sleep(0.3)
                     elapsed += 0.3
             
-            # Wait for thread to finish if still running
             thread.join()
             
-            # Handle errors
             if result_container['error']:
-                return f"❌ Error: {result_container['error']}", "", None, None, ""
+                return f"❌ Error: {result_container['error']}", "", None, None, "", gr.Button(interactive=True)
             
-            # Unpack results
             progress(1.0, desc="✅ Análisis completado")
             status, html, word, json_path = result_container['result']
-            doc_name = Path(file.name).name if hasattr(file, 'name') else Path(file).name
+            doc_name = Path(file).name if isinstance(file, str) else Path(file.name).name
             
-            return status, html, word, json_path, doc_name
+            return status, html, word, json_path, doc_name, gr.Button(interactive=True)
         
+        analyze_btn.click(
+            fn=analyze_and_store_name,
+            inputs=[file_input],
+            outputs=[status_msg, results_display, word_download, json_download, document_name_state, analyze_btn]
+        )
+
         analyze_btn.click(
             fn=analyze_and_store_name,
             inputs=[file_input],
