@@ -436,20 +436,7 @@ def create_interface():
             inputs=[file_input],
             outputs=[status_msg, results_display, word_download, json_download, document_name_state, analyze_btn]
         )
-
-        analyze_btn.click(
-            fn=analyze_and_store_name,
-            inputs=[file_input],
-            outputs=[status_msg, results_display, word_download, json_download, document_name_state]
-        )
-
-        analyze_btn.click(
-            fn=analyze_and_store_name,
-            inputs=[file_input],
-            outputs=[status_msg, results_display, word_download, json_download, document_name_state]
-        )
-
-                
+                        
         feedback_btn.click(
             fn=save_expert_feedback,
             inputs=[document_name_state, expert_evaluation, expert_comments],
