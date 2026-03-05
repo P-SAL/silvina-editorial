@@ -2,7 +2,7 @@
 quality_analyzer.py
 Analyzes document quality across multiple SEMANTIC dimensions using LLM.
 TIER 2 - Focuses on content quality, not grammar/spelling (that's Tier 1)
-Part of Silvina Editorial Assistant v0.7
+Part of Silvina Editorial Assistant v0.8
 """
 from __future__ import annotations
 
@@ -19,13 +19,6 @@ class QualityAnalyzer:
     
     def __init__(self, model_name: str = "llama3-gradient:8b-instruct-1048k-q4_K_M",
                  base_url: str = "http://localhost:11434"):
-        """
-        Initialize the quality analyzer.
-        
-        Args:
-            model_name: Name of the Ollama model to use
-            base_url: Base URL for Ollama API
-        """
         self.model_name = model_name
         import ollama
         self.ollama = ollama
@@ -35,27 +28,50 @@ class QualityAnalyzer:
     def analyze_quality(self, document_content, article_type) -> QualityAnalysisResult:
         print("      ⏳ Analizando con Ollama...")
         
+        
         # Sample text - strategic sampling
         parts = []
         parts.append(document_content.title or "")
         parts.extend(document_content.paragraphs[:3])  # Intro
         mid = len(document_content.paragraphs) // 2
         parts.extend(document_content.paragraphs[mid:mid+2])  # Middle
-        parts.extend(document_content.paragraphs[-2:])  # Conclusion
+
+        # Find conclusion section explicitly, fallback to last non-reference paragraphs
+        conclusion_paras = []
+        in_conclusion = False
+        for p in document_content.paragraphs:
+            if re.search(r'conclusi', p, re.IGNORECASE):
+                in_conclusion = True
+            if in_conclusion and not any(x in p[:80] for x in ['http', 'doi.org', 'https', 'ISBN']):
+                conclusion_paras.append(p)
+        if conclusion_paras:
+            parts.extend(conclusion_paras[:3])
+        else:
+            non_ref = [p for p in document_content.paragraphs 
+                    if not any(x in p[:80] for x in ['http', 'doi.org', 'https', 'ISBN'])]
+            parts.extend(non_ref[-2:])
+
         text_sample = ' '.join(parts)[:8000]
+               
         
-        # IMPROVED PROMPT - Better instructions, clearer format
-        prompt = f"""Eres un revisor editorial académico experto. Analiza este fragmento de artículo académico en CUATRO dimensiones semánticas.
+        ollama_options = {
+            'temperature': 0.2,
+            'num_predict': 800,
+            'num_ctx': 4096,
+            'repeat_penalty': 1.1,
+            'timeout': 120
+        }
+
+        # ── CALL 1: Claridad + Coherencia ────────────────────────────────
+        prompt_1 = f"""Eres un revisor editorial académico experto. Analiza este fragmento en DOS dimensiones.
 
 TEXTO A ANALIZAR:
 {text_sample}
 
-INSTRUCCIONES IMPORTANTES:
-1. Evalúa SOLO lo que realmente está presente en el texto
-2. Si ves argumentos, reconócelos (no digas "no presenta argumentos" si los hay)
-3. Sé específico: menciona qué funciona bien y qué necesita mejorar
-4. No repitas información - cada dimensión debe aportar algo nuevo
-5. La ortografía y gramática ya fueron verificadas - enfócate en el CONTENIDO
+INSTRUCCIONES:
+1. Evalúa SOLO lo que está presente en el texto
+2. Sé específico: menciona qué funciona bien y qué necesita mejorar
+3. La ortografía y gramática ya fueron verificadas - enfócate en el CONTENIDO
 
 FORMATO DE RESPUESTA (OBLIGATORIO):
 
@@ -65,83 +81,83 @@ FORMATO DE RESPUESTA (OBLIGATORIO):
 **2. Coherencia** [Puntuación: X/10]
 [Analiza si las ideas se conectan lógicamente. ¿Hay transiciones claras entre secciones?]
 
-**3. Argumentación** [Puntuación: X/10]
-[Analiza la calidad de los argumentos. ¿Están respaldados con evidencia, ejemplos o citas?]
+CRITERIOS: 9-10 Excelente | 7-8 Bueno | 5-6 Aceptable | 3-4 Deficiente | 0-2 Inaceptable
+"""
 
-**4. Conclusiones** [Puntuación: X/10]
-[Analiza si las conclusiones son claras y se derivan del contenido presentado.]
+        # ── CALL 2: Argumentación + Conclusiones ─────────────────────────
+        prompt_2 = f"""Eres un revisor editorial académico experto. Analiza este fragmento en DOS dimensiones.
 
-CRITERIOS DE PUNTUACIÓN:
-- 9-10: Excelente calidad, listo para publicación
-- 7-8: Buena calidad, mejoras menores recomendadas
-- 5-6: Calidad aceptable, requiere trabajo adicional
-- 3-4: Calidad deficiente, necesita revisión profunda
-- 0-2: Calidad inaceptable
+TEXTO A ANALIZAR:
+{text_sample}
 
-RECOMENDACIÓN FINAL (elige UNA opción):
-- Si la puntuación promedio es ≥7: "APTO PARA PUBLICACIÓN"
-- Si la puntuación promedio es <7: "NO SE RECOMIENDA PUBLICAR"
+INSTRUCCIONES:
+1. Evalúa SOLO lo que está presente en el texto
+2. Para Conclusiones: si no hay sección formal, infiere del contenido final del texto
+3. La ortografía y gramática ya fueron verificadas - enfócate en el CONTENIDO
 
-NO agregues notas adicionales después de la recomendación.
+FORMATO DE RESPUESTA (OBLIGATORIO):
+
+**1. Argumentación** [Puntuación: X/10]
+[Si hay argumentos, evalúa su calidad. Si no los hay, indícalo claramente y asigna una puntuación baja.]
+
+**2. Conclusiones** [Puntuación: X/10]
+[OBLIGATORIO: Evalúa siempre. Si no hay sección formal, analiza el párrafo final del texto y asigna puntuación.]
+
+CRITERIOS: 9-10 Excelente | 7-8 Bueno | 5-6 Aceptable | 3-4 Deficiente | 0-2 Inaceptable
 """
 
         try:
-            response = self.ollama.generate(
+            # First call
+            response_1 = self.ollama.generate(
                 model=self.model_name,
-                prompt=prompt,
-                options={
-                    'temperature': 0.2,  # Lower = more factual
-                    'num_predict': 800,   # Shorter to avoid repetition
-                    'num_ctx': 4096,
-                    'timeout': 120}  # 120 seconds timeout
-)
-            
-            
-            
-            analysis_text = response.get('response', '').strip()
-
-            # Clean up unwanted sections
-            # 1. Remove everything after RECOMENDACIÓN FINAL
-            analysis_text = re.sub(
-                r'(\*\*RECOMENDACIÓN FINAL\*\*:.*?)(?:\n\nNota:.*)?$',
-                r'\1',
-                analysis_text,
-                flags=re.DOTALL | re.IGNORECASE
+                prompt=prompt_1,
+                options=ollama_options
             )
-            # 2. Remove any remaining standalone "Nota:" sections
-            analysis_text = re.sub(r'\n*Nota:.*', '', analysis_text, flags=re.DOTALL | re.IGNORECASE)
-            analysis_text = analysis_text.strip()
+            text_1 = response_1.get('response', '').strip()
+            print(f"      ✓ Llamada 1 completada: {len(text_1.split())} palabras")
+                    
+            # Second call
+            response_2 = self.ollama.generate(
+                model=self.model_name,
+                prompt=prompt_2,
+                options=ollama_options
+            )
+                       
+            text_2 = response_2.get('response', '').strip()
+            print(f"      ✓ Llamada 2 completada: {len(text_2.split())} palabras")
 
-            
-            word_count = len(analysis_text.split())
-            print(f"      ✓ Análisis generado: {word_count} palabras\n")
-            
-            # Parse into structured scores
-            scores = self._parse_llm_response(analysis_text)
+            # Parse both responses
+            scores_1 = self._parse_llm_response(text_1)
+            scores_2 = self._parse_llm_response(text_2)
+            scores = {**scores_1, **scores_2}
+            # Keep best result per dimension (non-default wins)
+            for dim in scores:
+                if scores_1[dim]["feedback"] != "No disponible":
+                    scores[dim] = scores_1[dim]
+                elif scores_2[dim]["feedback"] != "No disponible":
+                    scores[dim] = scores_2[dim] 
+                 
             overall = sum(d["score"] for d in scores.values()) / len(scores)
             quality_level = get_quality_level_from_score(overall)
-           
+
+            print(f"      ✓ Análisis generado: {overall:.1f}/10\n")
+
             return QualityAnalysisResult(
                 overall_score=overall,
                 quality_level=quality_level,
                 dimension_scores=scores
             )
-            
+
         except Exception as e:
             print(f"      ⚠️  Error en LLM: {e}")
             default = {
-                d: {"score": 7.0, "feedback": "Análisis no disponible"} 
+                d: {"score": 7.0, "feedback": "Análisis no disponible"}
                 for d in ["claridad", "coherencia", "argumentacion", "conclusiones"]
             }
             return QualityAnalysisResult(7.0, QualityLevel.ACCEPTABLE, default)
 
     def _parse_llm_response(self, text: str) -> Dict[str, Dict[str, Any]]:
-        """
-        Extract feedback AND scores from LLM response.
-        Handles BOTH formats:
-        - Format 1: **Dimension** [Puntuación: 8/10]
-        - Format 2: **Dimension**: 8/10
-        """
+        """Extract feedback and scores by splitting on dimension headers."""
         
         result = {
             "claridad": {"score": 7.0, "feedback": "No disponible"},
@@ -149,79 +165,56 @@ NO agregues notas adicionales después de la recomendación.
             "argumentacion": {"score": 7.0, "feedback": "No disponible"},
             "conclusiones": {"score": 7.0, "feedback": "No disponible"}
         }
-        
-        # Pattern handles both [Puntuación: X/10] and : X/10 formats
-        pattern = r'\*\*(?:\d+\.\s*)?([^*:\[]+?)(?:\**)?\s*(?:\[Puntuación:\s*(\d+(?:\.\d+)?)(?:/10)?\]|:\s*(\d+(?:\.\d+)?)(?:/10)?)\s*[:\n]+(.*?)(?=\n\*\*|\n*$)'
-        matches = re.findall(pattern, text, re.DOTALL | re.IGNORECASE)
-        
-        for match in matches:
-            name = match[0].strip()
-            # Score can be in position 1 or 2 depending on format
-            score_str = match[1] if match[1] else match[2]
-            content = match[3]
-            
-            name_lower = name.strip().lower()
-            
-            # Parse score
-            try:
-                score = float(score_str)
-                score = max(0.0, min(10.0, score))
-            except (ValueError, TypeError):
-                score = 7.0
-            
-            # Clean feedback content - remove everything after RECOMENDACIÓN
-            clean_content = re.sub(
-                r'\*\*RECOMENDACIÓN.*',
-                '',
-                content,
-                flags=re.DOTALL | re.IGNORECASE
-            )
-            clean_content = re.sub(r'^\([^)]+\)\s*', '', clean_content.strip())
-            clean_content = ' '.join(clean_content.split())
-            
-            # Ensure minimum feedback length
-            if len(clean_content) < 10:
-                clean_content = "Análisis no disponible para esta dimensión."
-            
-            # Limit length at sentence boundary
-            if len(clean_content) > 500:
-                sentences = clean_content[:500].split('.')
-                if len(sentences) > 1:
-                    clean_content = '.'.join(sentences[:-1]) + '.'
-                else:
-                    clean_content = clean_content[:500] + '...'
-            
-            # Map to dimension
-            if "claridad" in name_lower or ("argumento" in name_lower and "argumentaci" not in name_lower):
-                result["claridad"]["score"] = score
-                result["claridad"]["feedback"] = clean_content
-            elif "coherencia" in name_lower:
-                result["coherencia"]["score"] = score
-                result["coherencia"]["feedback"] = clean_content
-            elif "argumentaci" in name_lower:
-                result["argumentacion"]["score"] = score
-                result["argumentacion"]["feedback"] = clean_content
-            elif "conclusion" in name_lower:
-                result["conclusiones"]["score"] = score
-                result["conclusiones"]["feedback"] = clean_content
-        
-        return result
 
+        # Split text into blocks at each dimension header
+        blocks = re.split(r'(?=\*\*\d+\.)', text.strip())
+
+        for block in blocks:
+            if not block.strip():
+                continue
+
+            # Extract score from first line
+            first_line = block.split('\n')[0]
+            score_match = re.search(r'\[Puntuación:\s*(\d+(?:\.\d+)?)(?:/10)?\]|(\d+(?:\.\d+)?)/10', first_line)
+            if not score_match:
+                continue
+            score_str = score_match.group(1) or score_match.group(2)
+            try:
+                score = max(0.0, min(10.0, float(score_str)))
+            except:
+                score = 7.0
+
+            # Extract feedback from remaining lines
+            lines = block.strip().split('\n')
+            feedback_lines = [l.strip() for l in lines[1:] if l.strip()]
+            feedback = ' '.join(feedback_lines)
+            feedback = re.sub(r'\*\*RECOMENDACIÓN.*', '', feedback, flags=re.DOTALL | re.IGNORECASE).strip()
+            feedback = ' '.join(feedback.split())
+
+            if len(feedback) < 10:
+                feedback = "No disponible"
+
+            # Truncate to 3 sentences
+            sentences = [s.strip() for s in feedback.split('.') if s.strip()]
+            if len(sentences) > 3:
+                feedback = '. '.join(sentences[:3]) + '.'
+
+            # Map to dimension
+            block_lower = first_line.lower()
+            if 'claridad' in block_lower or ('argumento' in block_lower and 'argumentaci' not in block_lower):
+                result["claridad"] = {"score": score, "feedback": feedback}
+            elif 'coherencia' in block_lower:
+                result["coherencia"] = {"score": score, "feedback": feedback}
+            elif 'argumentaci' in block_lower:
+                result["argumentacion"] = {"score": score, "feedback": feedback}
+            elif 'conclusi' in block_lower:
+                result["conclusiones"] = {"score": score, "feedback": feedback}
+
+        return result
 
 # Convenience function
 def analyze_document_quality(document: DocumentContent,
                             category: ClassificationCategory,
                             model_name: str = "llama3-gradient:8b-instruct-1048k-q4_K_M") -> QualityResult:
-    """
-    Analyze document quality using default analyzer.
-    
-    Args:
-        document: DocumentContent to analyze
-        category: Article classification
-        model_name: Ollama model to use
-        
-    Returns:
-        QualityResult
-    """
     analyzer = QualityAnalyzer(model_name=model_name)
     return analyzer.analyze_quality(document, document.full_text, category)

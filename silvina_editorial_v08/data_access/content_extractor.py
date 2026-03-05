@@ -90,19 +90,29 @@ class ContentExtractor:
         )
 
     def _extract_title(self, paragraphs: List[str]) -> Optional[str]:
-        """Extract document title."""
-        for para in paragraphs[:10]:
-            # Check for explicit title marker
+        """Extract document title - combines first two short paragraphs if both look like title parts."""
+        title_parts = []
+        
+        for para in paragraphs[:5]:
+            # Stop if explicit title marker
             match = re.match(self.section_patterns['title'], para, re.IGNORECASE)
             if match:
                 return match.group(1).strip()
             
-            # If first substantial paragraph (likely title)
-            if len(para.split()) >= 3 and len(para) < 200:
-                return para.strip()
+            # Collect short paragraphs that look like title lines
+            if len(para.split()) >= 2 and len(para) < 200:
+                title_parts.append(para.strip())
+                if len(title_parts) == 2:
+                    break
+        
+        if len(title_parts) >= 2:
+            return f"{title_parts[0]} — {title_parts[1]}"
+        elif len(title_parts) == 1:
+            return title_parts[0]
         
         return None
-    
+
+
     def _extract_authors(self, paragraphs: List[str]) -> Optional[str]:
         """
         Extract author information from first page after title.

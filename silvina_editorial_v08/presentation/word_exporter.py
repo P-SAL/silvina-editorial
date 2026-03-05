@@ -150,7 +150,7 @@ class WordExporter:
         
         # Document name (centered, bold)
         doc_name = doc.add_paragraph()
-        doc_name.add_run(results['filename']).bold = True
+        doc_name.add_run(results['document_info'].get('title', results['filename'])).bold = True
         doc_name.alignment = WD_ALIGN_PARAGRAPH.CENTER
         doc_name.runs[0].font.size = Pt(12)
 
@@ -180,7 +180,7 @@ class WordExporter:
             left_para.alignment = WD_ALIGN_PARAGRAPH.LEFT
             
             # Add text
-            run = left_para.add_run('Generado por Silvina Revisor Editorial v0.7\n')
+            run = left_para.add_run('Generado por Silvina Revisor Editorial 0.8\n')
             run.italic = True
             run.font.size = Pt(9)
             run.font.color.rgb = RGBColor(128, 128, 128)
@@ -492,11 +492,12 @@ class WordExporter:
         
         if len(violations) == 0:
             p = doc.add_paragraph()
-            p.add_run('✅ Sin errores de formato APA 7 detectados').font.color.rgb = RGBColor(0, 128, 0)
-        else:
-            p = doc.add_paragraph()
-            p.add_run(f'⚠️ {len(violations)} errores de formato APA 7 detectados').font.color.rgb = RGBColor(192, 0, 0)
-            
+            total_citations = results['citations_analysis'].get('total_citations', 0)
+            if total_citations == 0:
+                p.add_run('ℹ️ Sin citaciones en texto detectadas — no se pudo validar formato APA 7').font.color.rgb = RGBColor(128, 128, 128)
+            else:
+                p.add_run('✅ Sin errores de formato APA 7 detectados').font.color.rgb = RGBColor(0, 128, 0)
+                          
             doc.add_paragraph()
             
             # Group by error type
@@ -613,7 +614,7 @@ class WordExporter:
         doc.add_paragraph("─" * 80)
         
         footer = doc.add_paragraph()
-        footer.add_run("Generado por Silvina Editorial Assistant v0.7 | ").italic = True
+        footer.add_run("Generado por Silvina Editorial Assistant v0.8 | ").italic = True
         footer.add_run(datetime.now().strftime('%d/%m/%Y %H:%M')).italic = True
         footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
         footer.runs[0].font.size = Pt(9)
