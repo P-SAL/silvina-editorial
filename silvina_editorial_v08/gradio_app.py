@@ -233,30 +233,46 @@ def create_results_display(results):
 # ============================================
 # FEEDBACK HANDLER
 # ============================================
-def save_expert_feedback(document_name, evaluation, comments):
+def save_expert_feedback(document_name, evaluation, classification_correct, 
+                         quality_score_fair, grammar_real_errors, 
+                         structure_correct, citations_correct,
+                         weakest_section, editor_recommendation, comments):
     """
-    Saves expert feedback for system improvement.
+    Saves structured expert feedback for system improvement.
     """
     if not evaluation:
-        return "⚠️ Por favor, seleccione una evaluación"
+        return "⚠️ Por favor, seleccione una evaluación general"
     
     feedback = {
         "timestamp": datetime.now().isoformat(),
         "document": document_name,
-        "expert_evaluation": evaluation,
+        "overall_precision": evaluation,
+        "classification_correct": classification_correct or "Sin respuesta",
+        "quality_score_fair": quality_score_fair or "Sin respuesta",
+        "grammar_real_errors": grammar_real_errors or "Sin respuesta",
+        "structure_correct": structure_correct or "Sin respuesta",
+        "citations_correct": citations_correct or "Sin respuesta",
+        "weakest_section": weakest_section or "Sin respuesta",
+        "editor_recommendation": editor_recommendation or "Sin respuesta",
         "comments": comments or "Sin comentarios adicionales"
     }
     
-    # Save to feedback log
-    feedback_file = project_root / "feedback_log.jsonl"
-    
+    # Save alongside the original document
+    doc_path = Path(document_name) if document_name else None
+    if doc_path and doc_path.parent.exists():
+        feedback_file = doc_path.parent / (doc_path.stem + "_feedback.json")
+    else:
+        feedback_file = project_root / "feedback_log.jsonl"
+
     try:
-        with open(feedback_file, 'a', encoding='utf-8') as f:
-            f.write(json.dumps(feedback, ensure_ascii=False) + '\n')
-        
+        with open(feedback_file, 'w', encoding='utf-8') as f:
+            json.dump(feedback, f, ensure_ascii=False, indent=2)
+   
         return "✅ Gracias. Su evaluación ha sido registrada y contribuirá a mejorar el sistema."
     except Exception as e:
         return f"❌ Error al guardar evaluación: {str(e)}"
+
+
 
 # ============================================
 # GRADIO INTERFACE
@@ -356,8 +372,44 @@ def create_interface():
                 "El análisis es mayormente correcto, con observaciones menores",
                 "El análisis tiene errores significativos que debo señalar"
             ],
-            label="¿Qué tan preciso fue el análisis?",
+            label="¿Qué tan preciso fue el análisis general?",
             info="Su evaluación ayuda a mejorar futuros análisis"
+        )
+        
+        classification_correct = gr.Radio(
+            choices=["Sí", "No", "Parcialmente"],
+            label="¿La clasificación del artículo (Científico/Divulgación) fue correcta?"
+        )
+        
+        quality_score_fair = gr.Radio(
+            choices=["Muy alta", "Correcta", "Muy baja"],
+            label="¿La puntuación de calidad semántica fue justa?"
+        )
+        
+        grammar_real_errors = gr.Radio(
+            choices=["Todos son reales", "La mayoría son reales", "Muchos son falsos positivos"],
+            label="¿Los errores gramaticales detectados fueron reales?"
+        )
+        
+        structure_correct = gr.Radio(
+            choices=["Sí", "No", "Parcialmente"],
+            label="¿La validación de estructura fue correcta?"
+        )
+        
+        citations_correct = gr.Radio(
+            choices=["Sí", "No", "No aplica"],
+            label="¿La detección de citas fue correcta?"
+        )
+        
+        weakest_section = gr.Dropdown(
+            choices=["Clasificación", "Calidad semántica", "Gramática", "Estructura", "Citas y referencias"],
+            label="¿Qué sección fue menos útil?",
+            info="Opcional"
+        )
+        
+        editor_recommendation = gr.Radio(
+            choices=["Sí", "No", "Con revisiones menores", "Con revisiones mayores"],
+            label="¿Usted recomendaría publicar este artículo?"
         )
         
         expert_comments = gr.Textbox(
@@ -370,13 +422,13 @@ def create_interface():
             "Enviar Evaluación",
             variant="secondary"
         )
-        
         feedback_status = gr.Textbox(
             label="",
             interactive=False,
             show_label=False
         )
-        
+
+                
         # Event handlers
         def analyze_and_store_name(file, progress=gr.Progress()):
             """Run analysis with step-by-step progress display"""
@@ -436,10 +488,12 @@ def create_interface():
             inputs=[file_input],
             outputs=[status_msg, results_display, word_download, json_download, document_name_state, analyze_btn]
         )
-                        
+
         feedback_btn.click(
             fn=save_expert_feedback,
-            inputs=[document_name_state, expert_evaluation, expert_comments],
+            inputs=[document_name_state, expert_evaluation, classification_correct,
+                    quality_score_fair, grammar_real_errors, structure_correct,
+                    citations_correct, weakest_section, editor_recommendation, expert_comments],
             outputs=[feedback_status]
         )
         
