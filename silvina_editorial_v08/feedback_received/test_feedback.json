@@ -1,0 +1,13 @@
+{
+  "timestamp": "2026-03-13T10:00:00",
+  "document": "Artículo_analisis.docx",
+  "overall_precision": "El análisis es mayormente correcto, con observaciones menores",
+  "classification_correct": "Sí",
+  "quality_score_fair": "Correcta",
+  "grammar_real_errors": "Muchos son falsos positivos",
+  "structure_correct": "Parcialmente",
+  "citations_correct": "No aplica",
+  "weakest_section": "Gramática",
+  "editor_recommendation": "Con revisiones menores",
+  "comments": "Los errores gramaticales detectados incluyen muchos nombres propios y siglas militares que no son errores reales."
+}

@@ -43,7 +43,9 @@ def process_document(uploaded_file):
             "⚠️ Por favor, cargue un documento Word (.docx)",
             "",
             None,
-            None
+            None,
+            "",
+            gr.Button(interactive=True)
         )
     
     try:
@@ -56,8 +58,9 @@ def process_document(uploaded_file):
         
         # Generate report filenames
         base_name = Path(uploaded_file.name).stem
-        output_dir = Path(uploaded_file.name).parent
-        
+        output_dir = Path.home() / "Documents" / "Silvina" / "reports"
+        output_dir.mkdir(parents=True, exist_ok=True)
+       
         word_report_path = output_dir / f"{base_name}_analisis.docx"
         json_report_path = output_dir / f"{base_name}_analisis.json"
         
@@ -74,7 +77,9 @@ def process_document(uploaded_file):
             success_msg,
             results_html,
             str(word_report_path),
-            str(json_report_path)
+            str(json_report_path),
+            str(word_report_path),
+            gr.Button(interactive=True)
         )
         
     except Exception as e:
@@ -82,7 +87,7 @@ def process_document(uploaded_file):
         print(f"\n{error_msg}")
         import traceback
         traceback.print_exc()
-        return (error_msg, "", None, None)
+        return (error_msg, "", None, None,"", gr.Button(interactive=True))
 
 # ============================================
 # RESULTS DISPLAY
@@ -257,13 +262,12 @@ def save_expert_feedback(document_name, evaluation, classification_correct,
         "comments": comments or "Sin comentarios adicionales"
     }
     
-    # Save alongside the original document
-    doc_path = Path(document_name) if document_name else None
-    if doc_path and doc_path.parent.exists():
-        feedback_file = doc_path.parent / (doc_path.stem + "_feedback.json")
-    else:
-        feedback_file = project_root / "feedback_log.jsonl"
-
+    # Saves to report file
+    reports_dir = Path.home() / "Documents" / "Silvina" / "reports"
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    doc_stem = Path(document_name).stem.replace("_analisis", "") if document_name else "unknown"
+    feedback_file = reports_dir / f"{doc_stem}_feedback.json"
+        
     try:
         with open(feedback_file, 'w', encoding='utf-8') as f:
             json.dump(feedback, f, ensure_ascii=False, indent=2)
@@ -478,9 +482,8 @@ def create_interface():
                 return f"❌ Error: {result_container['error']}", "", None, None, "", gr.Button(interactive=True)
             
             progress(1.0, desc="✅ Análisis completado")
-            status, html, word, json_path = result_container['result']
-            doc_name = Path(file).name if isinstance(file, str) else Path(file.name).name
-            
+            status, html, word, json_path, doc_name, btn = result_container['result']
+            doc_name = word
             return status, html, word, json_path, doc_name, gr.Button(interactive=True)
         
         analyze_btn.click(
@@ -585,10 +588,12 @@ if __name__ == "__main__":
     threading.Thread(target=open_in_chrome, daemon=True).start()
     
     # Launch server
+    silvina_reports_dir = str(Path.home() / "Documents" / "Silvina" / "reports")
     app.launch(
         server_name="127.0.0.1",
         server_port=7861,
         share=False,
+        allowed_paths=[silvina_reports_dir],
         show_error=True,
         inbrowser=False,
         theme=gr.themes.Soft(primary_hue="slate"),
