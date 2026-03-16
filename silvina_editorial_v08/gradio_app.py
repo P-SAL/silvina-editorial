@@ -386,7 +386,7 @@ def create_interface():
         )
         
         quality_score_fair = gr.Radio(
-            choices=["Muy alta", "Correcta", "Muy baja"],
+            choices=["Muy alta", "Alta", "Correcta", "Baja", "Muy baja"],
             label="¿La puntuación de calidad semántica fue justa?"
         )
         
