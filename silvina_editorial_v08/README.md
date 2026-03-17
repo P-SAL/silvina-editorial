@@ -16,18 +16,19 @@ Silvina is an intelligent editorial assistant for **Revista Visión Conjunta** (
 **Current Version:** v0.8 (Q1 2026)  
 **Architecture:** Modular 4-layer design (Domain → Data Access → Business Logic → Presentation)  
 **LLM Integration:** Ollama (llama3-gradient:8b-instruct-1048k-q4_K_M)  
-**Interface:** Gradio web UI (new in v0.8)
+**Interface:** Gradio web UI  
+**Output Location:** `Documents\Silvina\reports\` (Word report, JSON data, feedback file)
 
 ---
 
 ## ✨ Key Features
 
-### 🎨 **Gradio Web Interface (NEW in v0.8)**
+### 🎨 **Gradio Web Interface**
 
 - 📱 **Drag-and-drop** file upload — no technical knowledge required
 - 📊 **Interactive result visualization** — color-coded scores and error summaries
 - 💾 **One-click download** — Word report and JSON data
-- 💬 **Expert feedback panel** — editorial staff can rate analysis accuracy
+- 💬 **Structured expert feedback panel** — 8-field evaluation form capturing classification accuracy, quality score fairness, grammar false positives, structure validation, citation detection, weakest section, and publication recommendation
 - 🔴 **Clean shutdown button** — closes the server safely from the browser
 - 🚀 **Auto-launches in Chrome** on startup
 
@@ -51,7 +52,7 @@ presentation/     # Output formatting (Word/JSON reports)
 2. **🔍 Content Extraction** - Identifies title, authors, sections, word count
 3. **📚 Citation & Reference Parsing** - Extracts in-text citations and bibliography
 4. **🏷️ Article Classification** - Científico vs Divulgación (LLM-powered)
-5. **⭐ Quality Analysis** - 5 dimensions: normativa, claridad, coherencia, argumentación, conclusiones
+5. **⭐ Quality Analysis** - 4 semantic dimensions: claridad, coherencia, argumentación, conclusiones
 6. **📋 Structure Validation** - Verifies required sections per article type (EUMIC standards)
 7. **🔗 Citation Matching** - Links citations to references, identifies orphaned entries
 
@@ -86,12 +87,13 @@ presentation/     # Output formatting (Word/JSON reports)
 
 ### ⭐ **Quality Analysis**
 
-**5 Evaluation Dimensions:**
-- **Normativa** - Orthographic and grammatical correctness
+**4 Semantic Evaluation Dimensions:**
 - **Claridad** - Writing clarity and readability
 - **Coherencia** - Logical flow and consistency
 - **Argumentación** - Strength of arguments and evidence
 - **Conclusiones** - Quality and relevance of conclusions
+
+**Architecture:** Two-call LLM approach (Call 1: Claridad + Coherencia / Call 2: Argumentación + Conclusiones) with split-based parser and explicit conclusion section detection.
 
 **Output:** Overall score (0-10), quality level (Excelente/Bueno/Aceptable/Necesita Mejora/Deficiente)
 
@@ -111,9 +113,24 @@ presentation/     # Output formatting (Word/JSON reports)
 
 ### 📊 **Multi-Format Reports**
 
-**2 Output Formats:**
-1. **📘 Word Report** (`.docx`) - Formatted document with color-coded sections
-2. **📊 JSON Data** (`.json`) - Structured data for further processing
+**3 Output Files** saved automatically to `C:\Users\[user]\Documents\Silvina\reports\`:
+1. **📘 Word Report** (`_analisis.docx`) - Formatted document with color-coded sections
+2. **📊 JSON Data** (`_analisis.json`) - Structured data for further processing
+3. **💬 Feedback File** (`_feedback.json`) - Expert evaluation submitted via Gradio
+
+---
+
+### 🔄 **Feedback Processing Pipeline**
+
+Collect `_feedback.json` files from editorial team → run `process_feedback.py` → get data-driven development priorities for next version.
+
+```bash
+python process_feedback.py --folder feedback_received/
+```
+
+**Output:**
+- `feedback_summary_YYYYMMDD.md` — ranked issues by frequency for editorial review
+- `v09_dev_prompt_YYYYMMDD.md` — structured development prompt for v0.9
 
 ---
 
@@ -126,6 +143,7 @@ presentation/     # Output formatting (Word/JSON reports)
 | **Document Parsing** | python-docx |
 | **Word Automation** | win32com (Windows COM for accurate counts) |
 | **LLM Integration** | Ollama (local inference) |
+| **Grammar Checking** | LanguageTool |
 | **Data Models** | Dataclasses with type hints |
 | **Architecture** | Modular 4-layer design |
 | **Output** | python-docx for Word reports |
@@ -151,20 +169,20 @@ python -m venv venv312
 source venv312/Scripts/activate  # Windows Git Bash
 
 # 3. Install dependencies
-pip install python-docx ollama pywin32 gradio
+pip install python-docx ollama pywin32 gradio language-tool-python
 
 # 4. Pull LLM model (one-time)
 ollama pull llama3-gradient:8b-instruct-1048k-q4_K_M
 
 # 5. Verify installation
-python -c "import gradio; print('✅ Gradio ready')"
+python -c "import gradio; print('Gradio ready')"
 ```
 
 ---
 
 ## 🚀 Usage
 
-### Launch Web Interface (v0.8)
+### Launch Web Interface
 ```bash
 python gradio_app.py
 ```
@@ -175,9 +193,18 @@ Chrome will open automatically at `http://127.0.0.1:7861`
 1. Drag and drop your `.docx` manuscript
 2. Click **Analizar Documento**
 3. Review results on screen
-4. Download the **Word report** or **JSON data**
-5. Submit your expert evaluation (optional)
+4. Download the **Word report** or **JSON data** (also saved automatically to `Documents\Silvina\reports\`)
+5. Complete the **expert evaluation form** and click **Enviar Evaluación**
 6. Click **Cerrar Silvina** when done
+
+### Process Feedback (Coordinator)
+```bash
+# 1. Collect _feedback.json files from editorial team into feedback_received/
+# 2. Run processing script
+python process_feedback.py --folder feedback_received/
+# 3. Review feedback_summary_YYYYMMDD.md
+# 4. Use v09_dev_prompt_YYYYMMDD.md for next development session
+```
 
 ### Command Line (legacy)
 ```bash
@@ -189,10 +216,12 @@ python main.py "path/to/document.docx"
 ## 📁 Project Structure
 ```
 silvina_editorial_v08/
-├── gradio_app.py                # NEW: Gradio web interface entry point
-├── main.py                      # CLI entry point, orchestrates analysis
+├── gradio_app.py                # Gradio web interface entry point
+├── main.py                      # CLI entry point
+├── process_feedback.py          # Feedback processing pipeline
 ├── eumic_verifier.py            # EUMIC format compliance checker
 ├── apa_validator.py             # APA 7 citation format validator
+├── feedback_received/           # Drop feedback JSONs here for processing
 ├── assets/
 │   └── SILVINA V08.png          # Logo
 ├── domain/
@@ -240,12 +269,16 @@ silvina_editorial_v08/
 
 ### v0.8 (Q1 2026) - Current
 - ✨ **NEW:** Gradio web interface for editorial staff
-- ✨ **NEW:** Drag-and-drop file upload
-- ✨ **NEW:** Interactive result visualization (scores, error counters, progress)
-- ✨ **NEW:** Expert feedback panel for continuous improvement
-- ✨ **NEW:** One-click Word/JSON report download
-- ✨ **NEW:** Auto-launch in Chrome on startup
+- ✨ **NEW:** Structured expert feedback panel (8 evaluation fields)
+- ✨ **NEW:** All reports save to `Documents\Silvina\reports\`
+- ✨ **NEW:** Feedback JSON saved alongside analysis reports
+- ✨ **NEW:** `process_feedback.py` — automated feedback processing pipeline
+- ✨ **NEW:** Two-call LLM architecture for quality analysis (resolves token exhaustion)
+- ✨ **NEW:** Split-based parser replacing fragile regex (resolves dimension parsing failures)
+- ✨ **NEW:** Explicit conclusion section detection (skips bibliography when sampling)
 - 🔧 **FIXED:** Duplicate click handler bug (triple-fire on analyze button)
+- 🔧 **FIXED:** `repeat_penalty: 1.1` prevents model looping on repetitive documents
+- 🔧 **FIXED:** Prompt renumbering — both LLM calls use 1/2 format for consistency
 
 ### v0.7 (January 2026)
 - EUMIC format compliance verification system
@@ -270,31 +303,41 @@ silvina_editorial_v08/
 
 ### v0.8 (Q1 2026) ✅ Current
 - ✅ Gradio web interface
-- ✅ Drag-and-drop file upload
-- ✅ Interactive result visualization
-- ⬜ Batch processing for multiple documents *(moved to v0.9)*
+- ✅ Structured expert feedback panel
+- ✅ Automated feedback processing pipeline
+- ✅ Reports saved to user Documents folder
 
 ### v0.9 (Planned - Q2 2026)
 - 💾 Batch processing for multiple documents
-- 📧 Email integration for automatic notifications
-- 🔄 Version comparison (track revisions)
+- 🔧 Proper noun whitelist for grammar checker (surnames, acronyms, military terms)
+- 🔧 Inline `Resumen:` detection improvement
+- 🔧 Alternative reference headings (`Fuentes bibliográficas consultadas`)
+- 🔧 Footnote citation detection and reporting
+- 🔒 Security measures (file validation, authentication, rate limiting)
+- 🌐 Deployment preparation for institutional web server
 - 📈 Analytics dashboard for editorial team
-- 🌐 Multi-language support (English, Portuguese)
 
 ### v1.0 (Planned - Q3 2026)
 - 🏢 Production deployment at Universidad de la Defensa
-- 📚 Integration with journal submission system
+- 🌐 Accessible via institutional webpage
 - 👥 Multi-user authentication
 - 📊 Editorial workflow management
+
+### v2.0 (Future)
+- 🧠 Editorial memory — learns from accumulated feedback (RAG-based)
+- 🤖 Agentic workflows
 
 ---
 
 ## 🐛 Known Issues
 
 ### v0.8
-- **Citation matching** may fail for non-standard citation formats
-- **EUMIC verification** requires Windows (COM dependency)
-- **LLM analysis** quality depends on Ollama model availability
+- **Title extraction** may include author name on some document formats
+- **Author detection** fails on multi-author documents
+- **Grammar checker** flags proper nouns, surnames, and military acronyms as errors
+- **Structure validator** misses inline `Resumen:` format
+- **Citation parser** misses `Fuente:` footnote format
+- **Reference parser** misses `Fuentes bibliográficas consultadas` heading
 - **Windows-only** COM automation for accurate statistics (falls back to python-docx on other platforms)
 
 ---
