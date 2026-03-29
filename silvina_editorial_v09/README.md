@@ -317,7 +317,6 @@ Full editorial differentiation between these formats is planned for v1.0.
 - ✅ Fuentes bibliográficas consultadas heading support
 - ✅ Publishability verdict logic corrected
 - ⬜ Batch processing for multiple documents
-- ⬜ Footnote citation detection and reporting
 - ⬜ Security measures (file validation, authentication, rate limiting)
 - ⬜ Deployment preparation for institutional web server
 - ⬜ Analytics dashboard for editorial team
@@ -338,7 +337,6 @@ Full editorial differentiation between these formats is planned for v1.0.
 ## 🐛 Known Issues
 
 ### v0.9
-- **Citation parser** misses `Fuente:` footnote format
 - **LLM quality analysis** occasionally returns "No disponible" on one dimension due to model non-determinism on CPU — not a code bug
 - **Windows-only** COM automation for accurate statistics (falls back to python-docx on other platforms)
 
