@@ -462,10 +462,16 @@ class SilvinaEditorialAssistant:
             has_warnings = True
                
         # Generate final recommendation
+        total_citations = citation_analysis.total_citations
         if has_critical_issues:
             recommendations.append({
                 'priority': 'critica',
                 'message': '❌ NO APTO PARA PUBLICACIÓN. El documento presenta errores críticos que deben corregirse.'
+            })
+        elif total_citations == 0:
+            recommendations.append({
+                'priority': 'critica',
+                'message': '❌ NO APTO PARA PUBLICACIÓN. No se detectaron citas APA en el texto. Verifique el formato de citación según normas APA 7.'
             })
         elif has_warnings:
             recommendations.append({
@@ -477,7 +483,8 @@ class SilvinaEditorialAssistant:
                 'priority': 'aprobado',
                 'message': '✅ APTO PARA PUBLICACIÓN. El documento cumple con los estándares de calidad.'
             })
-        
+             
+               
         return recommendations
         
     
