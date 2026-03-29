@@ -35,16 +35,24 @@ class ReferenceParser:
             # Decode HTML entities (&amp; -> &)
             all_texts = [html.unescape(text) for text in all_texts]
             
-            # Join into full text
+            
+            # Join into full text (with spaces for content, without for header detection)
             full_text = ' '.join(all_texts)
-            
+            full_text_compact = ''.join(all_texts)
+                       
             # Find Bibliografia/Referencias section
-            bib_match = re.search(r'(Bibliograf[íi]a|Referencias)\s+(.{100,})', full_text, re.IGNORECASE | re.DOTALL)
-            
+            bib_match = re.search(r'(Bibliograf[íi]a|Referencias|Fuentes\s*bibliogr[áa]ficas(?:\s*consultadas)?)\s*(.{100,})', full_text_compact, re.IGNORECASE | re.DOTALL)
+                                    
             if not bib_match:
                 return [], "Referencias"
-            
-            section_type = "Bibliografía" if "ibliograf" in bib_match.group(1).lower() else "Referencias"
+                                   
+            g1 = bib_match.group(1).lower()
+            if "ibliograf" in g1:
+                section_type = "Bibliografía"
+            elif "fuentes" in g1:
+                section_type = "Fuentes bibliográficas"
+            else:
+                section_type = "Referencias"
             bib_text = bib_match.group(2)
             
             # Parse references
