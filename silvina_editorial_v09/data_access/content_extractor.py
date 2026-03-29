@@ -32,7 +32,8 @@ class ContentExtractor:
             'title': r'^(?:TÍTULO|TITLE)[:\s]*(.*)',
             'abstract': r'^(?:RESUMEN|ABSTRACT)[:\s]*(.*)',
             'keywords': r'^(?:PALABRAS CLAVE|KEYWORDS)[:\s]*(.*)',
-            'authors': r'^(?:AUTOR|AUTORES|AUTHOR|AUTHORS)[:\s]*(.*)',
+            'authors': r'^(?:AUTORES|AUTOR|AUTHORS|AUTHOR)[:\s]*(.*)',
+            
         }
     
     def extract_content(self, paragraphs: List[str], docx_path: str = None) -> DocumentContent:
@@ -106,10 +107,20 @@ class ContentExtractor:
                     break
         
         if len(title_parts) >= 2:
+            # Don't combine if second part looks like an author name
+            second = title_parts[1]
+            looks_like_author = (
+                len(second.split()) <= 10 and
+                not any(c in second for c in ['—', '?']) and
+                (re.search(r'^[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+\s+[A-ZÁÉÍÓÚÑ]', second) or
+                 re.search(r'^[A-Z]{2,}', second))  # Catches CNVGM, Dr., etc.
+            )
+            if looks_like_author:
+                return title_parts[0]
             return f"{title_parts[0]} — {title_parts[1]}"
         elif len(title_parts) == 1:
             return title_parts[0]
-        
+                  
         return None
 
 
@@ -132,9 +143,19 @@ class ContentExtractor:
             match = re.match(self.section_patterns['authors'], para, re.IGNORECASE)
             if match:
                 author_text = match.group(1).strip()
-                # Double-check it's not a blacklisted term
-                if not any(bl in author_text.upper() for bl in self.AUTHOR_BLACKLIST):
+                if author_text and not any(bl in author_text.upper() for bl in self.AUTHOR_BLACKLIST):
                     return author_text
+                # Authors are on the next lines — collect them
+                author_lines = []
+                for next_para in paragraphs[i+1:i+6]:
+                    if re.match(r'^[A-ZÁÉÍÓÚÑ]', next_para) and len(next_para.split()) <= 10:
+                        if any(header in next_para.upper() for header in self.AUTHOR_BLACKLIST):
+                            break
+                        author_lines.append(next_para.strip())
+                    else:
+                        break
+                if author_lines:
+                    return ', '.join(author_lines)
             
             # Pattern 2: Name-like pattern after title
             # Matches: "Adriana Baravalle" or "Juan Pérez, María González"
