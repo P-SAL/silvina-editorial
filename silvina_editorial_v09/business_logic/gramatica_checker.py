@@ -14,9 +14,10 @@ def check_gramatica(paragraphs: List[str]) -> Tuple[float, str, List[Dict[str, A
     
     try:
         tool = language_tool_python.LanguageTool('es')
-        matches = tool.check(text_sample)
+        matches = [m for m in tool.check(text_sample)
+                   if m.rule_issue_type != 'misspelling']
         error_count = len(matches)
-        
+                
         # Calculate score based on error count
         if error_count == 0:
             score = 10.0
@@ -47,5 +48,6 @@ def check_gramatica(paragraphs: List[str]) -> Tuple[float, str, List[Dict[str, A
         return score, feedback, detailed_errors
 
     except Exception as e:
+        print(f"      ⚠️ Grammar checker error: {e}")
         return 7.0, "Verificación no disponible", []
 
