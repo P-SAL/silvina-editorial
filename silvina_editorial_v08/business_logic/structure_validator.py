@@ -95,11 +95,18 @@ class StructureValidator:
         for para in document_content.paragraphs:
             text_lower = para.lower().strip()
             
-            # Must be short (header-like) and bold-formatted
-            if len(text_lower) < 100:
+            # Check short headers OR inline format (e.g. "Resumen: ...")
+            is_short_header = len(text_lower) < 100
+            is_inline_header = any(
+                text_lower.startswith(kw + ':') or text_lower.startswith(kw + ' :')
+                for keywords in section_map.values()
+                for kw in keywords
+            )
+            if is_short_header or is_inline_header:
                 for section_name, keywords in section_map.items():
                     if any(kw in text_lower for kw in keywords):
                         sections.append(section_name.capitalize())
                         break
-        
+            
+            
         return sections
