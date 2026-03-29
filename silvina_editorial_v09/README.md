@@ -264,14 +264,25 @@ silvina_editorial_v09/
 - Date format: `(2020)`, `(2020a)`, `(2020, 15 de enero)`
 - Page references: `(p. 23)`, `(pp. 45-67)`
 
+### Citation Format Note
+Silvina distinguishes between:
+- **Referencias** — strict list of sources cited in the text (APA, one-to-one with citations)
+- **Bibliografía / Fuentes bibliográficas consultadas** — broader reading list, may include uncited sources
+
+Full editorial differentiation between these formats is planned for v1.0.
+
 ---
 
 ## 🔄 Version History
 
 ### v0.9 (Q2 2026) - Current
-- 🔧 **FIXED:** Grammar checker false positives — filter `rule_issue_type == misspelling` eliminates proper noun, surname, and military acronym false positives
+- 🔧 **FIXED:** Grammar checker false positives — `rule_issue_type == misspelling` filter eliminates proper noun, surname, and military acronym false positives
 - 🔧 **FIXED:** Title extraction — author name no longer included in title
-- 🔧 **FIXED:** Multi-author detection — `AUTORES` pattern now correctly collects authors listed on separate lines
+- 🔧 **FIXED:** Multi-author detection — `AUTORES` pattern correctly collects authors listed on separate lines
+- 🔧 **FIXED:** Structure validator — inline `Resumen:` and `Abstract:` formats now detected
+- 🔧 **FIXED:** Reference parser — `Fuentes bibliográficas consultadas` heading now recognized; XML text fragmentation handled via compact join
+- 🔧 **FIXED:** Publishability verdict — documents without APA citations no longer approved; both executive summary and recommendations section consistent
+- 🔧 **FIXED:** Report footer updated to v0.9
 
 ### v0.8 (Q1 2026)
 - Gradio web interface for editorial staff
@@ -302,9 +313,10 @@ silvina_editorial_v09/
 - ✅ Grammar false positive fix
 - ✅ Title extraction fix
 - ✅ Multi-author detection fix
+- ✅ Inline Resumen/Abstract detection
+- ✅ Fuentes bibliográficas consultadas heading support
+- ✅ Publishability verdict logic corrected
 - ⬜ Batch processing for multiple documents
-- ⬜ Inline `Resumen:` detection improvement
-- ⬜ Alternative reference headings (`Fuentes bibliográficas consultadas`)
 - ⬜ Footnote citation detection and reporting
 - ⬜ Security measures (file validation, authentication, rate limiting)
 - ⬜ Deployment preparation for institutional web server
@@ -315,6 +327,7 @@ silvina_editorial_v09/
 - 🌐 Accessible via institutional webpage
 - 👥 Multi-user authentication
 - 📊 Editorial workflow management
+- 📚 Full differentiation between Referencias, Bibliografía, and Fuentes bibliográficas consultadas for editorial scoring
 
 ### v2.0 (Future)
 - 🧠 Editorial memory — learns from accumulated feedback (RAG-based)
@@ -325,9 +338,8 @@ silvina_editorial_v09/
 ## 🐛 Known Issues
 
 ### v0.9
-- **Structure validator** misses inline `Resumen:` format
 - **Citation parser** misses `Fuente:` footnote format
-- **Reference parser** misses `Fuentes bibliográficas consultadas` heading
+- **LLM quality analysis** occasionally returns "No disponible" on one dimension due to model non-determinism on CPU — not a code bug
 - **Windows-only** COM automation for accurate statistics (falls back to python-docx on other platforms)
 
 ---
