@@ -1,6 +1,6 @@
-# Silvina Editorial Assistant v0.8
+# Silvina Editorial Assistant v0.9
 
-[![Version](https://img.shields.io/badge/version-v0.8-blue)](https://github.com/P-SAL/silvina-editorial)
+[![Version](https://img.shields.io/badge/version-v0.9-blue)](https://github.com/P-SAL/silvina-editorial)
 [![Python](https://img.shields.io/badge/python-3.12-blue)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Status](https://img.shields.io/badge/status-Active%20Development-yellow)](https://github.com/P-SAL/silvina-editorial)
@@ -13,7 +13,8 @@
 
 Silvina is an intelligent editorial assistant for **Revista Visión Conjunta** (Facultad Militar Conjunta - Universidad de la Defensa Nacional, Argentina). It automates academic manuscript review using **deterministic structural validation** and **selective AI-powered analysis**.
 
-**Current Version:** v0.8 (Q1 2026)  
+**Current Version:** v0.9 (Q2 2026)  
+**Based on:** v0.8 (stable, deployed to editorial team)  
 **Architecture:** Modular 4-layer design (Domain → Data Access → Business Logic → Presentation)  
 **LLM Integration:** Ollama (llama3-gradient:8b-instruct-1048k-q4_K_M)  
 **Interface:** Gradio web UI  
@@ -130,7 +131,7 @@ python process_feedback.py --folder feedback_received/
 
 **Output:**
 - `feedback_summary_YYYYMMDD.md` — ranked issues by frequency for editorial review
-- `v09_dev_prompt_YYYYMMDD.md` — structured development prompt for v0.9
+- `v09_dev_prompt_YYYYMMDD.md` — structured development prompt for next session
 
 ---
 
@@ -162,7 +163,7 @@ python process_feedback.py --folder feedback_received/
 ```bash
 # 1. Clone repository
 git clone https://github.com/P-SAL/silvina-editorial.git
-cd silvina-editorial/silvina_editorial_v08
+cd silvina-editorial/silvina_editorial_v09
 
 # 2. Create virtual environment
 python -m venv venv312
@@ -203,7 +204,7 @@ Chrome will open automatically at `http://127.0.0.1:7861`
 # 2. Run processing script
 python process_feedback.py --folder feedback_received/
 # 3. Review feedback_summary_YYYYMMDD.md
-# 4. Use v09_dev_prompt_YYYYMMDD.md for next development session
+# 4. Use dev prompt for next development session
 ```
 
 ### Command Line (legacy)
@@ -215,7 +216,7 @@ python main.py "path/to/document.docx"
 
 ## 📁 Project Structure
 ```
-silvina_editorial_v08/
+silvina_editorial_v09/
 ├── gradio_app.py                # Gradio web interface entry point
 ├── main.py                      # CLI entry point
 ├── process_feedback.py          # Feedback processing pipeline
@@ -267,23 +268,24 @@ silvina_editorial_v08/
 
 ## 🔄 Version History
 
-### v0.8 (Q1 2026) - Current
-- ✨ **NEW:** Gradio web interface for editorial staff
-- ✨ **NEW:** Structured expert feedback panel (8 evaluation fields)
-- ✨ **NEW:** All reports save to `Documents\Silvina\reports\`
-- ✨ **NEW:** Feedback JSON saved alongside analysis reports
-- ✨ **NEW:** `process_feedback.py` — automated feedback processing pipeline
-- ✨ **NEW:** Two-call LLM architecture for quality analysis (resolves token exhaustion)
-- ✨ **NEW:** Split-based parser replacing fragile regex (resolves dimension parsing failures)
-- ✨ **NEW:** Explicit conclusion section detection (skips bibliography when sampling)
-- 🔧 **FIXED:** Duplicate click handler bug (triple-fire on analyze button)
-- 🔧 **FIXED:** `repeat_penalty: 1.1` prevents model looping on repetitive documents
-- 🔧 **FIXED:** Prompt renumbering — both LLM calls use 1/2 format for consistency
+### v0.9 (Q2 2026) - Current
+- 🔧 **FIXED:** Grammar checker false positives — filter `rule_issue_type == misspelling` eliminates proper noun, surname, and military acronym false positives
+- 🔧 **FIXED:** Title extraction — author name no longer included in title
+- 🔧 **FIXED:** Multi-author detection — `AUTORES` pattern now correctly collects authors listed on separate lines
+
+### v0.8 (Q1 2026)
+- Gradio web interface for editorial staff
+- Structured expert feedback panel (8 evaluation fields)
+- All reports save to `Documents\Silvina\reports\`
+- Feedback JSON saved alongside analysis reports
+- `process_feedback.py` — automated feedback processing pipeline
+- Two-call LLM architecture for quality analysis
+- Split-based parser replacing fragile regex
+- Explicit conclusion section detection
 
 ### v0.7 (January 2026)
 - EUMIC format compliance verification system
 - Grammar checker (Tier 1 deterministic)
-- Enhanced LLM feedback parsing
 - Accurate word/character counting via Windows COM automation
 - APA 7 Spanish format validation
 
@@ -292,30 +294,21 @@ silvina_editorial_v08/
 - IMRyD structure detection
 - Two-tier analysis strategy
 
-### v0.5 and earlier
-- Basic character counting
-- Simple LLM review
-- Text-only output
-
 ---
 
 ## 🗺️ Roadmap
 
-### v0.8 (Q1 2026) ✅ Current
-- ✅ Gradio web interface
-- ✅ Structured expert feedback panel
-- ✅ Automated feedback processing pipeline
-- ✅ Reports saved to user Documents folder
-
-### v0.9 (Planned - Q2 2026)
-- 💾 Batch processing for multiple documents
-- 🔧 Proper noun whitelist for grammar checker (surnames, acronyms, military terms)
-- 🔧 Inline `Resumen:` detection improvement
-- 🔧 Alternative reference headings (`Fuentes bibliográficas consultadas`)
-- 🔧 Footnote citation detection and reporting
-- 🔒 Security measures (file validation, authentication, rate limiting)
-- 🌐 Deployment preparation for institutional web server
-- 📈 Analytics dashboard for editorial team
+### v0.9 (Q2 2026) ✅ Current
+- ✅ Grammar false positive fix
+- ✅ Title extraction fix
+- ✅ Multi-author detection fix
+- ⬜ Batch processing for multiple documents
+- ⬜ Inline `Resumen:` detection improvement
+- ⬜ Alternative reference headings (`Fuentes bibliográficas consultadas`)
+- ⬜ Footnote citation detection and reporting
+- ⬜ Security measures (file validation, authentication, rate limiting)
+- ⬜ Deployment preparation for institutional web server
+- ⬜ Analytics dashboard for editorial team
 
 ### v1.0 (Planned - Q3 2026)
 - 🏢 Production deployment at Universidad de la Defensa
@@ -331,10 +324,7 @@ silvina_editorial_v08/
 
 ## 🐛 Known Issues
 
-### v0.8
-- **Title extraction** may include author name on some document formats
-- **Author detection** fails on multi-author documents
-- **Grammar checker** flags proper nouns, surnames, and military acronyms as errors
+### v0.9
 - **Structure validator** misses inline `Resumen:` format
 - **Citation parser** misses `Fuente:` footnote format
 - **Reference parser** misses `Fuentes bibliográficas consultadas` heading
@@ -367,5 +357,5 @@ MIT License - See [LICENSE](LICENSE) file for details
 ---
 
 **Last Updated:** March 2026  
-**Version:** 0.8  
+**Version:** 0.9  
 **Status:** Active Development 🚀
