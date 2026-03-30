@@ -52,8 +52,10 @@ class QualityAnalyzer:
             parts.extend(non_ref[-2:])
 
         text_sample = ' '.join(parts)[:8000]
-               
-        
+        # For short documents, use full text instead of sample
+        if len(text_sample.split()) < 400:
+            text_sample = ' '.join(document_content.paragraphs)[:8000]       
+                
         ollama_options = {
             'temperature': 0.2,
             'num_predict': 800,

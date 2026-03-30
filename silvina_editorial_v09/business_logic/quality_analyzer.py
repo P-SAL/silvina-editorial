@@ -2,7 +2,7 @@
 quality_analyzer.py
 Analyzes document quality across multiple SEMANTIC dimensions using LLM.
 TIER 2 - Focuses on content quality, not grammar/spelling (that's Tier 1)
-Part of Silvina Editorial Assistant v0.8
+Part of Silvina Editorial Assistant v0.9
 """
 from __future__ import annotations
 
@@ -52,7 +52,9 @@ class QualityAnalyzer:
             parts.extend(non_ref[-2:])
 
         text_sample = ' '.join(parts)[:8000]
-               
+        # For short documents, use full text instead of sample
+        if len(text_sample.split()) < 400:
+            text_sample = ' '.join(document_content.paragraphs)[:8000]       
         
         ollama_options = {
             'temperature': 0.2,
