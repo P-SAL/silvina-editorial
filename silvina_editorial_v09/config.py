@@ -1,5 +1,5 @@
 """
-Silvina Editorial v0.7 - Configuration
+Silvina Editorial v0.9 - Configuration
 """
 
 # ============================================================

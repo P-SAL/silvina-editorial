@@ -1,6 +1,6 @@
 """
 main.py
-Main entry point for Silvina Editorial Assistant v0.7
+Main entry point for Silvina Editorial Assistant v0.9
 Orchestrates the complete document analysis workflow.
 """
 
@@ -529,7 +529,7 @@ class SilvinaEditorialAssistant:
 def main():
     """Main execution function."""
     print("\n" + "=" * 80)
-    print("   SILVINA EDITORIAL ASSISTANT v0.7")
+    print("   SILVINA EDITORIAL ASSISTANT v0.9")
     print("   Asistente de Análisis Editorial para Documentos Académicos")
     print("=" * 80 + "\n")
     
