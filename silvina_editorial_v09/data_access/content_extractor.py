@@ -77,13 +77,22 @@ class ContentExtractor:
         keywords = self._extract_keywords(clean_paragraphs)
         sections = self._extract_sections(clean_paragraphs)
 
-        # 5. Return DocumentContent
+        sections = self._extract_sections(clean_paragraphs)
+
+        # 5. Extract references
+        references = []
+        if docx_path:
+            from data_access.reference_parser import ReferenceParser
+            references, _ = ReferenceParser().parse_from_docx(docx_path)
+
+        # 6. Return DocumentContent
         return DocumentContent(
             title=title,
             authors=authors,
             abstract=abstract,
             keywords=keywords,
             sections=sections,
+            references=references,
             paragraphs=clean_paragraphs,
             word_count=word_count,
             char_count=char_count,

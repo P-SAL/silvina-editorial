@@ -16,7 +16,7 @@ from domain.models import QualityAnalysisResult
 
 class QualityAnalyzer:
     """Analyzes academic document quality across semantic dimensions."""
-    
+
     def __init__(self, model_name: str = "llama3-gradient:8b-instruct-1048k-q4_K_M",
                  base_url: str = "http://localhost:11434"):
         self.model_name = model_name
@@ -27,8 +27,7 @@ class QualityAnalyzer:
 
     def analyze_quality(self, document_content, article_type) -> QualityAnalysisResult:
         print("      ⏳ Analizando con Ollama...")
-        
-        
+
         # Sample text - strategic sampling
         parts = []
         parts.append(document_content.title or "")
@@ -47,15 +46,15 @@ class QualityAnalyzer:
         if conclusion_paras:
             parts.extend(conclusion_paras[:3])
         else:
-            non_ref = [p for p in document_content.paragraphs 
-                    if not any(x in p[:80] for x in ['http', 'doi.org', 'https', 'ISBN'])]
+            non_ref = [p for p in document_content.paragraphs
+                       if not any(x in p[:80] for x in ['http', 'doi.org', 'https', 'ISBN'])]
             parts.extend(non_ref[-2:])
 
         text_sample = ' '.join(parts)[:8000]
         # For short documents, use full text instead of sample
         if len(text_sample.split()) < 400:
-            text_sample = ' '.join(document_content.paragraphs)[:8000]       
-        
+            text_sample = ' '.join(document_content.paragraphs)[:8000]
+
         ollama_options = {
             'temperature': 0.2,
             'num_predict': 800,
@@ -117,28 +116,27 @@ CRITERIOS: 9-10 Excelente | 7-8 Bueno | 5-6 Aceptable | 3-4 Deficiente | 0-2 Ina
             )
             text_1 = response_1.get('response', '').strip()
             print(f"      ✓ Llamada 1 completada: {len(text_1.split())} palabras")
-                    
+
             # Second call
             response_2 = self.ollama.generate(
                 model=self.model_name,
                 prompt=prompt_2,
                 options=ollama_options
             )
-                       
             text_2 = response_2.get('response', '').strip()
             print(f"      ✓ Llamada 2 completada: {len(text_2.split())} palabras")
 
             # Parse both responses
             scores_1 = self._parse_llm_response(text_1)
             scores_2 = self._parse_llm_response(text_2)
-            scores = {**scores_1, **scores_2}
-            # Keep best result per dimension (non-default wins)
-            for dim in scores:
-                if scores_1[dim]["feedback"] != "No disponible":
-                    scores[dim] = scores_1[dim]
-                elif scores_2[dim]["feedback"] != "No disponible":
-                    scores[dim] = scores_2[dim] 
-                 
+
+            # Merge: prefer whichever call returned real feedback for each dim
+            scores = {}
+            for dim in ["claridad", "coherencia", "argumentacion", "conclusiones"]:
+                s1 = scores_1.get(dim, {"score": 7.0, "feedback": "No disponible"})
+                s2 = scores_2.get(dim, {"score": 7.0, "feedback": "No disponible"})
+                scores[dim] = s1 if s1["feedback"] != "No disponible" else s2
+
             overall = sum(d["score"] for d in scores.values()) / len(scores)
             quality_level = get_quality_level_from_score(overall)
 
@@ -160,12 +158,12 @@ CRITERIOS: 9-10 Excelente | 7-8 Bueno | 5-6 Aceptable | 3-4 Deficiente | 0-2 Ina
 
     def _parse_llm_response(self, text: str) -> Dict[str, Dict[str, Any]]:
         """Extract feedback and scores by splitting on dimension headers."""
-        
+
         result = {
-            "claridad": {"score": 7.0, "feedback": "No disponible"},
-            "coherencia": {"score": 7.0, "feedback": "No disponible"},
+            "claridad":      {"score": 7.0, "feedback": "No disponible"},
+            "coherencia":    {"score": 7.0, "feedback": "No disponible"},
             "argumentacion": {"score": 7.0, "feedback": "No disponible"},
-            "conclusiones": {"score": 7.0, "feedback": "No disponible"}
+            "conclusiones":  {"score": 7.0, "feedback": "No disponible"}
         }
 
         # Split text into blocks at each dimension header
@@ -175,22 +173,27 @@ CRITERIOS: 9-10 Excelente | 7-8 Bueno | 5-6 Aceptable | 3-4 Deficiente | 0-2 Ina
             if not block.strip():
                 continue
 
-            # Extract score from first line
             first_line = block.split('\n')[0]
-            score_match = re.search(r'\[Puntuación:\s*(\d+(?:\.\d+)?)(?:/10)?\]|(\d+(?:\.\d+)?)/10', first_line)
+
+            # FIX: search entire block for score, not just first line
+            score_match = re.search(
+                r'\[Puntuaci[oó]n:\s*(\d+(?:\.\d+)?)(?:/10)?\]|(\d+(?:\.\d+)?)\s*/\s*10',
+                block, re.IGNORECASE
+            )
             if not score_match:
                 continue
             score_str = score_match.group(1) or score_match.group(2)
             try:
                 score = max(0.0, min(10.0, float(score_str)))
-            except:
+            except Exception:
                 score = 7.0
 
             # Extract feedback from remaining lines
             lines = block.strip().split('\n')
             feedback_lines = [l.strip() for l in lines[1:] if l.strip()]
             feedback = ' '.join(feedback_lines)
-            feedback = re.sub(r'\*\*RECOMENDACIÓN.*', '', feedback, flags=re.DOTALL | re.IGNORECASE).strip()
+            feedback = re.sub(r'\*\*RECOMENDACIÓN.*', '', feedback,
+                              flags=re.DOTALL | re.IGNORECASE).strip()
             feedback = ' '.join(feedback.split())
 
             if len(feedback) < 10:
@@ -214,9 +217,10 @@ CRITERIOS: 9-10 Excelente | 7-8 Bueno | 5-6 Aceptable | 3-4 Deficiente | 0-2 Ina
 
         return result
 
+
 # Convenience function
 def analyze_document_quality(document: DocumentContent,
-                            category: ClassificationCategory,
-                            model_name: str = "llama3-gradient:8b-instruct-1048k-q4_K_M") -> QualityResult:
+                             category: ClassificationCategory,
+                             model_name: str = "llama3-gradient:8b-instruct-1048k-q4_K_M") -> QualityResult:
     analyzer = QualityAnalyzer(model_name=model_name)
     return analyzer.analyze_quality(document, document.full_text, category)

@@ -48,6 +48,7 @@ class DocumentContent:
     authors: Optional[str] = None
     abstract: Optional[str] = None
     keywords: List[str] = field(default_factory=list)
+    references: List[Reference] = field(default_factory=list)
     paragraphs: List[str] = field(default_factory=list)
     sections: Dict[str, str] = field(default_factory=dict)
 
