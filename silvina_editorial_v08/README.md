@@ -267,7 +267,11 @@ silvina_editorial_v08/
 
 ## 🔄 Version History
 
-### v0.8 (Q1 2026) - Current
+### v0.8.1 (April 2026) - Current patch
+- 🔧 **FIXED:** Quality analyzer LLM call 2 (`Argumentación` / `Conclusiones`) returning `No disponible` — score extraction now searches entire response block, not just first line (backport from v0.9)
+- 🔧 **FIXED:** Dimension merge logic overwriting correctly parsed results back to defaults
+
+### v0.8 (Q1 2026)
 - ✨ **NEW:** Gradio web interface for editorial staff
 - ✨ **NEW:** Structured expert feedback panel (8 evaluation fields)
 - ✨ **NEW:** All reports save to `Documents\Silvina\reports\`
@@ -307,15 +311,18 @@ silvina_editorial_v08/
 - ✅ Automated feedback processing pipeline
 - ✅ Reports saved to user Documents folder
 
-### v0.9 (Planned - Q2 2026)
+### v0.9 (In Development - Q2 2026)
+- 🔧 Classification system redesign — 6-signal hybrid approach (IMRyD + reference density + methodological vocab + LLM signals)
+- 🔧 IMRyD false positive fix — header-only section detection
+- 🔧 Grammar false positive filter (rule_issue_type)
+- 🔧 Title extraction fix
+- 🔧 Multi-author detection fix
+- 🔧 Inline Resumen/Abstract detection
+- 🔧 Reference parser support for `Fuentes bibliográficas consultadas`
+- 🔧 Publishability verdict correction
+- 🔧 Short document quality analysis fix (< 400 words)
 - 💾 Batch processing for multiple documents
-- 🔧 Proper noun whitelist for grammar checker (surnames, acronyms, military terms)
-- 🔧 Inline `Resumen:` detection improvement
-- 🔧 Alternative reference headings (`Fuentes bibliográficas consultadas`)
-- 🔧 Footnote citation detection and reporting
 - 🔒 Security measures (file validation, authentication, rate limiting)
-- 🌐 Deployment preparation for institutional web server
-- 📈 Analytics dashboard for editorial team
 
 ### v1.0 (Planned - Q3 2026)
 - 🏢 Production deployment at Universidad de la Defensa
@@ -337,7 +344,6 @@ silvina_editorial_v08/
 - **Grammar checker** flags proper nouns, surnames, and military acronyms as errors
 - **Structure validator** misses inline `Resumen:` format
 - **Citation parser** misses `Fuente:` footnote format
-- **Reference parser** misses `Fuentes bibliográficas consultadas` heading
 - **Windows-only** COM automation for accurate statistics (falls back to python-docx on other platforms)
 
 ---
@@ -366,6 +372,6 @@ MIT License - See [LICENSE](LICENSE) file for details
 
 ---
 
-**Last Updated:** March 2026  
-**Version:** 0.8  
+**Last Updated:** April 2026  
+**Version:** 0.8.1  
 **Status:** Active Development 🚀
