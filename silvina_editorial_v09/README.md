@@ -52,7 +52,7 @@ presentation/     # Output formatting (Word/JSON reports)
 1. **📖 Document Reading** - Extracts paragraphs from .docx files
 2. **🔍 Content Extraction** - Identifies title, authors, sections, word count
 3. **📚 Citation & Reference Parsing** - Extracts in-text citations and bibliography
-4. **🏷️ Article Classification** - Científico vs Divulgación (LLM-powered)
+4. **🏷️ Article Classification** - Científico / Divulgación / Opinión (5-signal hybrid)
 5. **⭐ Quality Analysis** - 4 semantic dimensions: claridad, coherencia, argumentación, conclusiones
 6. **📋 Structure Validation** - Verifies required sections per article type (EUMIC standards)
 7. **🔗 Citation Matching** - Links citations to references, identifies orphaned entries
@@ -74,15 +74,38 @@ presentation/     # Output formatting (Word/JSON reports)
 
 ---
 
-### 🎯 **Classification System**
+### 🎯 **Classification System — 5-Signal Hybrid**
+
+v0.9 introduces a complete redesign of the classification engine, replacing the IMRyD-only approach with a 5-signal hybrid system aligned with EUMIC norms and social science article conventions.
+
+**Signal evaluation order:**
+
+| Signal | Type | Criterion |
+|--------|------|-----------|
+| S1 — IMRyD override | Deterministic | Complete IMRyD structure detected → immediate CIENTÍFICO (0.95) |
+| S2a — Reference count | Deterministic | ≥ 15 references (EUMIC minimum for científico) |
+| S2b — Reference recency | Deterministic | ≥ 50% of references within last 4 years |
+| S3 — Methodological vocab | Deterministic | ≥ 3 methodological terms found in full text |
+| S4 — Research question | LLM (targeted) | Explicit research question or objective detected |
+| S5 — Conceptual closure | LLM (targeted) | Evidence-based conclusions detected |
+
+**Classification rule (signals S2a–S5):**
+
+| Score | Result | Confidence |
+|-------|--------|------------|
+| 5/5 | CIENTÍFICO | 0.90 |
+| 4/5 | CIENTÍFICO | 0.80 |
+| 3/5 | DIVULGACIÓN | 0.75 |
+| 2/5 | DIVULGACIÓN | 0.75 |
+| 1/5 | OPINIÓN | 0.65 |
+| 0/5 | OPINIÓN | 0.65 |
+
+**LLM call efficiency:** Signals S4 and S5 use targeted yes/no prompts (temperature 0.1, 10 tokens max). If S1 fires, no LLM calls are made. Maximum 2 additional LLM calls per document beyond the quality analyzer.
 
 **Article Types (EUMIC-compliant):**
-- **Artículo Científico** - Research with IMRyD structure, 3000-6000 words
-- **Artículo de Divulgación** - Literature review, flexible structure
-- **Artículo de Opinión** - Opinion/analysis piece
-- **Artículo Corto** - Brief communication, 1000-2000 words
-
-**Classification Method:** LLM-based with confidence scoring (0-100%)
+- **Artículo Científico** - IMRyD structure, ≥15 recent references, research question, evidence-based conclusions
+- **Artículo de Divulgación** - Academic synthesis, flexible structure, some reference support
+- **Artículo de Opinión** - Argumentative text, minimal or no references, no empirical validation
 
 ---
 
@@ -156,7 +179,7 @@ python process_feedback.py --folder feedback_received/
 ### Prerequisites
 - Python 3.12+
 - [Ollama](https://ollama.ai/) installed and running
-- 8GB+ RAM (16GB recommended)
+- 8GB+ RAM (32GB recommended for optimal LLM performance)
 - Windows (for accurate Word document statistics via COM automation)
 
 ### Setup
@@ -257,6 +280,7 @@ silvina_editorial_v09/
 - Abstract length (150-250 words)
 - Keywords requirement (3-5)
 - Required sections per article type
+- Científico: 15-30 references recommended (APA 7, mandatory)
 
 ### APA 7 (Spanish)
 - Author format: `Apellido, N.`
@@ -269,30 +293,44 @@ Silvina distinguishes between:
 - **Referencias** — strict list of sources cited in the text (APA, one-to-one with citations)
 - **Bibliografía / Fuentes bibliográficas consultadas** — broader reading list, may include uncited sources
 
-Full editorial differentiation between these formats is planned for v1.0.
-
 ---
 
 ## 🔄 Version History
 
 ### v0.9 (Q2 2026) - Current
-- 🔧 **FIXED:** Grammar checker false positives — `rule_issue_type == misspelling` filter eliminates proper noun, surname, and military acronym false positives
+
+**Classification System Redesign:**
+- ✨ **NEW:** 5-signal hybrid classification engine replacing IMRyD-only approach
+- ✨ **NEW:** Signal S2a — reference count ≥ 15 (EUMIC minimum for científico)
+- ✨ **NEW:** Signal S2b — reference recency ≥ 50% within last 4 years
+- ✨ **NEW:** Signal S3 — methodological vocabulary scan (deterministic)
+- ✨ **NEW:** Signal S4 — research question detection (targeted LLM, yes/no)
+- ✨ **NEW:** Signal S5 — evidence-based closure detection (targeted LLM, yes/no)
+- ✨ **NEW:** `references` field added to `DocumentContent` model
+- ✨ **NEW:** `content_extractor.py` now populates references via `ReferenceParser`
+- 🔧 **FIXED:** IMRyD false positives — structure analyzer now scans only short paragraphs (≤5 words) as section headers, eliminating body prose false triggers
+- 🔧 **FIXED:** Classification rules — 1/5 signals → OPINIÓN (was DIVULGACIÓN)
+
+**Quality Analysis:**
+- 🔧 **FIXED:** LLM call 2 (`Argumentación` / `Conclusiones`) returning `No disponible` — score extraction now searches entire response block
+- 🔧 **FIXED:** Dimension merge logic overwriting correctly parsed results
+
+**Other fixes (from v0.9 sprint):**
+- 🔧 **FIXED:** Grammar checker false positives — `rule_issue_type == misspelling` filter
 - 🔧 **FIXED:** Title extraction — author name no longer included in title
-- 🔧 **FIXED:** Multi-author detection — `AUTORES` pattern correctly collects authors listed on separate lines
-- 🔧 **FIXED:** Structure validator — inline `Resumen:` and `Abstract:` formats now detected
-- 🔧 **FIXED:** Reference parser — `Fuentes bibliográficas consultadas` heading now recognized; XML text fragmentation handled via compact join
-- 🔧 **FIXED:** Publishability verdict — documents without APA citations no longer approved; both executive summary and recommendations section consistent
-- 🔧 **FIXED:** Report footer updated to v0.9
+- 🔧 **FIXED:** Multi-author detection
+- 🔧 **FIXED:** Inline `Resumen:` and `Abstract:` section detection
+- 🔧 **FIXED:** Reference parser — `Fuentes bibliográficas consultadas` heading recognized
+- 🔧 **FIXED:** Publishability verdict logic
+- 🔧 **FIXED:** Version header updated to v0.9 throughout
 
 ### v0.8 (Q1 2026)
 - Gradio web interface for editorial staff
 - Structured expert feedback panel (8 evaluation fields)
 - All reports save to `Documents\Silvina\reports\`
-- Feedback JSON saved alongside analysis reports
 - `process_feedback.py` — automated feedback processing pipeline
 - Two-call LLM architecture for quality analysis
 - Split-based parser replacing fragile regex
-- Explicit conclusion section detection
 
 ### v0.7 (January 2026)
 - EUMIC format compliance verification system
@@ -310,35 +348,39 @@ Full editorial differentiation between these formats is planned for v1.0.
 ## 🗺️ Roadmap
 
 ### v0.9 (Q2 2026) ✅ Current
-- ✅ Grammar false positive fix
-- ✅ Title extraction fix
-- ✅ Multi-author detection fix
-- ✅ Inline Resumen/Abstract detection
-- ✅ Fuentes bibliográficas consultadas heading support
-- ✅ Publishability verdict logic corrected
+- ✅ Classification system redesign (5-signal hybrid)
+- ✅ IMRyD false positive fix
+- ✅ Quality analyzer LLM call 2 fix
+- ✅ Grammar false positive filter
+- ✅ Title and author extraction fixes
+- ✅ Reference parser improvements
+- ✅ Publishability verdict correction
+- ⬜ Signal S3 calibration (threshold tuning)
 - ⬜ Batch processing for multiple documents
 - ⬜ Security measures (file validation, authentication, rate limiting)
 - ⬜ Deployment preparation for institutional web server
-- ⬜ Analytics dashboard for editorial team
 
 ### v1.0 (Planned - Q3 2026)
 - 🏢 Production deployment at Universidad de la Defensa
-- 🌐 Accessible via institutional webpage
+- 🌐 Accessible via institutional webpage (supervised availability model)
 - 👥 Multi-user authentication
 - 📊 Editorial workflow management
-- 📚 Full differentiation between Referencias, Bibliografía, and Fuentes bibliográficas consultadas for editorial scoring
+- 📚 Full differentiation between Referencias, Bibliografía, and Fuentes bibliográficas consultadas
 
 ### v2.0 (Future)
 - 🧠 Editorial memory — learns from accumulated feedback (RAG-based)
 - 🤖 Agentic workflows
+- 🔄 Batch processing for multiple simultaneous documents
 
 ---
 
 ## 🐛 Known Issues
 
 ### v0.9
-- **LLM quality analysis** occasionally returns "No disponible" on one dimension due to model non-determinism on CPU — not a code bug
+- **Signal S3** (methodological vocab) can fire on analytical divulgación articles — threshold calibration pending
+- **LLM quality analysis** occasionally returns "No disponible" on one dimension due to model non-determinism on CPU
 - **Windows-only** COM automation for accurate statistics (falls back to python-docx on other platforms)
+- **Version header** in `main.py` init message still shows v0.7 — cosmetic only
 
 ---
 
@@ -366,6 +408,6 @@ MIT License - See [LICENSE](LICENSE) file for details
 
 ---
 
-**Last Updated:** March 2026  
+**Last Updated:** April 2026  
 **Version:** 0.9  
 **Status:** Active Development 🚀
