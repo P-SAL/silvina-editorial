@@ -60,14 +60,15 @@ class ArticleClassifier:
         # ── Signals 2-5: collect boolean results ──────────────────────────────
         text_sample = self._build_text_sample(document_content)
 
-        s2 = self._signal_reference_density(document_content)
+        s2a = self._signal_reference_count(document_content)
+        s2b = self._signal_reference_recency(document_content)
         s3 = self._signal_methodological_vocab(document_content)
         s4 = self._signal_research_question(text_sample, document_content.title)
         s5 = self._signal_conceptual_closure(text_sample, document_content.title)
-
-        signals = [s2, s3, s4, s5]
+        
+        signals = [s2a, s2b, s3, s4, s5]
         signal_count = sum(signals)
-
+        
         # ── Signal 6: apply classification rule ───────────────────────────────
         return self._apply_rule(signals, signal_count, article_size)
 
@@ -80,17 +81,39 @@ class ArticleClassifier:
         return " ".join(document_content.paragraphs[:60])[:7000]
 
     # ── Signal 2 ──────────────────────────────────────────────────────────────
+    # ── Signal 2a ─────────────────────────────────────────────────────────────
 
-    def _signal_reference_density(self, document_content: DocumentContent) -> bool:
+    def _signal_reference_count(self, document_content: DocumentContent) -> bool:
         """
-        True if reference density >= 3 references per 1000 words.
-        Reads document_content.references (list[str]).
+        True if total references >= 15 (EUMIC minimum for científico).
         """
-        if document_content.word_count == 0:
+        references = document_content.references or []
+        return len(references) >= 15
+
+    # ── Signal 2b ─────────────────────────────────────────────────────────────
+
+    def _signal_reference_recency(self, document_content: DocumentContent) -> bool:
+        """
+        True if >= 50% of references are recent (year >= current_year - 4).
+        Year extracted from Reference.text via regex.
+        """
+        import re
+        from datetime import datetime
+
+        references = document_content.references or []
+        if not references:
             return False
-        ref_count = len(document_content.references) if document_content.references else 0
-        density = ref_count / (document_content.word_count / 1000)
-        return density >= 3.0
+
+        recent_threshold = datetime.now().year - 4
+        year_pattern = re.compile(r'\b((?:19|20)\d{2})\b')
+
+        recent_count = 0
+        for ref in references:
+            years = [int(y) for y in year_pattern.findall(ref.text)]
+            if years and max(years) >= recent_threshold:
+                recent_count += 1
+
+        return (recent_count / len(references)) >= 0.5
 
     # ── Signal 3 ──────────────────────────────────────────────────────────────
 
@@ -174,19 +197,22 @@ NO"""
     def _apply_rule(self, signals: list[bool], signal_count: int,
                     article_size) -> ClassificationResult:
         """
-        Apply the agreed classification rule to signals 2-5:
-          4-5 signals → CIENTÍFICO  (0.85)
-          3   signals → CIENTÍFICO  (0.70)
-          2   signals → DIVULGACIÓN (0.75)
-          0-1 signals → OPINIÓN     (0.65)
+        Apply the agreed classification rule to signals 2a-5 (5 total):
+          5/5 → CIENTÍFICO  (0.90)
+          4/5 → CIENTÍFICO  (0.80)
+          2-3/5 → DIVULGACIÓN (0.75)
+          1/5 → DIVULGACIÓN (0.60)
+          0/5 → OPINIÓN     (0.65)
         """
-        s2, s3, s4, s5 = signals
+        s2a, s2b, s3, s4, s5 = signals
         signal_labels = {
-            "Densidad de referencias": s2,
+            "Referencias ≥ 15": s2a,
+            "Referencias recientes": s2b,
             "Vocabulario metodológico": s3,
             "Pregunta de investigación": s4,
             "Cierre conceptual": s5,
         }
+
         active = [label for label, val in signal_labels.items() if val]
         inactive = [label for label, val in signal_labels.items() if not val]
 
@@ -198,43 +224,51 @@ NO"""
                 parts.append(f"Señales ausentes: {', '.join(absent)}.")
             return " ".join(parts)
 
-        if signal_count >= 4:
+        if signal_count == 5:
             return ClassificationResult(
                 article_type=ArticleType.CIENTIFICO,
                 article_size=article_size,
-                confidence=0.85,
-                reasoning=f"4 de 4 señales científicas confirmadas. "
+                confidence=0.90,
+                reasoning=f"5 de 5 señales científicas confirmadas. "
                            + _reasoning(active, inactive)
             )
 
-        if signal_count == 3:
+        if signal_count == 4:
             return ClassificationResult(
                 article_type=ArticleType.CIENTIFICO,
                 article_size=article_size,
-                confidence=0.70,
-                reasoning=f"3 de 4 señales científicas confirmadas. "
+                confidence=0.80,
+                reasoning=f"4 de 5 señales científicas confirmadas. "
                            + _reasoning(active, inactive)
             )
 
-        if signal_count == 2:
+        if signal_count in (2, 3):
             return ClassificationResult(
                 article_type=ArticleType.DIVULGACION,
                 article_size=article_size,
                 confidence=0.75,
-                reasoning=f"2 de 4 señales científicas. Artículo de divulgación académica. "
+                reasoning=f"{signal_count} de 5 señales científicas. Artículo de divulgación académica. "
                            + _reasoning(active, inactive)
             )
 
-        # 0-1 signals
+        if signal_count == 1:
+            return ClassificationResult(
+                article_type=ArticleType.OPINION,
+                article_size=article_size,
+                confidence=0.65,
+                reasoning=f"1 de 5 señales científicas. Insuficiente evidencia académica para divulgación. "
+                           + _reasoning(active, inactive)
+            )
+
+        # 0 signals
         return ClassificationResult(
             article_type=ArticleType.OPINION,
             article_size=article_size,
             confidence=0.65,
-            reasoning=f"{'1' if signal_count == 1 else '0'} de 4 señales científicas. "
+            reasoning="0 de 5 señales científicas. "
                        "Texto argumentativo u opinión sin validación empírica. "
                        + _reasoning(active, inactive)
         )
-
 
 # ─── Convenience function ─────────────────────────────────────────────────────
 
@@ -247,12 +281,17 @@ def classify_document(document: DocumentContent,
 # ─── Quick smoke test ─────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
+    from domain.models import Reference
+
     doc = DocumentContent(
         word_count=6000,
         char_count=35000,
         title="Análisis cuantitativo de la cohesión institucional en unidades militares conjuntas",
         abstract="Este estudio analiza los efectos de la integración conjunta.",
-        references=[f"Referencia {i}" for i in range(25)],  # 25 refs → density 4.17/1000
+        references=[
+            Reference(text=f"Autor, A. (202{i % 5}). Título de referencia {i}. Revista Académica, {i+1}, 1-10.")
+            for i in range(20)
+        ],  # 20 refs, all 2020-2024 → S2a=True, S2b=True
         paragraphs=[
             "Este estudio analiza los efectos de la integración conjunta utilizando una metodología cuantitativa.",
             "La hipótesis central sostiene que la cohesión aumenta con la formación conjunta.",
@@ -265,3 +304,4 @@ if __name__ == "__main__":
     classifier = ArticleClassifier()
     result = classifier.classify_article(doc)
     print(result)
+

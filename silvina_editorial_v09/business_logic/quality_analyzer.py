@@ -125,6 +125,7 @@ CRITERIOS: 9-10 Excelente | 7-8 Bueno | 5-6 Aceptable | 3-4 Deficiente | 0-2 Ina
             )
             text_2 = response_2.get('response', '').strip()
             print(f"      ✓ Llamada 2 completada: {len(text_2.split())} palabras")
+            print(f"      [DEBUG CALL2 RAW]:\n{text_2[:600]}")
 
             # Parse both responses
             scores_1 = self._parse_llm_response(text_1)
