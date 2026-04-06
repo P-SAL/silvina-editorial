@@ -61,7 +61,7 @@ class SilvinaEditorialAssistant:
         """
         self.config = config or Config()
         
-        print("🔧 Inicializando Silvina Editorial Assistant v0.7...")
+        print("🔧 Inicializando Silvina Editorial Assistant v0.9...")
         
         # Initialize components
         try:

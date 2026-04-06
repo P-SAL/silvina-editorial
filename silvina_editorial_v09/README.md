@@ -85,9 +85,12 @@ v0.9 introduces a complete redesign of the classification engine, replacing the 
 | S1 — IMRyD override | Deterministic | Complete IMRyD structure detected → immediate CIENTÍFICO (0.95) |
 | S2a — Reference count | Deterministic | ≥ 15 references (EUMIC minimum for científico) |
 | S2b — Reference recency | Deterministic | ≥ 50% of references within last 4 years |
-| S3 — Methodological vocab | Deterministic | ≥ 3 methodological terms found in full text |
+| S3 — Methodological vocab | Deterministic | ≥ 4 methodological terms AND ≥ 1 hard term |
 | S4 — Research question | LLM (targeted) | Explicit research question or objective detected |
 | S5 — Conceptual closure | LLM (targeted) | Evidence-based conclusions detected |
+
+**Hard terms for S3** (unambiguously methodological):
+`análisis estadístico`, `cuasi-experimental`, `diseño experimental`, `diseño de investigación`, `triangulación`, `marco metodológico`, `unidad de análisis`, `categorías de análisis`, `datos primarios`, `datos secundarios`, `observación sistemática`, `statistical analysis`, `experimental design`
 
 **Classification rule (signals S2a–S5):**
 
@@ -117,7 +120,7 @@ v0.9 introduces a complete redesign of the classification engine, replacing the 
 - **Argumentación** - Strength of arguments and evidence
 - **Conclusiones** - Quality and relevance of conclusions
 
-**Architecture:** Two-call LLM approach (Call 1: Claridad + Coherencia / Call 2: Argumentación + Conclusiones) with split-based parser and explicit conclusion section detection.
+**Architecture:** Two-call LLM approach (Call 1: Claridad + Coherencia / Call 2: Argumentación + Conclusiones). Parser handles both numbered (`**1. Argumentación**`) and unnumbered (`**Argumentación**`) LLM response formats for robustness.
 
 **Output:** Overall score (0-10), quality level (Excelente/Bueno/Aceptable/Necesita Mejora/Deficiente)
 
@@ -261,7 +264,10 @@ silvina_editorial_v09/
 │   ├── quality_analyzer.py
 │   ├── gramatica_checker.py
 │   ├── structure_validator.py
-│   └── citation_matcher.py
+│   ├── citation_matcher.py
+│   └── vocab/
+│       ├── __init__.py
+│       └── methodological_terms.py  # Signal S3 vocabulary (future expansion)
 └── presentation/
     ├── word_exporter.py
     └── config.py
@@ -303,19 +309,22 @@ Silvina distinguishes between:
 - ✨ **NEW:** 5-signal hybrid classification engine replacing IMRyD-only approach
 - ✨ **NEW:** Signal S2a — reference count ≥ 15 (EUMIC minimum for científico)
 - ✨ **NEW:** Signal S2b — reference recency ≥ 50% within last 4 years
-- ✨ **NEW:** Signal S3 — methodological vocabulary scan (deterministic)
+- ✨ **NEW:** Signal S3 — methodological vocabulary scan (≥ 4 terms + ≥ 1 hard term)
 - ✨ **NEW:** Signal S4 — research question detection (targeted LLM, yes/no)
 - ✨ **NEW:** Signal S5 — evidence-based closure detection (targeted LLM, yes/no)
 - ✨ **NEW:** `references` field added to `DocumentContent` model
 - ✨ **NEW:** `content_extractor.py` now populates references via `ReferenceParser`
-- 🔧 **FIXED:** IMRyD false positives — structure analyzer now scans only short paragraphs (≤5 words) as section headers, eliminating body prose false triggers
+- ✨ **NEW:** `business_logic/vocab/methodological_terms.py` — dedicated vocabulary file for future expansion
+- 🔧 **FIXED:** IMRyD false positives — structure analyzer now scans only short paragraphs (≤5 words) as section headers
 - 🔧 **FIXED:** Classification rules — 1/5 signals → OPINIÓN (was DIVULGACIÓN)
+- 🔧 **FIXED:** S3 calibration — threshold raised to 4 terms + mandatory hard term requirement
 
 **Quality Analysis:**
-- 🔧 **FIXED:** LLM call 2 (`Argumentación` / `Conclusiones`) returning `No disponible` — score extraction now searches entire response block
+- 🔧 **FIXED:** LLM call 2 (`Argumentación` / `Conclusiones`) returning `No disponible` — parser now handles both numbered and unnumbered dimension headers
+- 🔧 **FIXED:** Score extraction searches entire response block, not just first line
 - 🔧 **FIXED:** Dimension merge logic overwriting correctly parsed results
 
-**Other fixes (from v0.9 sprint):**
+**Other fixes:**
 - 🔧 **FIXED:** Grammar checker false positives — `rule_issue_type == misspelling` filter
 - 🔧 **FIXED:** Title extraction — author name no longer included in title
 - 🔧 **FIXED:** Multi-author detection
@@ -351,11 +360,13 @@ Silvina distinguishes between:
 - ✅ Classification system redesign (5-signal hybrid)
 - ✅ IMRyD false positive fix
 - ✅ Quality analyzer LLM call 2 fix
+- ✅ Quality parser robust headers
 - ✅ Grammar false positive filter
 - ✅ Title and author extraction fixes
 - ✅ Reference parser improvements
 - ✅ Publishability verdict correction
-- ⬜ Signal S3 calibration (threshold tuning)
+- ✅ S3 calibration (threshold 4 + hard terms)
+- ✅ Methodological terms vocabulary file
 - ⬜ Batch processing for multiple documents
 - ⬜ Security measures (file validation, authentication, rate limiting)
 - ⬜ Deployment preparation for institutional web server
@@ -366,6 +377,7 @@ Silvina distinguishes between:
 - 👥 Multi-user authentication
 - 📊 Editorial workflow management
 - 📚 Full differentiation between Referencias, Bibliografía, and Fuentes bibliográficas consultadas
+- 🔧 Signal S3 vocabulary expansion via feedback pipeline
 
 ### v2.0 (Future)
 - 🧠 Editorial memory — learns from accumulated feedback (RAG-based)
@@ -377,10 +389,9 @@ Silvina distinguishes between:
 ## 🐛 Known Issues
 
 ### v0.9
-- **Signal S3** (methodological vocab) can fire on analytical divulgación articles — threshold calibration pending
-- **LLM quality analysis** occasionally returns "No disponible" on one dimension due to model non-determinism on CPU
+- **Signal S3** calibrated to threshold 4 + hard term requirement — may still occasionally fire on highly technical divulgación articles
+- **LLM quality analysis** non-deterministic on CPU — occasional dimension variance between runs is normal
 - **Windows-only** COM automation for accurate statistics (falls back to python-docx on other platforms)
-- **Version header** in `main.py` init message still shows v0.7 — cosmetic only
 
 ---
 
