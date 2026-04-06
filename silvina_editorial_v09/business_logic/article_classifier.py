@@ -13,17 +13,17 @@ from business_logic.structure_analyzer import StructureAnalyzer
 # ─── Methodological vocabulary for Signal 3 ───────────────────────────────────
 _METHODOLOGICAL_VOCAB = [
     # Spanish
-    "metodología", "método", "muestra", "hipótesis", "variables", "variable dependiente",
+    "metodología", "hipótesis", "variables", "variable dependiente",
     "variable independiente", "cuantitativo", "cualitativo", "mixto", "diseño de investigación",
     "diseño experimental", "cuasi-experimental", "correlación", "regresión", "análisis estadístico",
-    "significancia", "validez", "confiabilidad", "instrumento", "encuesta", "entrevista",
-    "observación sistemática", "triangulación", "marco teórico", "marco metodológico",
+    "significancia", "validez", "confiabilidad", "encuesta", "entrevista",
+    "observación sistemática", "triangulación", "marco metodológico",
     "población", "unidad de análisis", "categorías de análisis", "codificación",
     "datos primarios", "datos secundarios", "trabajo de campo",
     # English (bilingual articles)
     "methodology", "sample", "hypothesis", "quantitative", "qualitative",
     "experimental design", "statistical analysis", "regression", "correlation",
-    "validity", "reliability", "instrument", "survey", "field work",
+    "validity", "reliability", "field work",
 ]
 
 class ArticleClassifier:
@@ -116,16 +116,27 @@ class ArticleClassifier:
         return (recent_count / len(references)) >= 0.5
 
     # ── Signal 3 ──────────────────────────────────────────────────────────────
-
+    
     def _signal_methodological_vocab(self, document_content: DocumentContent) -> bool:
         """
-        True if >= 3 distinct methodological terms are found in the full text.
-        Case-insensitive scan of all paragraphs.
+        True if >= 4 distinct methodological terms found AND at least 1 hard term.
+        Hard terms are unambiguously methodological and rarely appear outside research.
         """
-        full_text = " ".join(document_content.paragraphs).lower()
-        hits = sum(1 for term in _METHODOLOGICAL_VOCAB if term.lower() in full_text)
-        return hits >= 3
+        _HARD_TERMS = {
+            "cuasi-experimental", "análisis estadístico", "triangulación",
+            "marco metodológico", "unidad de análisis", "datos primarios",
+            "datos secundarios", "statistical analysis", "experimental design",
+            "diseño experimental", "diseño de investigación", "observación sistemática",
+            "categorías de análisis"
+        }
 
+        full_text = " ".join(document_content.paragraphs).lower()
+        found_terms = [term for term in _METHODOLOGICAL_VOCAB if term.lower() in full_text]
+        found_hard = [term for term in found_terms if term.lower() in _HARD_TERMS]
+
+        return len(found_terms) >= 4 and len(found_hard) >= 1
+    
+    
     # ── Signal 4 ──────────────────────────────────────────────────────────────
 
     def _signal_research_question(self, text_sample: str, title: str) -> bool:

@@ -125,7 +125,6 @@ CRITERIOS: 9-10 Excelente | 7-8 Bueno | 5-6 Aceptable | 3-4 Deficiente | 0-2 Ina
             )
             text_2 = response_2.get('response', '').strip()
             print(f"      ✓ Llamada 2 completada: {len(text_2.split())} palabras")
-            print(f"      [DEBUG CALL2 RAW]:\n{text_2[:600]}")
 
             # Parse both responses
             scores_1 = self._parse_llm_response(text_1)
@@ -158,7 +157,11 @@ CRITERIOS: 9-10 Excelente | 7-8 Bueno | 5-6 Aceptable | 3-4 Deficiente | 0-2 Ina
             return QualityAnalysisResult(7.0, QualityLevel.ACCEPTABLE, default)
 
     def _parse_llm_response(self, text: str) -> Dict[str, Dict[str, Any]]:
-        """Extract feedback and scores by splitting on dimension headers."""
+        """
+        Extract feedback and scores from LLM response.
+        Handles both numbered (**1. Dim) and unnumbered (**Dim) header formats
+        to cope with LLM non-determinism.
+        """
 
         result = {
             "claridad":      {"score": 7.0, "feedback": "No disponible"},
@@ -167,8 +170,11 @@ CRITERIOS: 9-10 Excelente | 7-8 Bueno | 5-6 Aceptable | 3-4 Deficiente | 0-2 Ina
             "conclusiones":  {"score": 7.0, "feedback": "No disponible"}
         }
 
-        # Split text into blocks at each dimension header
-        blocks = re.split(r'(?=\*\*\d+\.)', text.strip())
+        # Split on numbered OR unnumbered dimension headers
+        blocks = re.split(
+            r'(?=\*\*(?:\d+\.\s*)?(?:Claridad|Coherencia|Argumentaci[oó]n|Conclusiones))',
+            text.strip(), flags=re.IGNORECASE
+        )
 
         for block in blocks:
             if not block.strip():
@@ -176,7 +182,7 @@ CRITERIOS: 9-10 Excelente | 7-8 Bueno | 5-6 Aceptable | 3-4 Deficiente | 0-2 Ina
 
             first_line = block.split('\n')[0]
 
-            # FIX: search entire block for score, not just first line
+            # Search entire block for score
             score_match = re.search(
                 r'\[Puntuaci[oó]n:\s*(\d+(?:\.\d+)?)(?:/10)?\]|(\d+(?:\.\d+)?)\s*/\s*10',
                 block, re.IGNORECASE
@@ -205,16 +211,17 @@ CRITERIOS: 9-10 Excelente | 7-8 Bueno | 5-6 Aceptable | 3-4 Deficiente | 0-2 Ina
             if len(sentences) > 3:
                 feedback = '. '.join(sentences[:3]) + '.'
 
-            # Map to dimension
-            block_lower = first_line.lower()
-            if 'claridad' in block_lower or ('argumento' in block_lower and 'argumentaci' not in block_lower):
-                result["claridad"] = {"score": score, "feedback": feedback}
-            elif 'coherencia' in block_lower:
-                result["coherencia"] = {"score": score, "feedback": feedback}
-            elif 'argumentaci' in block_lower:
+            # Map to dimension — search first 200 chars of block
+            # Order matters: check argumentaci before claridad to avoid false match on "argumento"
+            block_lower = block[:200].lower()
+            if 'argumentaci' in block_lower:
                 result["argumentacion"] = {"score": score, "feedback": feedback}
             elif 'conclusi' in block_lower:
                 result["conclusiones"] = {"score": score, "feedback": feedback}
+            elif 'coherencia' in block_lower:
+                result["coherencia"] = {"score": score, "feedback": feedback}
+            elif 'claridad' in block_lower or 'argumento' in block_lower:
+                result["claridad"] = {"score": score, "feedback": feedback}
 
         return result
 
