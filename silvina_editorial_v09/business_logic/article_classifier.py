@@ -1,6 +1,6 @@
 """
 article_classifier.py
-Classifies articles into categories using a 6-signal hybrid approach.
+Classifies articles into categories using a hybrid signal approach.
 Part of Silvina Editorial Assistant v0.9
 """
 
@@ -26,8 +26,9 @@ _METHODOLOGICAL_VOCAB = [
     "validity", "reliability", "field work",
 ]
 
+
 class ArticleClassifier:
-    """Classifies academic articles using a 6-signal hybrid approach."""
+    """Classifies academic articles using a hybrid signal approach."""
 
     def __init__(self, model_name: str = "llama3-gradient:8b-instruct-1048k-q4_K_M",
                  base_url: str = "http://localhost:11434"):
@@ -57,36 +58,55 @@ class ArticleClassifier:
                 reasoning="Estructura IMRyD completa detectada (override determinístico)."
             )
 
-        # ── Signals 2-5: collect boolean results ──────────────────────────────
+        # ── Signals 2a, 2b, 3, 4, 5 ──────────────────────────────────────────
         text_sample = self._build_text_sample(document_content)
-
+        
         s2a = self._signal_reference_count(document_content)
         s2b = self._signal_reference_recency(document_content)
-        s3 = self._signal_methodological_vocab(document_content)
-        s4 = self._signal_research_question(text_sample, document_content.title)
-        s5 = self._signal_conceptual_closure(text_sample, document_content.title)
-        
+        s3  = self._signal_methodological_vocab(document_content)
+        s4  = self._signal_research_question(text_sample, document_content.title)
+        s5  = self._signal_conceptual_closure(text_sample, document_content.title)
+
         signals = [s2a, s2b, s3, s4, s5]
-        signal_count = sum(signals)
-        
+
         # ── Signal 6: apply classification rule ───────────────────────────────
-        return self._apply_rule(signals, signal_count, article_size)
+        return self._apply_rule(signals, article_size)
 
     # ══════════════════════════════════════════════════════════════════════════
     # SIGNAL HELPERS
     # ══════════════════════════════════════════════════════════════════════════
 
     def _build_text_sample(self, document_content: DocumentContent) -> str:
-        """Return a text sample suitable for LLM signals."""
-        return " ".join(document_content.paragraphs[:60])[:7000]
+        """
+        Return a text sample for LLM signals.
+        Takes first 3500 chars (intro/research questions) +
+        last 2500 chars (conclusions), skipping bibliography.
+        """
+        full_text = " ".join(document_content.paragraphs)
 
-    # ── Signal 2 ──────────────────────────────────────────────────────────────
+        # Exclude bibliography — detect first short standalone paragraph
+        # containing a bibliography marker (≤ 30 chars = section header, not body prose)
+        bib_markers = ['referencias', 'bibliografía', 'bibliography', 'fuentes bibliográficas']
+        bib_pos = len(full_text)
+        char_pos = 0
+        for para in document_content.paragraphs:
+            para_lower = para.strip().lower()
+            if len(para_lower) <= 30 and any(marker in para_lower for marker in bib_markers):
+                bib_pos = char_pos
+                break
+            char_pos += len(para) + 1
+
+        clean_text = full_text[:bib_pos] if bib_pos > 0 else full_text
+        if not clean_text:
+            clean_text = full_text
+        intro  = clean_text[:3500]
+        ending = clean_text[-2500:] if len(clean_text) > 3500 else ""
+        return (intro + " " + ending).strip() or full_text[:6000]
+
     # ── Signal 2a ─────────────────────────────────────────────────────────────
 
     def _signal_reference_count(self, document_content: DocumentContent) -> bool:
-        """
-        True if total references >= 15 (EUMIC minimum for científico).
-        """
+        """True if total references >= 15 (EUMIC minimum for científico)."""
         references = document_content.references or []
         return len(references) >= 15
 
@@ -116,11 +136,11 @@ class ArticleClassifier:
         return (recent_count / len(references)) >= 0.5
 
     # ── Signal 3 ──────────────────────────────────────────────────────────────
-    
+
     def _signal_methodological_vocab(self, document_content: DocumentContent) -> bool:
         """
         True if >= 4 distinct methodological terms found AND at least 1 hard term.
-        Hard terms are unambiguously methodological and rarely appear outside research.
+        S3 acts as tiebreaker only — see _apply_rule().
         """
         _HARD_TERMS = {
             "cuasi-experimental", "análisis estadístico", "triangulación",
@@ -132,17 +152,16 @@ class ArticleClassifier:
 
         full_text = " ".join(document_content.paragraphs).lower()
         found_terms = [term for term in _METHODOLOGICAL_VOCAB if term.lower() in full_text]
-        found_hard = [term for term in found_terms if term.lower() in _HARD_TERMS]
+        found_hard  = [term for term in found_terms if term.lower() in _HARD_TERMS]
 
         return len(found_terms) >= 4 and len(found_hard) >= 1
-    
-    
+
     # ── Signal 4 ──────────────────────────────────────────────────────────────
 
     def _signal_research_question(self, text_sample: str, title: str) -> bool:
         """
-        True if the LLM detects an explicit research question or objective
-        (pregunta de investigación / objetivo de investigación).
+        True if the LLM detects an explicit research question, objective,
+        or central hypothesis.
         """
         prompt = f"""Analiza el siguiente fragmento de un artículo académico.
 
@@ -151,20 +170,28 @@ TÍTULO: {title}
 TEXTO:
 {text_sample}
 
-TAREA: ¿El artículo formula explícitamente una pregunta de investigación, objetivo de investigación o hipótesis central?
+TAREA: Determina si el artículo expresa explícitamente una intención de investigación mediante CUALQUIERA de estas formas:
+
+1. Verbos de intención investigativa: examinar, analizar, identificar, determinar, explorar, comprender, evaluar, investigar, estudiar, revisar, sintetizar
+2. Marcadores de alcance: "el presente estudio", "esta investigación", "la presente revisión", "el presente trabajo"
+3. Marcadores de problema: "el problema central", "el objetivo es", "la pregunta que guía", "se busca responder"
+4. Expresión de preguntas o hipótesis: una o múltiples, numeradas o no, directas o secuenciales
+
+Responde SI si CUALQUIERA de estas formas está presente. Responde NO solo si ninguna está presente.
 
 Responde SOLO con una de estas dos opciones (sin explicación adicional):
 SI
 NO"""
-
+                  
         try:
             response = self.client.generate(
                 model=self.model_name,
                 prompt=prompt,
-                options={"temperature": 0.1, "num_predict": 10}
+                options={"temperature": 0.1, "num_predict": 100}
             )
             answer = response["response"].strip().upper()
-            return answer.startswith("SI")
+            return "SI" in answer[:100]
+                        
         except Exception as e:
             print(f"⚠️  Signal 4 (research question) error: {e}")
             return False
@@ -173,8 +200,8 @@ NO"""
 
     def _signal_conceptual_closure(self, text_sample: str, title: str) -> bool:
         """
-        True if the LLM detects that the article reaches conclusions grounded
-        in evidence or systematic analysis (not mere opinion).
+        True if the LLM detects conclusions grounded in evidence, systematic
+        analysis, systematic review, or academic literature synthesis.
         """
         prompt = f"""Analiza el siguiente fragmento de un artículo académico.
 
@@ -183,7 +210,15 @@ TÍTULO: {title}
 TEXTO:
 {text_sample}
 
-TAREA: ¿El artículo presenta conclusiones basadas en evidencia, datos o análisis sistemático (no sólo en opinión del autor)?
+TAREA: Determina si el artículo presenta conclusiones que exterioricen una contribución mediante CUALQUIERA de estas formas:
+
+1. Hallazgos expresados como resultado de un proceso sistemático, replicable o verificable: "los resultados demuestran", "la evidencia indica", "el análisis revela", "se identificaron", "se observó que"
+2. Propuesta de marco teórico, modelo, taxonomía, clasificación o esquema conceptual derivado del análisis
+3. Recomendaciones específicas derivadas de evidencia o análisis sistemático, no de opinión personal
+4. Identificación y abordaje de una brecha de conocimiento: "este estudio contribuye", "a diferencia de estudios previos", "se propone", "se demuestra que"
+5. Síntesis que va más allá de la descripción: integra múltiples fuentes o perspectivas para arribar a una posición nueva
+
+Responde SI si CUALQUIERA de estas formas está presente. Responde NO solo si las conclusiones son puramente descriptivas u opinativas sin sustento sistemático.
 
 Responde SOLO con una de estas dos opciones (sin explicación adicional):
 SI
@@ -193,10 +228,11 @@ NO"""
             response = self.client.generate(
                 model=self.model_name,
                 prompt=prompt,
-                options={"temperature": 0.1, "num_predict": 10}
+                options={"temperature": 0.1, "num_predict": 100}
             )
             answer = response["response"].strip().upper()
-            return answer.startswith("SI")
+            return "SI" in answer[:100]
+                        
         except Exception as e:
             print(f"⚠️  Signal 5 (conceptual closure) error: {e}")
             return False
@@ -205,82 +241,91 @@ NO"""
     # SIGNAL 6 — CLASSIFICATION RULE
     # ══════════════════════════════════════════════════════════════════════════
 
-    def _apply_rule(self, signals: list[bool], signal_count: int,
+    def _apply_rule(self, signals: list[bool],
                     article_size) -> ClassificationResult:
         """
-        Apply the agreed classification rule to signals 2a-5 (5 total):
-          5/5 → CIENTÍFICO  (0.90)
-          4/5 → CIENTÍFICO  (0.80)
-          2-3/5 → DIVULGACIÓN (0.75)
-          1/5 → DIVULGACIÓN (0.60)
-          0/5 → OPINIÓN     (0.65)
+        Classification rule — Option B:
+
+        CIENTÍFICO:
+          S4 + S5 + (S2a OR S2b) → CIENTÍFICO (0.85)
+
+        DIVULGACIÓN:
+          S4 + S5 (no S2)        → DIVULGACIÓN (0.75) — scientific intent, weak references
+          S2a + S2b + S3 (no S4/S5) → DIVULGACIÓN (0.70) — referenced but no research intent
+          S4 OR S5 alone         → DIVULGACIÓN (0.65) — partial scientific signal
+
+        OPINIÓN:
+          0 signals              → OPINIÓN (0.65)
         """
         s2a, s2b, s3, s4, s5 = signals
-        signal_labels = {
-            "Referencias ≥ 15": s2a,
-            "Referencias recientes": s2b,
-            "Vocabulario metodológico": s3,
-            "Pregunta de investigación": s4,
-            "Cierre conceptual": s5,
-        }
 
-        active = [label for label, val in signal_labels.items() if val]
+        signal_labels = {
+            "Referencias ≥ 15":         s2a,
+            "Referencias recientes":     s2b,
+            "Vocabulario metodológico":  s3,
+            "Pregunta de investigación": s4,
+            "Contribución conclusiva":   s5,
+        }
+        active   = [label for label, val in signal_labels.items() if val]
         inactive = [label for label, val in signal_labels.items() if not val]
 
-        def _reasoning(conf_signals: list[str], absent: list[str]) -> str:
+        def _reasoning(present: list[str], absent: list[str]) -> str:
             parts = []
-            if conf_signals:
-                parts.append(f"Señales presentes: {', '.join(conf_signals)}.")
+            if present:
+                parts.append(f"Señales presentes: {', '.join(present)}.")
             if absent:
                 parts.append(f"Señales ausentes: {', '.join(absent)}.")
             return " ".join(parts)
 
-        if signal_count == 5:
+        # ── CIENTÍFICO ────────────────────────────────────────────────────────
+        if s4 and s5 and (s2a or s2b):
             return ClassificationResult(
                 article_type=ArticleType.CIENTIFICO,
                 article_size=article_size,
-                confidence=0.90,
-                reasoning=f"5 de 5 señales científicas confirmadas. "
-                           + _reasoning(active, inactive)
+                confidence=0.85,
+                reasoning="Intención investigativa + contribución conclusiva + respaldo bibliográfico. "
+                          + _reasoning(active, inactive)
             )
 
-        if signal_count == 4:
-            return ClassificationResult(
-                article_type=ArticleType.CIENTIFICO,
-                article_size=article_size,
-                confidence=0.80,
-                reasoning=f"4 de 5 señales científicas confirmadas. "
-                           + _reasoning(active, inactive)
-            )
-
-        if signal_count in (2, 3):
+        # ── DIVULGACIÓN ───────────────────────────────────────────────────────
+        if s4 and s5:
             return ClassificationResult(
                 article_type=ArticleType.DIVULGACION,
                 article_size=article_size,
                 confidence=0.75,
-                reasoning=f"{signal_count} de 5 señales científicas. Artículo de divulgación académica. "
-                           + _reasoning(active, inactive)
+                reasoning="Intención investigativa y contribución presentes, sin respaldo bibliográfico suficiente. "
+                          + _reasoning(active, inactive)
             )
 
-        if signal_count == 1:
+        if s2a and s2b and s3:
             return ClassificationResult(
-                article_type=ArticleType.OPINION,
+                article_type=ArticleType.DIVULGACION,
+                article_size=article_size,
+                confidence=0.70,
+                reasoning="Respaldo bibliográfico sólido con vocabulario metodológico, sin intención investigativa explícita. "
+                          + _reasoning(active, inactive)
+            )
+
+        if s4 or s5:
+            return ClassificationResult(
+                article_type=ArticleType.DIVULGACION,
                 article_size=article_size,
                 confidence=0.65,
-                reasoning=f"1 de 5 señales científicas. Insuficiente evidencia académica para divulgación. "
-                           + _reasoning(active, inactive)
+                reasoning="Señal científica parcial detectada. Artículo de divulgación académica. "
+                          + _reasoning(active, inactive)
             )
 
-        # 0 signals
+        # ── OPINIÓN ───────────────────────────────────────────────────────────
         return ClassificationResult(
             article_type=ArticleType.OPINION,
             article_size=article_size,
             confidence=0.65,
-            reasoning="0 de 5 señales científicas. "
-                       "Texto argumentativo u opinión sin validación empírica. "
-                       + _reasoning(active, inactive)
+            reasoning="Sin señales científicas detectadas. "
+                      "Texto argumentativo u opinión sin validación empírica. "
+                      + _reasoning(active, inactive)
         )
-
+        
+        
 # ─── Convenience function ─────────────────────────────────────────────────────
 
 def classify_document(document: DocumentContent,
@@ -302,7 +347,7 @@ if __name__ == "__main__":
         references=[
             Reference(text=f"Autor, A. (202{i % 5}). Título de referencia {i}. Revista Académica, {i+1}, 1-10.")
             for i in range(20)
-        ],  # 20 refs, all 2020-2024 → S2a=True, S2b=True
+        ],
         paragraphs=[
             "Este estudio analiza los efectos de la integración conjunta utilizando una metodología cuantitativa.",
             "La hipótesis central sostiene que la cohesión aumenta con la formación conjunta.",
@@ -315,4 +360,3 @@ if __name__ == "__main__":
     classifier = ArticleClassifier()
     result = classifier.classify_article(doc)
     print(result)
-

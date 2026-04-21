@@ -174,7 +174,7 @@ class SilvinaEditorialAssistant:
                     print(f"      ✅ Formato APA 7 correcto ({len(citation_tuples)} citas validadas)")
 
             # 3.6: Check spelling/grammar (Gramática - Tier 1)
-            print("\n      🔍 Validando gramática y ortografía...")
+            print("\n      🔍 Validando gramática ...")
             
             try:
                 from business_logic.gramatica_checker import check_gramatica
@@ -386,7 +386,7 @@ class SilvinaEditorialAssistant:
         if gramatica_score < 7.0:
             recommendations.append({
                 'priority': 'alta',
-                'message': f'Gramática y ortografía ({gramatica_score:.1f}/10) requiere corrección.'
+                'message': f'Gramática ({gramatica_score:.1f}/10) requiere corrección.'
             })
         
         # Check individual dimensions
