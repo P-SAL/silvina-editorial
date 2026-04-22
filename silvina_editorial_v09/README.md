@@ -307,6 +307,9 @@ silvina_editorial_v09/
 - 🔧 **FIXED:** Title/author extraction improvements
 - 🔧 **FIXED:** Reference parser — `Fuentes bibliográficas consultadas` support
 - 🔧 **FIXED:** Version header updated to v0.9
+- 🔧 **FIXED:** Citation matcher `_normalize_author()` — now extracts first author surname only, match rate improved from 13.8% to 93.1%
+- 🔧 **FIXED:** Title extraction — trailing colon removed from first title part before combining with subtitle
+- 🔧 **FIXED:** Author extraction — title line count detection prevents subtitle from being misread as author
 
 ### v0.8 (Q1 2026)
 - Gradio web interface, feedback pipeline, two-call LLM quality analysis
