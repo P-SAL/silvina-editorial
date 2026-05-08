@@ -51,51 +51,35 @@ class CitationMatcher:
         return all_citations
 
     def _normalize_author(self, text: str) -> str:
-        """Extract and normalize author from citation or reference.
-        
-        Handles two main formats:
-        1. References: "Author, I. (Year). Title..." - author at START
-        2. Citations: "Author (Year)" or "Author et al. (Year)"
+        """
+        Extract and normalize the FIRST author surname only.
+        Citations use first author only: (Wei et al., 2022).
+        References start with first author: Wei, J. (2022)...
         """
         import re
-        
-        # Step 1: Find the year pattern and extract text before it
-        # Matches: (2021) or (17 de julio de 2021)
+
+        # Remove year pattern and everything after it
         year_match = re.search(r'\((?:\d{1,2}\s+de\s+\w+\s+de\s+)?\d{4}[a-z]?\)', text)
-        
         if year_match:
-            # Get everything before the year parenthesis
-            text_before_year = text[:year_match.start()].strip()
-            
-            # For references: author is at the start (before first comma)
-            # For citations: author is the whole text before year
-            author_text = text_before_year
-        else:
-            # Fallback: for in-text citations without year pattern
-            author_text = re.sub(r'\([^)]*\)', '', text).strip()
-        
-        # Step 2: Clean up the author text
-        # Remove initials (e.g., "D.", "I.")
-        author_text = re.sub(r'\b[A-ZÁÉÍÓÚÑ]\.\s*', '', author_text)
-        
+            text = text[:year_match.start()].strip()
+
+        # Remove "et al" and everything after
+        text = re.sub(r'\s+et\s+al\.?.*', '', text, flags=re.IGNORECASE).strip()
+
+        # Remove " y " and everything after (Spanish multi-author)
+        text = re.sub(r'\s+y\s+.*', '', text, flags=re.IGNORECASE).strip()
+
+        # Remove initials (A., J., etc.)
+        text = re.sub(r'\b[A-ZÁÉÍÓÚÑ]\.\s*', '', text).strip()
+
         # Remove punctuation
-        author_text = re.sub(r'[,&.()\[\]]', '', author_text)
-        
-        # Replace " y " or " e " or " et al" (Spanish/English "and") with space
-        author_text = re.sub(r'\s+(?:y|e|et\s+al\.?)\s+', ' ', author_text)
-        
-        # Clean up multiple spaces
-        author_text = re.sub(r'\s+', ' ', author_text).strip()
-        
-        # Step 3: Keep only first and last names (ignore middle names)
-        names = author_text.split()
-        if len(names) >= 2:
-            author_text = f"{names[0]} {names[-1]}"
-        elif len(names) == 1:
-            author_text = names[0]
-        
-        return author_text.lower().strip()
-    
+        text = re.sub(r'[,&.()\[\]]', '', text).strip()
+
+        # Keep only first word (first author surname)
+        words = text.split()
+        return words[0].lower() if words else ""
+
+
     def find_orphaned_citations(self) -> List[Citation]:
         """Citations without matching references."""
         orphaned = []

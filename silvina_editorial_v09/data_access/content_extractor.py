@@ -72,7 +72,9 @@ class ContentExtractor:
         
         # 4. Extract structured fields
         title = self._extract_title(clean_paragraphs)
-        authors = self._extract_authors(clean_paragraphs)
+        # If title contains ' — ' it was built from 2 paragraphs
+        title_lines = 2 if title and ' — ' in title else 1
+        authors = self._extract_authors(clean_paragraphs, title_lines)
         abstract = self._extract_abstract(clean_paragraphs)
         keywords = self._extract_keywords(clean_paragraphs)
         sections = self._extract_sections(clean_paragraphs)
@@ -120,27 +122,30 @@ class ContentExtractor:
             second = title_parts[1]
             looks_like_author = (
                 len(second.split()) <= 10 and
-                not any(c in second for c in ['—', '?']) and
-                (re.search(r'^[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+\s+[A-ZÁÉÍÓÚÑ]', second) or
-                 re.search(r'^[A-Z]{2,}', second))  # Catches CNVGM, Dr., etc.
-            )
+                not any(c in second for c in ['—', '?', ':', 'de', 'del']) and
+                (re.search(r'^(?:Dr|Dra|Lic|Mag|CF|CN|CNVGM|Prof)', second) or
+                 re.search(r'^[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+\s*$', second) or
+                 re.search(r'^[A-Z]{2,}', second))
+            ) 
+            
             if looks_like_author:
                 return title_parts[0]
-            return f"{title_parts[0]} — {title_parts[1]}"
+            part0 = title_parts[0].rstrip(':').strip()
+            return f"{part0} — {title_parts[1]}"
+           
         elif len(title_parts) == 1:
             return title_parts[0]
                   
         return None
 
-
-    def _extract_authors(self, paragraphs: List[str]) -> Optional[str]:
+    def _extract_authors(self, paragraphs: List[str], title_lines: int = 1) -> Optional[str]:
         """
         Extract author information from first page after title.
         FIXED: Returns "Autor no identificado" if not found.
         """
         
         # Skip first paragraph (usually title)
-        for i, para in enumerate(paragraphs[1:15], start=1):
+        for i, para in enumerate(paragraphs[title_lines:15], start=title_lines):
             para_stripped = para.strip()
             para_upper = para_stripped.upper()
             
