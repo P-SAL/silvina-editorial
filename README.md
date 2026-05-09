@@ -1,9 +1,9 @@
-# Silvina Editorial Assistant v0.8
+# Silvina Editorial Assistant v0.9
 
-[![Version](https://img.shields.io/badge/version-v0.8-blue)](https://github.com/P-SAL/silvina-editorial)
+[![Version](https://img.shields.io/badge/version-v0.9-blue)](https://github.com/P-SAL/silvina-editorial)
 [![Python](https://img.shields.io/badge/python-3.12-blue)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Status](https://img.shields.io/badge/status-Stable-green)](https://github.com/P-SAL/silvina-editorial)
+[![Status](https://img.shields.io/badge/status-Active%20Development-yellow)](https://github.com/P-SAL/silvina-editorial)
 
 **AI-powered manuscript review for Spanish academic journals** | EUMIC compliance • APA 7 validation • Modular architecture • LLM-powered quality analysis • Gradio web interface
 
@@ -13,7 +13,8 @@
 
 Silvina is an intelligent editorial assistant for **Revista Visión Conjunta** (Facultad Militar Conjunta - Universidad de la Defensa Nacional, Argentina). It automates academic manuscript review using **deterministic structural validation** and **selective AI-powered analysis**.
 
-**Current Version:** v0.8 (Q1 2026)  
+**Current Version:** v0.9 (Q2 2026)  
+**Based on:** v0.8 (stable, deployed to editorial team)  
 **Architecture:** Modular 4-layer design (Domain → Data Access → Business Logic → Presentation)  
 **LLM Integration:** Ollama (llama3-gradient:8b-instruct-1048k-q4_K_M)  
 **Interface:** Gradio web UI  
@@ -51,7 +52,7 @@ presentation/     # Output formatting (Word/JSON reports)
 1. **📖 Document Reading** - Extracts paragraphs from .docx files
 2. **🔍 Content Extraction** - Identifies title, authors, sections, word count
 3. **📚 Citation & Reference Parsing** - Extracts in-text citations and bibliography
-4. **🏷️ Article Classification** - Científico vs Divulgación (LLM-powered)
+4. **🏷️ Article Classification** - Científico / Divulgación / Opinión (hybrid signal system)
 5. **⭐ Quality Analysis** - 4 semantic dimensions: claridad, coherencia, argumentación, conclusiones
 6. **📋 Structure Validation** - Verifies required sections per article type (EUMIC standards)
 7. **🔗 Citation Matching** - Links citations to references, identifies orphaned entries
@@ -73,15 +74,54 @@ presentation/     # Output formatting (Word/JSON reports)
 
 ---
 
-### 🎯 **Classification System**
+### 🎯 **Classification System — Hybrid Signal Approach**
+
+v0.9 implements a hybrid signal system combining deterministic and LLM-based signals, aligned with EUMIC norms and social science article conventions.
+
+**Signal evaluation:**
+
+| Signal | Type | Criterion | Role |
+|--------|------|-----------|------|
+| S1 — IMRyD override | Deterministic | Complete IMRyD structure → immediate CIENTÍFICO (0.95) | Override |
+| S2a — Reference count | Deterministic | ≥ 15 references (EUMIC minimum) | Supporting |
+| S2b — Reference recency | Deterministic | ≥ 50% of references within last 4 years | Supporting |
+| S3 — Methodological vocab | Deterministic | ≥ 4 terms AND ≥ 1 hard term | Tiebreaker |
+| S4 — Research intent | LLM (targeted) | Explicit research intent via linguistic/structural patterns | **Primary** |
+| S5 — Conclusive contribution | LLM (targeted) | Conclusions that exteriorize a contribution via systematic process | **Primary** |
+
+**S4 detects any of:**
+- Verbs of intent: examinar, analizar, identificar, determinar, explorar, comprender, evaluar, investigar, revisar, sintetizar
+- Scope markers: "el presente estudio", "esta investigación", "la presente revisión"
+- Problem markers: "el problema central", "el objetivo es", "la pregunta que guía"
+- Research questions or hypotheses — single or multiple, numbered or sequential
+
+**S5 detects any of:**
+- Findings from systematic, replicable or verifiable process
+- Framework, model, taxonomy or classification proposed
+- Evidence-based recommendations derived from analysis
+- Knowledge gap identified and addressed
+- Synthesis beyond description integrating multiple sources
+
+**Classification rule:**
+
+| Condition | Result | Confidence |
+|-----------|--------|------------|
+| S4 + S5 + (S2a OR S2b) | CIENTÍFICO | 0.85 |
+| S4 + S5 (no S2) | DIVULGACIÓN | 0.75 |
+| S2a + S2b + S3 (no S4/S5) | DIVULGACIÓN | 0.70 |
+| S4 OR S5 alone | DIVULGACIÓN | 0.65 |
+| No signals | OPINIÓN | 0.65 |
+
+**Design principles:**
+- S4 and S5 are the primary discriminators — necessary and sufficient for CIENTÍFICO when combined with reference support
+- S2a/S2b provide reference quality evidence — supporting but not sufficient alone
+- S3 acts as tiebreaker only in ambiguous cases
+- LLM prompts are precision-engineered to detect specific linguistic and structural forms, not judge quality
 
 **Article Types (EUMIC-compliant):**
-- **Artículo Científico** - Research with IMRyD structure, 3000-6000 words
-- **Artículo de Divulgación** - Literature review, flexible structure
-- **Artículo de Opinión** - Opinion/analysis piece
-- **Artículo Corto** - Brief communication, 1000-2000 words
-
-**Classification Method:** LLM-based with confidence scoring (0-100%)
+- **Artículo Científico** - Research intent + conclusive contribution + reference support
+- **Artículo de Divulgación** - Academic synthesis, flexible structure, partial scientific signals
+- **Artículo de Opinión** - Argumentative text, no scientific signals
 
 ---
 
@@ -93,7 +133,9 @@ presentation/     # Output formatting (Word/JSON reports)
 - **Argumentación** - Strength of arguments and evidence
 - **Conclusiones** - Quality and relevance of conclusions
 
-**Architecture:** Two-call LLM approach (Call 1: Claridad + Coherencia / Call 2: Argumentación + Conclusiones) with split-based parser and explicit conclusion section detection.
+**Architecture:** Two-call LLM approach (Call 1: Claridad + Coherencia / Call 2: Argumentación + Conclusiones). Parser handles both numbered (`**1. Argumentación**`) and unnumbered (`**Argumentación**`) LLM response formats for robustness.
+
+**Text sampling:** First 3500 chars (introduction/research questions) + last 2500 chars (conclusions), with bibliography section excluded via paragraph-level detection.
 
 **Output:** Overall score (0-10), quality level (Excelente/Bueno/Aceptable/Necesita Mejora/Deficiente)
 
@@ -128,10 +170,6 @@ Collect `_feedback.json` files from editorial team → run `process_feedback.py`
 python process_feedback.py --folder feedback_received/
 ```
 
-**Output:**
-- `feedback_summary_YYYYMMDD.md` — ranked issues by frequency for editorial review
-- `v09_dev_prompt_YYYYMMDD.md` — structured development prompt for v0.9
-
 ---
 
 ## 🛠️ Technology Stack
@@ -155,14 +193,14 @@ python process_feedback.py --folder feedback_received/
 ### Prerequisites
 - Python 3.12+
 - [Ollama](https://ollama.ai/) installed and running
-- 8GB+ RAM (16GB recommended)
+- 8GB+ RAM (32GB recommended for optimal LLM performance)
 - Windows (for accurate Word document statistics via COM automation)
 
 ### Setup
 ```bash
 # 1. Clone repository
 git clone https://github.com/P-SAL/silvina-editorial.git
-cd silvina-editorial/silvina_editorial_v08
+cd silvina-editorial/silvina_editorial_v09
 
 # 2. Create virtual environment
 python -m venv venv312
@@ -187,26 +225,7 @@ python -c "import gradio; print('Gradio ready')"
 python gradio_app.py
 ```
 
-Chrome will open automatically at `http://127.0.0.1:7861`
-
-**Workflow:**
-1. Drag and drop your `.docx` manuscript
-2. Click **Analizar Documento**
-3. Review results on screen
-4. Download the **Word report** or **JSON data** (also saved automatically to `Documents\Silvina\reports\`)
-5. Complete the **expert evaluation form** and click **Enviar Evaluación**
-6. Click **Cerrar Silvina** when done
-
-### Process Feedback (Coordinator)
-```bash
-# 1. Collect _feedback.json files from editorial team into feedback_received/
-# 2. Run processing script
-python process_feedback.py --folder feedback_received/
-# 3. Review feedback_summary_YYYYMMDD.md
-# 4. Use v09_dev_prompt_YYYYMMDD.md for next development session
-```
-
-### Command Line (legacy)
+### Command Line
 ```bash
 python main.py "path/to/document.docx"
 ```
@@ -215,18 +234,17 @@ python main.py "path/to/document.docx"
 
 ## 📁 Project Structure
 ```
-silvina_editorial_v08/
-├── gradio_app.py                # Gradio web interface entry point
-├── main.py                      # CLI entry point
-├── process_feedback.py          # Feedback processing pipeline
-├── eumic_verifier.py            # EUMIC format compliance checker
-├── apa_validator.py             # APA 7 citation format validator
-├── feedback_received/           # Drop feedback JSONs here for processing
+silvina_editorial_v09/
+├── gradio_app.py
+├── main.py
+├── process_feedback.py
+├── eumic_verifier.py
+├── apa_validator.py
 ├── assets/
-│   └── SILVINA V08.png          # Logo
+│   └── SILVINA V08.png
 ├── domain/
-│   ├── models.py                # Core data models
-│   └── enums.py                 # Enumerations
+│   ├── models.py
+│   └── enums.py
 ├── data_access/
 │   ├── word_reader.py
 │   ├── content_extractor.py
@@ -237,7 +255,10 @@ silvina_editorial_v08/
 │   ├── quality_analyzer.py
 │   ├── gramatica_checker.py
 │   ├── structure_validator.py
-│   └── citation_matcher.py
+│   ├── citation_matcher.py
+│   └── vocab/
+│       ├── __init__.py
+│       └── methodological_terms.py
 └── presentation/
     ├── word_exporter.py
     └── config.py
@@ -248,104 +269,100 @@ silvina_editorial_v08/
 ## 🎯 Validation Standards
 
 ### EUMIC Guidelines
-- Document format requirements (.docx)
-- Margin specifications (2.5 cm)
-- Font standards (Times New Roman/Arial, 12pt)
-- Text alignment (justified)
-- Figure and table formatting
-- Abstract length (150-250 words)
-- Keywords requirement (3-5)
-- Required sections per article type
+- Científico: 15-30 references recommended (APA 7, mandatory)
+- Abstract: 150-250 words
+- Keywords: 3-5
+- Margins: 2.5 cm
+- Font: Times New Roman 12pt
 
 ### APA 7 (Spanish)
-- Author format: `Apellido, N.`
+- Author: `Apellido, N.`
 - Conjunction: `y` (not `&`)
-- Date format: `(2020)`, `(2020a)`, `(2020, 15 de enero)`
-- Page references: `(p. 23)`, `(pp. 45-67)`
+- Date: `(2020)`, `(2020a)`
 
 ---
 
 ## 🔄 Version History
 
-### v0.8 (Q1 2026) - Current
-- ✨ **NEW:** Gradio web interface for editorial staff
-- ✨ **NEW:** Structured expert feedback panel (8 evaluation fields)
-- ✨ **NEW:** All reports save to `Documents\Silvina\reports\`
-- ✨ **NEW:** Feedback JSON saved alongside analysis reports
-- ✨ **NEW:** `process_feedback.py` — automated feedback processing pipeline
-- ✨ **NEW:** Two-call LLM architecture for quality analysis (resolves token exhaustion)
-- ✨ **NEW:** Split-based parser replacing fragile regex (resolves dimension parsing failures)
-- ✨ **NEW:** Explicit conclusion section detection (skips bibliography when sampling)
-- 🔧 **FIXED:** Duplicate click handler bug (triple-fire on analyze button)
-- 🔧 **FIXED:** `repeat_penalty: 1.1` prevents model looping on repetitive documents
-- 🔧 **FIXED:** Prompt renumbering — both LLM calls use 1/2 format for consistency
-- 🔧 **FIXED:** Grammar checker false positives — filter `rule_issue_type == misspelling` (proper nouns, surnames, military acronyms no longer flagged)
-- 🔧 **FIXED:** Title extraction — author name no longer included in title
-- 🔧 **FIXED:** Multi-author detection — authors on separate lines now correctly collected
+### v0.9 (Q2 2026) - Current
+
+**Classification System — Option B redesign:**
+- ✨ **NEW:** S4 prompt redesigned — detects explicit research intent via linguistic/structural patterns (verbs of intent, scope markers, problem markers, sequential research questions)
+- ✨ **NEW:** S5 prompt redesigned — detects conclusive contribution forms (systematic findings, frameworks, evidence-based recommendations, knowledge gap addressed, synthesis beyond description)
+- ✨ **NEW:** Classification rule based on signal semantics: S4+S5+(S2a OR S2b) → CIENTÍFICO; partial signals → DIVULGACIÓN; no signals → OPINIÓN
+- ✨ **NEW:** LLM response parsing updated — extracts SI/NO from full response (100 tokens) not just first word
+- ✨ **NEW:** Bibliography section excluded from text sample via paragraph-level header detection (≤30 chars) — eliminates false cuts from mid-prose mentions of "referencias"
+- ✨ **NEW:** Text sampling redesigned — first 3500 chars (intro) + last 2500 chars (conclusion) replacing sequential 7000-char cut
+- 🔧 **FIXED:** S4/S5 failing on systematic review articles — sample now always includes introduction and conclusion sections
+
+**Earlier v0.9 fixes:**
+- ✨ **NEW:** `references` field added to `DocumentContent` model
+- ✨ **NEW:** `content_extractor.py` populates references via `ReferenceParser`
+- ✨ **NEW:** `business_logic/vocab/methodological_terms.py` — vocabulary file for future expansion
+- 🔧 **FIXED:** IMRyD false positives — structure analyzer scans only short paragraphs (≤5 words)
+- 🔧 **FIXED:** S3 calibration — threshold 4 terms + mandatory hard term
+- 🔧 **FIXED:** Quality analyzer call 2 — parser handles numbered and unnumbered headers
+- 🔧 **FIXED:** Grammar label — "ortografía" removed (spelling not currently checked)
+- 🔧 **FIXED:** Grammar false positives — misspelling filter
+- 🔧 **FIXED:** Title/author extraction improvements
+- 🔧 **FIXED:** Reference parser — `Fuentes bibliográficas consultadas` support
+- 🔧 **FIXED:** Version header updated to v0.9
+- 🔧 **FIXED:** Citation matcher `_normalize_author()` — now extracts first author surname only, match rate improved from 13.8% to 93.1%
+- 🔧 **FIXED:** Title extraction — trailing colon removed from first title part before combining with subtitle
+- 🔧 **FIXED:** Author extraction — title line count detection prevents subtitle from being misread as author
+
+### v0.8 (Q1 2026)
+- Gradio web interface, feedback pipeline, two-call LLM quality analysis
 
 ### v0.7 (January 2026)
-- EUMIC format compliance verification system
-- Grammar checker (Tier 1 deterministic)
-- Enhanced LLM feedback parsing
-- Accurate word/character counting via Windows COM automation
-- APA 7 Spanish format validation
+- EUMIC compliance, grammar checker, APA 7 validation
 
 ### v0.6 (December 2025)
-- Citation-reference integrity validation
-- IMRyD structure detection
-- Two-tier analysis strategy
-
-### v0.5 and earlier
-- Basic character counting
-- Simple LLM review
-- Text-only output
+- Citation-reference validation, IMRyD detection
 
 ---
 
 ## 🗺️ Roadmap
 
-### v0.8 (Q1 2026) ✅ Current
-- ✅ Gradio web interface
-- ✅ Structured expert feedback panel
-- ✅ Automated feedback processing pipeline
-- ✅ Reports saved to user Documents folder
-- ✅ Grammar false positive fix (backported from v0.9)
-- ✅ Title extraction and multi-author detection fix (backported from v0.9)
+### v0.9 (Q2 2026) ✅ Current
+- ✅ Classification system redesign (Option B)
+- ✅ S4/S5 precision prompt engineering
+- ✅ Bibliography-aware text sampling
+- ✅ IMRyD false positive fix
+- ✅ Quality analyzer improvements
+- ⬜ Citation matching investigation (low match rate)
+- ⬜ Title/author extraction (subtitle misread as author)
+- ⬜ Batch processing
 
-### v0.9 (Active - Q2 2026)
-- 💾 Batch processing for multiple documents
-- 🔧 Inline `Resumen:` detection improvement
-- 🔧 Alternative reference headings (`Fuentes bibliográficas consultadas`)
-- 🔧 Footnote citation detection and reporting
-- 🔒 Security measures (file validation, authentication, rate limiting)
-- 🌐 Deployment preparation for institutional web server
-- 📈 Analytics dashboard for editorial team
+### v0.9 → v1.0 (Security & Deployment)
+- 🔒 File validation, authentication, rate limiting
+- 🌐 Institutional web server deployment (supervised availability model)
+- 👥 Multi-user support
 
-### v1.0 (Planned - Q3 2026)
+### v1.0 (Q3 2026)
 - 🏢 Production deployment at Universidad de la Defensa
-- 🌐 Accessible via institutional webpage
-- 👥 Multi-user authentication
 - 📊 Editorial workflow management
 
 ### v2.0 (Future)
-- 🧠 Editorial memory — learns from accumulated feedback (RAG-based)
+- 🧠 Editorial memory (RAG-based)
 - 🤖 Agentic workflows
+- 🔄 Batch processing
 
 ---
 
 ## 🐛 Known Issues
 
-### v0.8
-- **Structure validator** misses inline `Resumen:` format
-- **Citation parser** misses `Fuente:` footnote format
-- **Reference parser** misses `Fuentes bibliográficas consultadas` heading
-- **Windows-only** COM automation for accurate statistics (falls back to python-docx on other platforms)
+### v0.9
+- **Citation matching** low rate (13.8% on test article) — matcher may not handle all APA 7 citation formats
+- **Title/author extraction** fails when subtitle appears on line 2 — misread as author
+- **Quality analyzer** occasionally returns `No disponible` on one dimension — LLM non-determinism on CPU
+- **Misspelling** not detected — LanguageTool misspelling filter excluded to avoid false positives on proper nouns
+- **Pleonasm/wordiness** not detected — no free Spanish deterministic engine available
+- **Windows-only** COM automation for accurate statistics
 
 ---
 
 ## 🤝 Contributing
-
-This project is in active development for internal use at Facultad Militar Conjunta, Universidad de la Defensa Nacional, Argentina.
 
 **Contact:** Pablo Salonio (P-SAL) - plsalonio@gmail.com  
 **Repository:** https://github.com/P-SAL/silvina-editorial
@@ -354,19 +371,19 @@ This project is in active development for internal use at Facultad Militar Conju
 
 ## 📄 License
 
-MIT License - See [LICENSE](LICENSE) file for details
+MIT License
 
 ---
 
 ## 🙏 Acknowledgments
 
-- **Revista Visión Conjunta** - Editorial team for requirements and testing
+- **Revista Visión Conjunta** - Editorial team
 - **Facultad Militar Conjunta** - Universidad de la Defensa Nacional
 - **Ollama Team** - Local LLM infrastructure
-- **Claude (Anthropic)** - Development assistance and code review
+- **Claude (Anthropic)** - Development assistance
 
 ---
 
-**Last Updated:** March 2026  
-**Version:** 0.8  
-**Status:** Stable — Deployed to editorial team 🚀
+**Last Updated:** April 2026  
+**Version:** 0.9  
+**Status:** Active Development 🚀
