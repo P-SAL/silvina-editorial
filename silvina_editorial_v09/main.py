@@ -412,12 +412,23 @@ class SilvinaEditorialAssistant:
                      if citation_analysis.total_citations > 0 else 100)
         
         if match_rate < 90:
+            unmatched_list = citation_analysis.unmatched_citations[:10]
+            unmatched_str = '; '.join(unmatched_list) if unmatched_list else ''
             recommendations.append({
                 'priority': 'alta',
                 'message': f'Tasa de coincidencia de citas baja ({match_rate:.1f}%). '
                           f'{citation_analysis.unmatched_count} citas no tienen referencia correspondiente.'
+                          + (f' Citas sin referencia: {unmatched_str}' if unmatched_str else '')
             })
-        
+        elif citation_analysis.unmatched_count > 0:
+            unmatched_list = citation_analysis.unmatched_citations[:10]
+            unmatched_str = '; '.join(unmatched_list) if unmatched_list else ''
+            recommendations.append({
+                'priority': 'media',
+                'message': f'{citation_analysis.unmatched_count} citas no tienen referencia correspondiente.'
+                          + (f' Citas sin referencia: {unmatched_str}' if unmatched_str else '')
+            })
+                        
         if citation_analysis.total_citations < 10:
             recommendations.append({
                 'priority': 'media',

@@ -57,7 +57,7 @@ class QualityAnalyzer:
 
         ollama_options = {
             'temperature': 0.2,
-            'num_predict': 800,
+            'num_predict': 1000,
             'num_ctx': 4096,
             'repeat_penalty': 1.1,
             'timeout': 120
@@ -129,7 +129,7 @@ CRITERIOS: 9-10 Excelente | 7-8 Bueno | 5-6 Aceptable | 3-4 Deficiente | 0-2 Ina
             # Parse both responses
             scores_1 = self._parse_llm_response(text_1)
             scores_2 = self._parse_llm_response(text_2)
-
+             
             # Merge: prefer whichever call returned real feedback for each dim
             scores = {}
             for dim in ["claridad", "coherencia", "argumentacion", "conclusiones"]:
@@ -188,13 +188,25 @@ CRITERIOS: 9-10 Excelente | 7-8 Bueno | 5-6 Aceptable | 3-4 Deficiente | 0-2 Ina
                 block, re.IGNORECASE
             )
             if not score_match:
-                continue
-            score_str = score_match.group(1) or score_match.group(2)
-            try:
-                score = max(0.0, min(10.0, float(score_str)))
-            except Exception:
-                score = 7.0
-
+                # Infer score from narrative when format missing
+                block_lower = block.lower()
+                if any(w in block_lower for w in ['excelente', 'sobresaliente', 'muy bueno']):
+                    score = 8.5
+                elif any(w in block_lower for w in ['bueno', 'adecuado', 'correcto']):
+                    score = 7.5
+                elif any(w in block_lower for w in ['aceptable', 'suficiente', 'regular']):
+                    score = 6.0
+                elif any(w in block_lower for w in ['deficiente', 'débil', 'pobre', 'insuficiente']):
+                    score = 4.0
+                else:
+                    score = 7.0
+            else:
+                score_str = score_match.group(1) or score_match.group(2)
+                try:
+                    score = max(0.0, min(10.0, float(score_str)))
+                except Exception:
+                    score = 7.0
+            
             # Extract feedback from remaining lines
             lines = block.strip().split('\n')
             feedback_lines = [l.strip() for l in lines[1:] if l.strip()]

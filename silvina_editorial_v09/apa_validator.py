@@ -100,7 +100,21 @@ class APAValidator:
                 correction=citation.replace(' & ', ' y '),
                 paragraph_preview=preview
             ))
-                                
+       
+        # Skip non-author citations — institutional acronyms, identifiers, date ranges
+        # These are not APA author-year citations and should not be validated as such
+        _NON_AUTHOR_PATTERNS = [
+            r'^\([A-Z]{2,}\s+\d',           # (PLANCAMIL 2023), (UNESCO 2020)
+            r'^\(arXiv:',                    # (arXiv:2404.19573)
+            r'^\(doi:',                      # (doi:10.1234)
+            r'^\(repositorio',               # (repositorio trazable...)
+            r'^\(no hay',                    # (no hay dataset...)
+            r'^\([a-záéíóúñ].*\d{4}.*\d{4}',# (años 2024, 2025...) date ranges
+            r'^\(\w+\s+\w+.*\d{4}.*\d{4}',  # multi-word + two years
+        ]
+        if any(re.search(p, citation, re.IGNORECASE) for p in _NON_AUTHOR_PATTERNS):
+            return violations  # Skip all checks for non-author citations
+
         # Check 2: Missing comma between author and year
         # Pattern: (Author Year) instead of (Author, Year)
         pattern_no_comma = r'\(([A-ZÁÉÍÓÚÑ][a-záéíóúñA-ZÁÉÍÓÚÑ\-]+)\s+(\d{4}[a-z]?)\)'

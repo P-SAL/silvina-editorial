@@ -68,12 +68,16 @@ class ContentExtractor:
                 word_count = accurate_counts['word_count']
                 char_count = accurate_counts['char_count']
                 paragraph_count = accurate_counts['paragraph_count']
-                
         
-        # 4. Extract structured fields
+        # 4. Extract structured fields        
         title = self._extract_title(clean_paragraphs)
         # If title contains ' — ' it was built from 2 paragraphs
         title_lines = 2 if title and ' — ' in title else 1
+        # If first paragraph was an institution header (skipped in title extraction), add 1
+        if clean_paragraphs and re.search(
+            r'^(?:Universidad|Facultad|Escuela|Instituto|Centro|Ministerio|Comando|Departamento)',
+            clean_paragraphs[0], re.IGNORECASE):
+            title_lines += 1
         authors = self._extract_authors(clean_paragraphs, title_lines)
         abstract = self._extract_abstract(clean_paragraphs)
         keywords = self._extract_keywords(clean_paragraphs)
@@ -111,6 +115,10 @@ class ContentExtractor:
             if match:
                 return match.group(1).strip()
             
+            # Skip institution/organization headers
+            if re.search(r'^(?:Universidad|Facultad|Escuela|Instituto|Centro|Ministerio|Comando|Departamento)', para, re.IGNORECASE):
+                continue
+
             # Collect short paragraphs that look like title lines
             if len(para.split()) >= 2 and len(para) < 200:
                 title_parts.append(para.strip())
@@ -122,7 +130,7 @@ class ContentExtractor:
             second = title_parts[1]
             looks_like_author = (
                 len(second.split()) <= 10 and
-                not any(c in second for c in ['—', '?', ':', 'de', 'del']) and
+                not any(c in second for c in ['—', '?', ':', 'de', 'del', 'para']) and
                 (re.search(r'^(?:Dr|Dra|Lic|Mag|CF|CN|CNVGM|Prof)', second) or
                  re.search(r'^[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+\s*$', second) or
                  re.search(r'^[A-Z]{2,}', second))
@@ -171,9 +179,16 @@ class ContentExtractor:
                 if author_lines:
                     return ', '.join(author_lines)
             
+            # Pattern 1b: Parenthetical author format
+            # Matches: "(Director de Proyecto Com. (R) Mág Pablo Andrés Farias)1"
+            paren_match = re.search(r'\((?:Director|Autor|Investigador|Coordinador).*?([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){1,3})\s*\)\d*', para_stripped, re.IGNORECASE)
+            if paren_match:
+                return paren_match.group(1).strip()
+
             # Pattern 2: Name-like pattern after title
             # Matches: "Adriana Baravalle" or "Juan Pérez, María González"
             if i <= 3:  # Check first 3 paragraphs after title
+       
                 # Check if looks like a name
                 if (len(para.split()) <= 10 and 
                     para[0].isupper() and 

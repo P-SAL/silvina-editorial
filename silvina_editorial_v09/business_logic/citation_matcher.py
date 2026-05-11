@@ -55,8 +55,25 @@ class CitationMatcher:
         Extract and normalize the FIRST author surname only.
         Citations use first author only: (Wei et al., 2022).
         References start with first author: Wei, J. (2022)...
+        Non-author citations (acronyms, identifiers, date ranges) return __non_author__.
         """
-        import re
+        # Skip non-author citations
+        _NON_AUTHOR_PATTERNS = [
+            r'^[A-Z]{2,}\s+\d',       # PLANCAMIL 2023, UNESCO 2020
+            r'^arXiv:',               # arXiv:2404.19573
+            r'^doi:',                 # doi:10.1234
+            r'^repositorio',          # repositorio trazable
+            r'^no hay',               # no hay dataset
+            r'^\w.*\d{4}.*\d{4}',    # multiple years — date ranges
+        ]
+        text_stripped = text.strip().lstrip('(').rstrip(')')
+        is_non_author = False
+        for p in _NON_AUTHOR_PATTERNS:
+            if re.search(p, text_stripped, re.IGNORECASE):
+                is_non_author = True
+                break
+        if is_non_author:
+            return "__non_author__"
 
         # Remove year pattern and everything after it
         year_match = re.search(r'\((?:\d{1,2}\s+de\s+\w+\s+de\s+)?\d{4}[a-z]?\)', text)
@@ -79,7 +96,6 @@ class CitationMatcher:
         words = text.split()
         return words[0].lower() if words else ""
 
-
     def find_orphaned_citations(self) -> List[Citation]:
         """Citations without matching references."""
         orphaned = []
@@ -90,6 +106,8 @@ class CitationMatcher:
             
             # Check normalized author
             key = self._normalize_author(cit.author)
+            if key == "__non_author__":
+                continue
             if key not in self.reference_keys:
                 orphaned.append(cit)
         return orphaned
