@@ -204,9 +204,21 @@ class SilvinaEditorialAssistant:
 
             # Step 6: Validate structure
             print("\n[6/7] 📋 Validando estructura...")
-            structure_result = self.structure_validator.validate_structure(
-                document_content, classification.article_type
+            # Use IMRyD sections only if classified via S1 (IMRyD override)
+            # For S2-S5 classified científico, use divulgación structure requirements
+            imryd_classified = (
+                classification.article_type == ArticleType.CIENTIFICO and
+                "IMRyD" in (classification.reasoning or "")
             )
+            effective_type = (
+                classification.article_type if imryd_classified
+                else ArticleType.DIVULGACION if classification.article_type == ArticleType.CIENTIFICO
+                else classification.article_type
+            )
+            structure_result = self.structure_validator.validate_structure(
+                document_content, effective_type
+            )
+            
             if len(references) > 0 and "Referencias" in structure_result.missing_sections:
                 structure_result.missing_sections.remove("Referencias")
             if "Desarrollo" in structure_result.missing_sections:

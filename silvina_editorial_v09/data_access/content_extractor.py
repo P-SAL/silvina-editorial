@@ -131,10 +131,12 @@ class ContentExtractor:
             looks_like_author = (
                 len(second.split()) <= 10 and
                 not any(c in second for c in ['—', '?', ':', 'de', 'del', 'para']) and
-                (re.search(r'^(?:Dr|Dra|Lic|Mag|CF|CN|CNVGM|Prof)', second) or
+                (second.count(';') >= 1 or
+                 re.search(r'^(?:Dr|Dra|Lic|Mag|CF|CN|CNVGM|Prof)', second) or
                  re.search(r'^[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+\s*$', second) or
                  re.search(r'^[A-Z]{2,}', second))
-            ) 
+            )
+            
             
             if looks_like_author:
                 return title_parts[0]
@@ -186,19 +188,36 @@ class ContentExtractor:
                 return paren_match.group(1).strip()
 
             # Pattern 2: Name-like pattern after title
-            # Matches: "Adriana Baravalle" or "Juan Pérez, María González"
-            if i <= 3:  # Check first 3 paragraphs after title
-       
-                # Check if looks like a name
-                if (len(para.split()) <= 10 and 
-                    para[0].isupper() and 
-                    not para.isupper() and  # Not all caps
-                    not para.endswith(':') and  # Not a label
+            # Matches: "Adriana Baravalle" or multi-line author lists
+            if i <= 5:  # Check first 5 paragraphs after title
+                # Check if looks like a name or author list
+                if (len(para.split()) <= 15 and
+                    para[0].isupper() and
+                    not para.isupper() and
+                    not para.endswith(':') and
                     re.search(r'^[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+', para)):
-                    
+
                     # Final blacklist check
                     if not any(bl in para_upper for bl in self.AUTHOR_BLACKLIST):
-                        return para_stripped
+                        # Collect continuation lines (semicolon-separated author lists)
+                        author_text = para_stripped
+                        for next_para in paragraphs[i+1:i+4]:
+                            next_stripped = next_para.strip()
+                            next_upper = next_stripped.upper()
+                            if (len(next_stripped.split()) <= 15 and
+                                next_stripped and
+                                next_stripped[0].isupper() and
+                                not next_stripped.isupper() and
+                                not next_stripped.endswith(':') and
+                                ';' in next_stripped and
+                                not any(bl in next_upper for bl in self.AUTHOR_BLACKLIST)):
+                                author_text = author_text.rstrip(',;') + '; ' + next_stripped.rstrip(',;')
+                                
+                            else:
+                                break
+                        return author_text
+
+
         
         # NOT FOUND: Return standard message
         return "Autor no identificado"
