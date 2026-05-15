@@ -247,21 +247,24 @@ PREGUNTA 3 — JUSTIFICACIÓN TEÓRICA (S6):
 - Justificación del marco teórico: "se adopta el enfoque X porque", "este marco permite", "se seleccionó esta metodología porque"
 - Anclaje en investigación previa: "a diferencia de estudios anteriores", "extendiendo el trabajo de", "en línea con"
 
-Responde EXACTAMENTE en este formato (tres líneas, sin nada más):
-S4: SI
-S5: SI
-S6: SI"""
+FORMATO DE RESPUESTA — escribe ÚNICAMENTE estas tres líneas, sin encabezados, sin explicaciones:
+S4: SI o NO
+S5: SI o NO
+S6: SI o NO"""
 
         try:
             response = self.client.generate(
                 model=self.model_name,
                 prompt=prompt,
-                options={"temperature": 0.1, "num_predict": 30}
+                options={"temperature": 0.1, "num_predict": 300}
             )
-            lines = response["response"].strip().upper().splitlines()
-            s4 = any("S4" in l and "SI" in l for l in lines)
-            s5 = any("S5" in l and "SI" in l for l in lines)
-            s6 = any("S6" in l and "SI" in l for l in lines)
+            raw = response["response"].strip()
+            import re
+            raw_upper = raw.upper()
+            s4 = bool(re.search(r'S4\s*:\s*SI', raw_upper))
+            s5 = bool(re.search(r'S5\s*:\s*SI', raw_upper))
+            s6 = bool(re.search(r'S6\s*:\s*SI', raw_upper))
+                        
             return s4, s5, s6
 
         except Exception as e:

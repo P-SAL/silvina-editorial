@@ -192,8 +192,9 @@ class SilvinaEditorialAssistant:
 
             category_name = self._format_category(classification.article_type)
             print(f"      ✓ Categoría: {category_name}")
-            print(f"      ✓ Confianza: {classification.confidence:.1%}")
-
+            conf = f"{classification.confidence:.1%}" if classification.confidence is not None else "—"
+            print(f"      ✓ Confianza: {conf}")
+            
             # Step 5: Analyze quality (semantic dimensions only)
             print("\n[5/7] ⭐ Analizando calidad...")
             quality_result = self.quality_analyzer.analyze_quality(
@@ -449,13 +450,14 @@ class SilvinaEditorialAssistant:
             })
         
         # Classification confidence
-        if classification.confidence < 0.7:
+        if classification.confidence is not None and classification.confidence < 0.7:
             recommendations.append({
                 'priority': 'baja',
                 'message': f'La clasificación tiene confianza baja ({classification.confidence:.1%}). '
                           'Verifique que el documento siga la estructura típica de su categoría.'
             })
         
+              
         # === FINAL PUBLICATION RECOMMENDATION ===
         has_critical_issues = False
         has_warnings = False

@@ -296,8 +296,9 @@ class WordExporter:
 
         p = doc.add_paragraph()
         p.add_run('Confianza: ').bold = True
-        p.add_run(f"{classification['confidence']:.1%}")
-
+        conf = f"{classification['confidence']:.1%}" if classification['confidence'] is not None else "—"
+        p.add_run(conf)
+        
         if classification.get('reasoning'):
             p = doc.add_paragraph()
             p.add_run('Razonamiento: ').bold = True
