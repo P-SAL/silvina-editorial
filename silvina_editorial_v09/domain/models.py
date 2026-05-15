@@ -63,16 +63,18 @@ class ClassificationResult:
     """Result of article classification."""
     article_type: ArticleType  
     article_size: ArticleSize  
-    confidence: float
+    confidence: Optional[float]
     reasoning: str
     timestamp: datetime = field(default_factory=datetime.now)
     
     def __str__(self):
+        conf = f"{self.confidence:.1%}" if self.confidence is not None else "—"
         return (
             f"Classification: {self.article_type.value} | "
             f"Size: {self.article_size.value} | "
-            f"Confidence: {self.confidence:.1%}"
+            f"Confidence: {conf}"
         )
+    
 
 @dataclass
 class QualityAnalysisResult:

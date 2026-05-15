@@ -92,13 +92,12 @@ class ArticleClassifier:
         s2a = self._signal_reference_count(document_content)
         s2b = self._signal_reference_recency(document_content)
         s3  = self._signal_methodological_vocab(document_content)
-        s4, s5 = self._signal_s4_s5(text_sample, document_content.title)
+        s4, s5, s6 = self._signal_s4_s5_s6(text_sample, document_content.title)
 
-        signals = [s2a, s2b, s3, s4, s5]
+        signals = [s2a, s2b, s3, s4, s5, s6]
 
-        # ── Signal 6: apply classification rule ───────────────────────────────
         return self._apply_rule(signals, article_size)
-
+                
     # ══════════════════════════════════════════════════════════════════════════
     # SIGNAL HELPERS
     # ══════════════════════════════════════════════════════════════════════════
@@ -205,13 +204,14 @@ class ArticleClassifier:
 
         return len(found_terms) >= 4 and len(found_hard) >= 1
 
-    # ── Signals 4 and 5 (combined LLM call) ──────────────────────────────────
+    # ── Signals 4, 5 and 6 (combined LLM call) ──────────────────────────────────
 
-    def _signal_s4_s5(self, text_sample: str, title: str) -> tuple[bool, bool]:
+    def _signal_s4_s5_s6(self, text_sample: str, title: str) -> tuple[bool, bool, bool]:
         """
-        Single LLM call returning (S4, S5).
+        Single LLM call returning (S4, S5, S6).
         S4: explicit research intent detected.
         S5: evidence-based conclusive contribution detected.
+        S6: theoretical framework justification / knowledge gap identified.
         """
         prompt = f"""Analiza el siguiente fragmento de un artículo académico.
 
@@ -220,7 +220,7 @@ TÍTULO: {title}
 TEXTO:
 {text_sample}
 
-TAREA: Responde DOS preguntas independientes sobre el texto.
+TAREA: Responde TRES preguntas independientes sobre el texto.
 
 PREGUNTA 1 — INTENCIÓN DE INVESTIGACIÓN (S4):
 ¿El artículo expresa explícitamente una intención de investigación mediante CUALQUIERA de estas formas?
@@ -240,25 +240,35 @@ PREGUNTA 2 — CONTRIBUCIÓN CONCLUSIVA (S5):
 - Resultados experimentales cuantitativos: mejoras porcentuales, reducciones de tiempo, métricas de rendimiento
 - Confirmación de hipótesis: "confirmando que", "lo que confirma", "los experimentos demostraron mejoras", "los resultados preliminares obtenidos fueron"
 
-Responde EXACTAMENTE en este formato (dos líneas, sin nada más):
+PREGUNTA 3 — JUSTIFICACIÓN TEÓRICA (S6):
+¿El artículo justifica la selección de su marco teórico o identifica un vacío en el conocimiento existente que su investigación aborda mediante CUALQUIERA de estas formas?
+- Referencia al estado del arte o literatura previa: "estudios previos han demostrado", "la literatura indica", "la literatura previa señala", "estudios previos muestran"
+- Identificación de vacío: "sin embargo, no se ha explorado", "los estudios existentes no abordan", "existe un vacío en la literatura", "vacío en el conocimiento"
+- Justificación del marco teórico: "se adopta el enfoque X porque", "este marco permite", "se seleccionó esta metodología porque"
+- Anclaje en investigación previa: "a diferencia de estudios anteriores", "extendiendo el trabajo de", "en línea con"
+
+Responde EXACTAMENTE en este formato (tres líneas, sin nada más):
 S4: SI
-S5: SI"""
+S5: SI
+S6: SI"""
 
         try:
             response = self.client.generate(
                 model=self.model_name,
                 prompt=prompt,
-                options={"temperature": 0.1, "num_predict": 20}
+                options={"temperature": 0.1, "num_predict": 30}
             )
             lines = response["response"].strip().upper().splitlines()
             s4 = any("S4" in l and "SI" in l for l in lines)
             s5 = any("S5" in l and "SI" in l for l in lines)
-            return s4, s5
+            s6 = any("S6" in l and "SI" in l for l in lines)
+            return s4, s5, s6
 
         except Exception as e:
-            print(f"⚠️  Signals S4/S5 (combined) error: {e}")
-            return False, False
-
+            print(f"⚠️  Signals S4/S5/S6 (combined) error: {e}")
+            return False, False, False
+    
+    
     # ══════════════════════════════════════════════════════════════════════════
     # CLASSIFICATION RULE
     # ══════════════════════════════════════════════════════════════════════════
@@ -266,157 +276,267 @@ S5: SI"""
     def _apply_rule(self, signals: list[bool],
                     article_size) -> ClassificationResult:
         """
-        Classification rule — Option B revised:
+        Classification rule — v0.9 revised (S6 added).
+        Reference: 19-case table, session May 2026.
 
-        CIENTÍFICO: three mandatory gates S3+S4+S5, S2 modulates confidence
-          S3+S4+S5 + S2a + S2b → CIENTÍFICO 0.95  full bibliometric support
-          S3+S4+S5 + S2b only  → CIENTÍFICO 0.88  recency confirmed
-          S3+S4+S5 + S2a only  → CIENTÍFICO 0.80  volume confirmed
-          S3+S4+S5 (no S2)     → CIENTÍFICO 0.72  methodological core only
+        CIENTÍFICO requires S3+S4+S5 + structural support (confidence >= 0.83):
+          case 2: S3+S4+S5+S2a+S2b+S6  → 0.90
+          case 3: S3+S4+S5+S2b+S6       → 0.86
+          case 4: S3+S4+S5+S2a+S2b      → 0.85
+          case 5: S3+S4+S5+S2a+S6       → 0.83
 
-        DIVULGACIÓN:
-          S4+S5 (no S3)        → 0.75  intent present, no explicit methodology
-          S4 OR S5 alone       → 0.65  partial scientific signal
-          S3 alone             → 0.70  methodological vocabulary, no research intent
+        DIVULGACIÓN near-miss (cases 6–9): S3+S4+S5 present but below threshold.
+        DIVULGACIÓN standard (cases 10–18): missing qualitative core signals.
+        OPINIÓN (case 19): no signals detected.
 
-        OPINIÓN:
-          no signals           → 0.65
+        Confidence levels apply exclusively to CIENTÍFICO.
+        DIVULGACIÓN and OPINIÓN carry confidence=None.
         """
-        s2a, s2b, s3, s4, s5 = signals
+        s2a, s2b, s3, s4, s5, s6 = signals
 
         signal_labels = {
-            "Referencias ≥ 12":          s2a,
-            "Referencias recientes":      s2b,
-            "Vocabulario metodológico":   s3,
-            "Pregunta de investigación":  s4,
-            "Contribución conclusiva":    s5,
+            "Referencias ≥ 12":         s2a,
+            "Referencias recientes":     s2b,
+            "Vocabulario metodológico":  s3,
+            "Intención investigativa":   s4,
+            "Contribución conclusiva":   s5,
+            "Justificación teórica":     s6,
         }
         active   = [label for label, val in signal_labels.items() if val]
         inactive = [label for label, val in signal_labels.items() if not val]
 
-        def _reasoning(present: list[str], absent: list[str]) -> str:
+        def _sig(present: list, absent: list) -> str:
             parts = []
-            if present:
-                parts.append(f"Señales presentes: {', '.join(present)}.")
-            if absent:
-                parts.append(f"Señales ausentes: {', '.join(absent)}.")
+            if present: parts.append(f"Señales presentes: {', '.join(present)}.")
+            if absent:  parts.append(f"Señales ausentes: {', '.join(absent)}.")
             return " ".join(parts)
 
-        # ── CIENTÍFICO: three mandatory gates S3+S4+S5 ───────────────────────
+        # ── CIENTÍFICO paths — S3+S4+S5 required ─────────────────────────────
         if s3 and s4 and s5:
-            if s2b and s2a:
-                return ClassificationResult(
-                    article_type=ArticleType.CIENTIFICO,
-                    article_size=article_size,
-                    confidence=0.95,
-                    reasoning="Núcleo científico completo con pleno respaldo bibliométrico. "
-                              + _reasoning(active, inactive)
-                )
-            if s2b:
-                return ClassificationResult(
-                    article_type=ArticleType.CIENTIFICO,
-                    article_size=article_size,
-                    confidence=0.88,
-                    reasoning="Núcleo científico completo. Recencia de referencias confirmada; "
-                              "cantidad por debajo del umbral EUMIC. "
-                              + _reasoning(active, inactive)
-                )
-            if s2a:
-                return ClassificationResult(
-                    article_type=ArticleType.CIENTIFICO,
-                    article_size=article_size,
-                    confidence=0.80,
-                    reasoning="Núcleo científico completo. Volumen de referencias adecuado; "
-                              "recencia no confirmada. "
-                              + _reasoning(active, inactive)
-                )
-            return ClassificationResult(
-                article_type=ArticleType.CIENTIFICO,
-                article_size=article_size,
-                confidence=0.72,
-                reasoning="Núcleo metodológico mínimo presente. "
-                          "Sin respaldo bibliométrico suficiente. "
-                          + _reasoning(active, inactive)
-            )
 
-        # ── DIVULGACIÓN ───────────────────────────────────────────────────────
-        if s4 and s5:
+            if s2a and s2b and s6:                              # case 2 — 0.90
+                return ClassificationResult(
+                    article_type=ArticleType.CIENTIFICO,
+                    article_size=article_size, confidence=0.90,
+                    reasoning=(
+                        "El artículo reúne la totalidad de los indicadores científicos: "
+                        "vocabulario metodológico (S3), intención investigativa (S4), "
+                        "contribución evidenciada (S5), justificación del marco teórico y "
+                        "vacío en la literatura (S6), cantidad de referencias suficiente (S2a) "
+                        "y bibliografía actualizada (S2b). Artículo científico con muy elevada "
+                        "confianza. " + _sig(active, inactive)
+                    )
+                )
+            elif s2b and s6:                                    # case 3 — 0.86
+                return ClassificationResult(
+                    article_type=ArticleType.CIENTIFICO,
+                    article_size=article_size, confidence=0.86,
+                    reasoning=(
+                        "Vocabulario metodológico (S3), intención investigativa (S4), "
+                        "contribución evidenciada (S5) y justificación teórica (S6) presentes. "
+                        "Bibliografía reciente (S2b), aunque por debajo del umbral de cantidad "
+                        "mínima (S2a ausente). Artículo científico con confianza elevada. "
+                        + _sig(active, inactive)
+                    )
+                )
+            elif s2a and s2b:                                   # case 4 — 0.85
+                return ClassificationResult(
+                    article_type=ArticleType.CIENTIFICO,
+                    article_size=article_size, confidence=0.85,
+                    reasoning=(
+                        "Vocabulario metodológico (S3), intención investigativa (S4), "
+                        "contribución evidenciada (S5) y respaldo bibliográfico completo en "
+                        "cantidad y actualidad (S2a, S2b). No se detectó justificación del "
+                        "marco teórico ni identificación de vacío en la literatura (S6 ausente). "
+                        "Artículo científico de rigor metodológico; calificación de confianza "
+                        "media por ausencia de S6. " + _sig(active, inactive)
+                    )
+                )
+            elif s2a and s6:                                    # case 5 — 0.83
+                return ClassificationResult(
+                    article_type=ArticleType.CIENTIFICO,
+                    article_size=article_size, confidence=0.83,
+                    reasoning=(
+                        "Vocabulario metodológico (S3), intención investigativa (S4), "
+                        "contribución evidenciada (S5) y justificación teórica (S6) presentes. "
+                        "Cantidad de referencias suficiente (S2a). La bibliografía no alcanza "
+                        "el umbral de actualidad requerido (S2b ausente). Artículo científico "
+                        "de rigor metodológico; calificación de confianza media por ausencia "
+                        "de S2b. " + _sig(active, inactive)
+                    )
+                )
+
+            # ── Near-miss: S3+S4+S5 present but below 0.83 threshold ─────────
+            _rec = "Revisión editorial recomendada: "
+            if s6:                                              # case 6
+                body = (
+                    "El artículo muestra indicadores cualitativos sólidos (S3, S4, S5, S6), "
+                    "pero carece del respaldo bibliográfico mínimo requerido "
+                    "(S2a y S2b ausentes). "
+                )
+                rec = (
+                    _rec + "con la incorporación de respaldo bibliográfico suficiente en "
+                    "cantidad y actualidad, el artículo podría alcanzar el umbral para "
+                    "artículo científico."
+                )
+            elif s2b:                                           # case 7
+                body = (
+                    "Vocabulario metodológico, intención investigativa y contribución "
+                    "evidenciada presentes (S3, S4, S5), con bibliografía reciente (S2b). "
+                    "Sin justificación del marco teórico (S6) ni cantidad suficiente "
+                    "de referencias (S2a). "
+                )
+                rec = (
+                    _rec + "con la incorporación de justificación del marco teórico (S6) "
+                    "y ampliación del número de referencias (S2a), el artículo podría "
+                    "alcanzar el umbral para artículo científico."
+                )
+            elif s2a:                                           # case 8
+                body = (
+                    "Vocabulario metodológico, intención investigativa y contribución "
+                    "evidenciada presentes (S3, S4, S5), con cantidad de referencias "
+                    "suficiente (S2a). Sin justificación del marco teórico (S6) ni "
+                    "actualidad bibliográfica (S2b). "
+                )
+                rec = (
+                    _rec + "con la incorporación de justificación del marco teórico (S6) "
+                    "y actualización de la bibliografía (S2b), el artículo podría alcanzar "
+                    "el umbral para artículo científico."
+                )
+            else:                                               # case 9
+                body = (
+                    "Vocabulario metodológico, intención investigativa y contribución "
+                    "evidenciada presentes (S3, S4, S5). Sin justificación del marco "
+                    "teórico (S6) ni respaldo bibliográfico (S2a, S2b). Las señales "
+                    "cualitativas sin soporte estructural son insuficientes para "
+                    "artículo científico. "
+                )
+                rec = (
+                    _rec + "con la incorporación de justificación del marco teórico (S6) "
+                    "y fortalecimiento del respaldo bibliográfico en cantidad y actualidad "
+                    "(S2a, S2b), el artículo podría alcanzar el umbral para artículo "
+                    "científico."
+                )
             return ClassificationResult(
                 article_type=ArticleType.DIVULGACION,
-                article_size=article_size,
-                confidence=0.75,
-                reasoning="Intención investigativa y contribución conclusiva presentes, "
-                          "sin metodología explícita (S3 ausente). "
-                          + _reasoning(active, inactive)
+                article_size=article_size, confidence=None,
+                reasoning=body + rec + " " + _sig(active, inactive)
             )
 
-        if s3 and s5:
-            return ClassificationResult(
-                article_type=ArticleType.CIENTIFICO,
-                article_size=article_size,
-                confidence=0.72,
-                reasoning="Metodología experimental y contribución conclusiva detectadas. "
-                          "Intención investigativa no confirmada en esta ejecución. "
-                          "Clasificación CIENTÍFICO con confianza reducida — "
-                          "se recomienda verificación editorial manual. "
-                          + _reasoning(active, inactive)
-            )
-
-        if s3 and s4:
-            return ClassificationResult(
-                article_type=ArticleType.CIENTIFICO,
-                article_size=article_size,
-                confidence=0.72,
-                reasoning="Metodología experimental e intención investigativa detectadas. "
-                          "Contribución conclusiva no confirmada en esta ejecución. "
-                          "Clasificación CIENTÍFICO con confianza reducida — "
-                          "se recomienda verificación editorial manual. "
-                          + _reasoning(active, inactive)
-            )
-
-        if s4 or s5:
+        # ── DIVULGACIÓN standard (cases 10–18) ───────────────────────────────
+        if s3 and s4:                                           # case 10
             return ClassificationResult(
                 article_type=ArticleType.DIVULGACION,
-                article_size=article_size,
-                confidence=0.65,
-                reasoning="Señal científica parcial detectada. Artículo de divulgación académica. "
-                          + _reasoning(active, inactive)
+                article_size=article_size, confidence=None,
+                reasoning=(
+                    "Vocabulario metodológico (S3) e intención investigativa (S4) presentes. "
+                    "No se detectó contribución basada en evidencia (S5 ausente). Sin los tres "
+                    "pilares cualitativos completos, la clasificación como artículo científico "
+                    "no es posible. " + _sig(active, inactive)
+                )
             )
-       
-        if s3 and (s2a or s2b):
+        if s3 and s5:                                           # case 11
             return ClassificationResult(
-                article_type=ArticleType.CIENTIFICO,
-                article_size=article_size,
-                confidence=0.70,
-                reasoning="Vocabulario metodológico sólido con respaldo bibliográfico detectados. "
-                          "Intención investigativa y contribución conclusiva no confirmadas en esta ejecución. "
-                          "Clasificación preliminar CIENTÍFICO con confianza reducida — "
-                          "se recomienda verificación editorial manual. "
-                          + _reasoning(active, inactive)
+                article_type=ArticleType.DIVULGACION,
+                article_size=article_size, confidence=None,
+                reasoning=(
+                    "Vocabulario metodológico (S3) y contribución basada en evidencia (S5) "
+                    "presentes. No se detectó intención investigativa explícita (S4 ausente). "
+                    "Sin los tres pilares cualitativos completos, la clasificación como "
+                    "artículo científico no es posible. " + _sig(active, inactive)
+                )
+            )
+        if s3 and s2a and s2b:                                  # case 12
+            return ClassificationResult(
+                article_type=ArticleType.DIVULGACION,
+                article_size=article_size, confidence=None,
+                reasoning=(
+                    "Vocabulario metodológico (S3) y respaldo bibliográfico completo (S2a, S2b) "
+                    "presentes. No se detectaron intención investigativa (S4) ni contribución "
+                    "basada en evidencia (S5). Las señales cuantitativas sin pilares cualitativos "
+                    "son insuficientes para artículo científico. " + _sig(active, inactive)
+                )
+            )
+        if s3 and s2a:                                          # case 13
+            return ClassificationResult(
+                article_type=ArticleType.DIVULGACION,
+                article_size=article_size, confidence=None,
+                reasoning=(
+                    "Vocabulario metodológico (S3) y cantidad de referencias suficiente (S2a). "
+                    "Sin intención investigativa (S4), contribución evidenciada (S5) ni "
+                    "justificación teórica (S6). Evidencia insuficiente para artículo "
+                    "científico. " + _sig(active, inactive)
+                )
+            )
+        if s3 and s2b:                                          # case 14
+            return ClassificationResult(
+                article_type=ArticleType.DIVULGACION,
+                article_size=article_size, confidence=None,
+                reasoning=(
+                    "Vocabulario metodológico (S3) y bibliografía reciente (S2b). Sin intención "
+                    "investigativa (S4), contribución evidenciada (S5) ni justificación teórica "
+                    "(S6). Evidencia insuficiente para artículo científico. "
+                    + _sig(active, inactive)
+                )
+            )
+        if s3:                                                  # case 15
+            return ClassificationResult(
+                article_type=ArticleType.DIVULGACION,
+                article_size=article_size, confidence=None,
+                reasoning=(
+                    "Vocabulario metodológico presente (S3). Sin intención investigativa (S4), "
+                    "contribución evidenciada (S5), justificación teórica (S6) ni respaldo "
+                    "bibliográfico (S2a, S2b). El vocabulario técnico por sí solo es "
+                    "insuficiente para clasificar como artículo científico. "
+                    + _sig(active, inactive)
+                )
+            )
+        if s4 and s5:                                           # case 16
+            return ClassificationResult(
+                article_type=ArticleType.DIVULGACION,
+                article_size=article_size, confidence=None,
+                reasoning=(
+                    "Intención investigativa (S4) y contribución evidenciada (S5) detectadas, "
+                    "pero sin vocabulario metodológico formal (S3 ausente). El artículo carece "
+                    "del sustento terminológico que distingue la investigación científica de la "
+                    "divulgación especializada. " + _sig(active, inactive)
+                )
+            )
+        if s4:                                                  # case 17
+            return ClassificationResult(
+                article_type=ArticleType.DIVULGACION,
+                article_size=article_size, confidence=None,
+                reasoning=(
+                    "Intención investigativa detectada (S4), pero sin vocabulario metodológico "
+                    "(S3), contribución evidenciada (S5) ni respaldo bibliográfico. La sola "
+                    "presencia de intención investigativa es insuficiente para artículo "
+                    "científico. " + _sig(active, inactive)
+                )
+            )
+        if s5:                                                  # case 18
+            return ClassificationResult(
+                article_type=ArticleType.DIVULGACION,
+                article_size=article_size, confidence=None,
+                reasoning=(
+                    "Contribución basada en evidencia detectada (S5), pero sin vocabulario "
+                    "metodológico (S3) ni intención investigativa (S4). Una contribución "
+                    "evidenciada sin proceso metodológico explícito no es suficiente para "
+                    "artículo científico. " + _sig(active, inactive)
+                )
             )
 
-        if s3:
-            return ClassificationResult(
-                article_type=ArticleType.CIENTIFICO,
-                article_size=article_size,
-                confidence=0.60,
-                reasoning="Vocabulario metodológico detectado sin respaldo bibliográfico confirmado. "
-                          "Intención investigativa y contribución conclusiva no confirmadas en esta ejecución. "
-                          "Clasificación preliminar CIENTÍFICO con confianza muy reducida — "
-                          "se recomienda verificación editorial manual. "
-                          + _reasoning(active, inactive)
-            )
-        
-                      
-        # ── OPINIÓN ───────────────────────────────────────────────────────────
+        # ── OPINIÓN: no signals (case 19) ─────────────────────────────────────
         return ClassificationResult(
             article_type=ArticleType.OPINION,
-            article_size=article_size,
-            confidence=0.65,
-            reasoning="Sin pregunta de investigación ni contribución conclusiva. "
-                      "Texto argumentativo u opinión sin validación empírica. "
-                      + _reasoning(active, inactive)
+            article_size=article_size, confidence=None,
+            reasoning=(
+                "No se detectaron señales de investigación científica ni de divulgación "
+                "especializada. El artículo expone puntos de vista, argumentos o reflexiones "
+                "sin respaldo metodológico ni evidencia sistemática. "
+                + _sig(active, inactive)
+            )
         )
+
 
 
 # ─── Convenience function ─────────────────────────────────────────────────────
@@ -461,7 +581,13 @@ if __name__ == "__main__":
     assert result.article_type != ArticleType.OPINION, \
         f"Should not be OPINIÓN on methodological doc — got {result.article_type}"
 
+    if result.article_type == ArticleType.CIENTIFICO:
+        assert result.confidence is not None and result.confidence >= 0.83, \
+            f"CIENTÍFICO confidence should be >= 0.83 — got {result.confidence}"
+
+    conf_display = f"{result.confidence:.2f}" if result.confidence is not None else "—"
     print(f"✅ Smoke test passed — S3: {s3_result} | "
           f"Classification: {result.article_type.value} | "
-          f"Confidence: {result.confidence}")
+          f"Confidence: {conf_display}")
     print(f"Reasoning: {result.reasoning}")
+   
