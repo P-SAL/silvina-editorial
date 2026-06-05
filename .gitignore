@@ -30,3 +30,6 @@ acme.json
 
 # Environment
 .env
+
+# AI tooling — machine-specific paths, not shareable
+.atl/
