@@ -92,15 +92,17 @@ class TestAPAValidatorEtAlFormat(unittest.TestCase):
         self.validator = APAValidator()
 
     def test_et_dot_al_format_error(self):
-        # Note: the validator checks `'et al' in inner.lower()` which requires the
-        # substring 'et al' to appear — for 'et. al' this evaluates False (known
-        # limitation). Test the path that IS caught: missing period after 'al'.
         violations = self.validator.validate_citation('(García et al, 2020)', 0)
         error_types = [v.error_type for v in violations]
         self.assertIn(APAErrorType.ET_AL_FORMAT_ERROR, error_types)
 
     def test_missing_period_after_al(self):
         violations = self.validator.validate_citation('(García et al, 2020)', 0)
+        error_types = [v.error_type for v in violations]
+        self.assertIn(APAErrorType.ET_AL_FORMAT_ERROR, error_types)
+
+    def test_et_dot_al_with_inner_period(self):
+        violations = self.validator.validate_citation('(García et. al., 2020)', 0)
         error_types = [v.error_type for v in violations]
         self.assertIn(APAErrorType.ET_AL_FORMAT_ERROR, error_types)
 

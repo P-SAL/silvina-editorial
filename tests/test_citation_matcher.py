@@ -130,6 +130,14 @@ class TestCitationMatcherReport(unittest.TestCase):
         self.assertEqual(matcher.find_orphaned_citations(), [])
         self.assertEqual(matcher.find_orphaned_references(), [])
 
+    def test_generate_report_with_orphaned_citations(self):
+        citations = [_citation('Pérez')]
+        references = [_reference('García, J. (2020). Introducción. Revista, 1, 1-10.')]
+        matcher = CitationMatcher(citations, references)
+        report = matcher.generate_report('Referencias')
+        self.assertIsInstance(report, str)
+        self.assertIn('critical', report.lower())
+
 
 if __name__ == '__main__':
     unittest.main()
