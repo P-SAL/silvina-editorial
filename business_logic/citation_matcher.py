@@ -135,7 +135,7 @@ class CitationMatcher:
         # Orphaned citations (ALWAYS CRITICAL)
         orphaned_cits = self.find_orphaned_citations()
         if orphaned_cits:
-            report.append(f"\n{SeverityLevel.CRITICO.value}: Citas Sin Referencia")
+            report.append(f"\n{SeverityLevel.CRITICAL.value}: Citas Sin Referencia")
             report.append(f"Encontradas {len(orphaned_cits)} citas sin entrada bibliográfica:")
             for cit in orphaned_cits[:5]:
                 report.append(f"  • {cit}")
@@ -146,10 +146,10 @@ class CitationMatcher:
         orphaned_refs = self.find_orphaned_references()
         if orphaned_refs:
             if section_type == "Referencias":
-                severity = SeverityLevel.ADVERTENCIA
+                severity = SeverityLevel.WARNING
                 msg = "En 'Referencias', se espera citar todas las entradas."
             else:
-                severity = SeverityLevel.INFORMATIVO
+                severity = SeverityLevel.INFO
                 msg = "En 'Bibliografía', es aceptable incluir fuentes consultadas."
             
             report.append(f"\n{severity.value}: Referencias Sin Citar")

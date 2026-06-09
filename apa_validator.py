@@ -144,7 +144,7 @@ class APAValidator:
             ))
         
         # Check 4: Et al. format errors
-        if 'et al' in inner.lower():
+        if re.search(r'\bet\.?\s+al\b', inner, re.IGNORECASE):
             # Check for extra period: "et. al."
             if 'et. al' in inner:
                 violations.append(APAViolation(
@@ -152,18 +152,18 @@ class APAValidator:
                     error_type=APAErrorType.ET_AL_FORMAT_ERROR,
                     location=location,
                     explanation='Formato incorrecto: debe ser "et al." (sin punto en "et")',
-                    correction=citation.replace('et. al', 'et al'),
+                    correction=re.sub(r'et\.\s+al', 'et al', citation, flags=re.IGNORECASE),
                     paragraph_preview=preview
                 ))
-            
-            # Check for missing period after "al"
-            if re.search(r'et al[,\)]', inner):
+
+            # Check for missing period after "al" (mutually exclusive with the above)
+            elif re.search(r'et al[,\)]', inner):
                 violations.append(APAViolation(
                     citation_text=citation,
                     error_type=APAErrorType.ET_AL_FORMAT_ERROR,
                     location=location,
                     explanation='Falta punto después de "al": debe ser "et al."',
-                    correction=citation.replace('et al', 'et al.'),
+                    correction=re.sub(r'et al\b(?!\.)', 'et al.', citation, flags=re.IGNORECASE),
                     paragraph_preview=preview
                 ))
         

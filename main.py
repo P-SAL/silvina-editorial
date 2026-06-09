@@ -7,6 +7,11 @@ Orchestrates the complete document analysis workflow.
 import sys
 import os
 from pathlib import Path
+
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 from typing import Optional, Dict, Any
 import json
 from docx import Document
