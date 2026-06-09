@@ -33,5 +33,6 @@ acme.json
 
 # AI tooling — machine-specific paths, not shareable
 .atl/
+# AI and Local Tools
 .claude/
 .pi/

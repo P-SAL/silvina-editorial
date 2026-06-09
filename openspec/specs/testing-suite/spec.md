@@ -65,3 +65,42 @@ The test suite MUST support executing `gradio_app.py` in test mode using the nat
 - GIVEN the Gradio test client connected to the application in test mode
 - WHEN a test user uploads a file with an unsupported file extension
 - THEN the interface displays a user-friendly error message indicating the invalid format
+
+## Delta: fix-source-defects
+
+### Requirement: CitationMatcher Report Generation with Orphaned Citations (REQ-EXT-1)
+
+The `generate_report()` method in `CitationMatcher` SHALL handle orphaned citations gracefully, including severity labeling in the report output without crashing.
+
+#### Scenario: Report generation with orphaned citations
+- GIVEN a `CitationMatcher` instance with citations that have no matching references
+- WHEN `generate_report()` is called
+- THEN the method returns a report string that includes a severity label (e.g., 'critical') and does not raise an exception
+
+### Requirement: APAValidator ET_AL Format Detection and Comment Cleanup (REQ-EXT-2)
+
+The `APAValidator` SHALL correctly detect "et. al." (with inner period) as `ET_AL_FORMAT_ERROR`. The test suite SHALL contain no stale "known limitation" comments that document incomplete validator behavior.
+
+#### Scenario: Detect et. al. with inner period
+- GIVEN a citation string in the format "(Author et. al., Year)"
+- WHEN `APAValidator.validate_citation()` is called
+- THEN the validator returns an error list containing `ErrorType.ET_AL_FORMAT_ERROR`
+
+#### Scenario: No stale limitation comments
+- GIVEN the test suite source files
+- WHEN tests are examined
+- THEN no comments documenting known limitations in ET_AL format detection exist
+
+### Requirement: Developer Setup Script for Virtual Environment (REQ-W4)
+
+A `setup.bat` script SHALL be present at the repository root to enable developers on Windows to bootstrap the virtual environment and install dependencies in a single command.
+
+#### Scenario: setup.bat creates and provisions virtual environment
+- GIVEN a clean clone of the repository on Windows
+- WHEN a developer runs `setup.bat` from the repository root
+- THEN the script creates a `.venv` directory, installs dependencies from `requirements.txt`, and exits with status code 0
+
+#### Scenario: setup.bat error handling
+- GIVEN the `setup.bat` script encounters an error during venv creation or pip install
+- WHEN the error occurs
+- THEN the script displays an appropriate error message and exits with a non-zero status code
