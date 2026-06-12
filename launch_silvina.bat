@@ -1,16 +1,24 @@
 @echo off
-title Silvina Editorial Assistant v0.8
-cd /d "C:\00 PY\Course\silvina-editorial\silvina_editorial_v08"
+title Silvina Editorial Assistant
+:: Mueve el directorio de trabajo a la ruta exacta donde esta este script
+cd /d "%~dp0"
+
 echo.
 echo =====================================
-echo   SILVINA EDITORIAL ASSISTANT v0.8
+echo   SILVINA EDITORIAL ASSISTANT
 echo =====================================
 echo.
 echo Iniciando Silvina... Por favor espere.
-echo Chrome se abrira automaticamente.
+echo Gradio levantara un servidor web local en breve.
 echo.
 echo NO CIERRE ESTA VENTANA mientras usa Silvina.
 echo Para cerrar Silvina: presione Ctrl+C aqui.
 echo.
-call ..\venv312\Scripts/activate.bat
+
+:: Activa el entorno virtual local de la carpeta
+call .venv\Scripts\activate.bat
+
+:: Arranca la aplicacion
 python gradio_app.py
+
+pause
