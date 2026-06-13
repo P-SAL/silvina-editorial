@@ -12,6 +12,7 @@ class TestArticleType(TestCase):
 
     def test_importable_independently(self):
         from src.domain.enums.article_type import ArticleType as ImportedEnum
+
         self.assertIsNotNone(ImportedEnum)
 
     def test_member_count(self):

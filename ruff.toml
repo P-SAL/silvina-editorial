@@ -1,0 +1,71 @@
+# Configuración de Ruff — silvina-editorial
+
+# Configuración de línea máxima
+line-length = 100
+
+# Versión de Python objetivo (proyecto 3.12+, sintaxis PEP 604 `X | None`)
+target-version = "py312"
+
+# Configuración de linting (equivalente a flake8)
+[lint]
+preview = true
+# Seleccionar reglas equivalentes a flake8: B,B9,C,E,F,W
+select = [
+    "B",      # flake8-bugbear
+    "B9",     # flake8-bugbear (extended)
+    "C",      # flake8-comprehensions
+    "E",      # pycodestyle errors
+    "F",      # pyflakes
+    "W",      # pycodestyle warnings
+]
+
+# Ignorar reglas específicas
+ignore = [
+    "C901",
+    "E203",   # Whitespace before ':'
+    "E222",   # Multiple spaces after operator
+    "E231",   # Missing whitespace after ',', ';', or ':'
+    "E262",   # Inline comment should start with '# '
+    "E266",   # Too many leading '#' for block comment
+    "E501",   # Line too long (pyflakes)
+    "E741",   # Ambiguous variable name 'l'
+]
+
+# Complejidad máxima
+mccabe.max-complexity = 10
+
+# Excluir archivos
+exclude = [
+    ".venv",
+    "**/*.txt",
+    # Código legacy: coexiste durante la migración hexagonal y se elimina en el
+    # slice final. No se lintea (tiene defectos conocidos documentados en el plan).
+    "domain/",
+    "data_access/",
+    "business_logic/",
+    "presentation/",
+    "tests/",
+    "main.py",
+    "gradio_app.py",
+    "apa_validator.py",
+    "eumic_verifier.py",
+    "process_feedback.py",
+    "config.py",
+    "conftest.py",
+]
+
+# Configuración de ordenamiento de imports
+[lint.isort]
+
+[format]
+# Like Black, use double quotes for strings.
+quote-style = "double"
+
+# Like Black, indent with spaces, rather than tabs.
+indent-style = "space"
+
+# Like Black, respect magic trailing commas.
+skip-magic-trailing-comma = false
+
+# Like Black, automatically detect the appropriate line ending.
+line-ending = "auto"
