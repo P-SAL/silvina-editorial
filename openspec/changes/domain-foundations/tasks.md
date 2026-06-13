@@ -224,17 +224,17 @@
 **Spec**: REQ-ENTITY-CITATION-1, REQ-ENTITY-CITATION-2, REQ-ENTITY-CITATION-3
 **Parallel**: Yes (with Tasks 12, 13; must complete before Task 14 can start)
 
-- [ ] Write failing test `src/domain/tests/entities/test_citation.py`
+- [x] Write failing test `src/domain/tests/entities/test_citation.py`
   - `test_citation_is_subclass_of_base_entity`
   - `test_citation_instantiation_with_required_fields_only` — `author` and `year` are `None`
   - `test_citation_as_dict_contains_expected_keys` — keys: `text`, `citation_type`, `location`, `author`, `year`
   - `test_citation_str_truncates_at_50_chars` — result starts with `"Citation("` and contains `"..."` for long text
   - `test_citation_type_hints_use_modern_syntax` — no `Optional[`, no `List[`, no `Dict[`
-- [ ] Create `src/domain/citation/citation.py`
+- [x] Create `src/domain/citation/citation.py`
   - `@dataclass` subclass of `BaseEntity`; imports: `from dataclasses import dataclass`, `from src.domain.entities.base_entity import BaseEntity`, `from src.domain.enums.citation_type import CitationType`
   - Fields: `text: str`, `citation_type: CitationType`, `location: int`, `author: str | None = None`, `year: str | None = None`
   - `__str__` method returning `"Citation(<text[:50]>...)"` when text > 50 chars
-- [ ] Run `python -m pytest src/domain/tests/entities/test_citation.py` — green
+- [x] Run `python -m pytest src/domain/tests/entities/test_citation.py` — green
 
 **Work unit commit**: `feat(domain/entities): add Citation entity and tests`
 
@@ -245,16 +245,16 @@
 **Spec**: REQ-ENTITY-REFERENCE-1, REQ-ENTITY-REFERENCE-2
 **Parallel**: Yes (with Tasks 11, 13; must complete before Task 14)
 
-- [ ] Write failing test `src/domain/tests/entities/test_reference.py`
+- [x] Write failing test `src/domain/tests/entities/test_reference.py`
   - `test_reference_is_subclass_of_base_entity`
   - `test_reference_instantiation_with_required_field_only` — all optional fields are `None`
   - `test_reference_str_returns_formatted_string` — `Reference(text="...", authors="Smith", year="2020")` → `"Reference(Smith, 2020)"`
   - `test_reference_str_when_authors_and_year_are_none` — no crash; handles gracefully
-- [ ] Create `src/domain/reference/reference.py`
+- [x] Create `src/domain/reference/reference.py`
   - `@dataclass` subclass of `BaseEntity`
   - Fields: `text: str`, `authors: str | None = None`, `year: str | None = None`, `title: str | None = None`, `source: str | None = None`
   - `__str__` returning `f"Reference({self.authors}, {self.year})"` (or equivalent graceful form)
-- [ ] Run `python -m pytest src/domain/tests/entities/test_reference.py` — green
+- [x] Run `python -m pytest src/domain/tests/entities/test_reference.py` — green
 
 **Work unit commit**: `feat(domain/entities): add Reference entity and tests`
 
@@ -265,7 +265,7 @@
 **Spec**: REQ-ENTITY-SECTION-1, REQ-ENTITY-SECTION-2, REQ-ENTITY-SECTION-3, REQ-ENTITY-SECTION-4, REQ-TEST-3 (bug #7)
 **Parallel**: Yes (with Tasks 11, 12; no deps on them)
 
-- [ ] Write failing test `src/domain/tests/entities/test_section.py`
+- [x] Write failing test `src/domain/tests/entities/test_section.py`
   - `test_section_is_subclass_of_base_entity`
   - `test_section_with_empty_title_raises_value_error`
   - `test_section_without_section_type_has_section_type_none` — bug #7 regression guard: no local import crash, `section_type is None`
@@ -273,14 +273,14 @@
   - `test_get_word_count_returns_word_count_of_content`
   - `test_is_empty_returns_true_for_blank_content`
   - `test_is_empty_returns_false_for_non_blank_content`
-- [ ] Create `src/domain/section/section.py`
+- [x] Create `src/domain/section/section.py`
   - `@dataclass` subclass of `BaseEntity` (NOT frozen)
   - Imports at top only: `from dataclasses import dataclass`, `from src.domain.entities.base_entity import BaseEntity`, `from src.domain.enums.section_type import SectionType`
   - Fields: `title: str`, `content: str`, `section_type: SectionType | None = None`, `start_position: int = 0`, `end_position: int = 0`, `level: int = 1`
   - `__post_init__`: only raises `ValueError` if `title` is empty; NO local imports; NO `classify_section_by_name` call
   - `get_word_count(self) -> int`
   - `is_empty(self) -> bool`
-- [ ] Run `python -m pytest src/domain/tests/entities/test_section.py` — green
+- [x] Run `python -m pytest src/domain/tests/entities/test_section.py` — green
 
 **Work unit commit**: `feat(domain/entities): add Section entity and tests (bug-7 fixed)`
 
@@ -292,18 +292,18 @@
 **Parallel**: No — depends on Task 11 (Citation) and Task 12 (Reference) being green first
 **Sequential after**: Tasks 11 + 12
 
-- [ ] Write failing test `src/domain/tests/entities/test_document_content.py`
+- [x] Write failing test `src/domain/tests/entities/test_document_content.py`
   - `test_document_content_is_subclass_of_base_entity`
   - `test_document_content_computes_word_count_from_paragraphs_when_zero` — `word_count=0, paragraphs=["hello world", "foo"]` → `word_count == 3`
   - `test_document_content_preserves_explicit_word_count` — `word_count=42` not overwritten
   - `test_document_content_field_types_use_modern_syntax` — no `List[`, `Dict[`, `Optional[`
   - `test_document_content_references_is_list_of_reference_instances` — `references` field accepts `list[Reference]`
-- [ ] Create `src/domain/document/document_content.py`
+- [x] Create `src/domain/document/document_content.py`
   - `@dataclass` subclass of `BaseEntity` (NOT frozen)
   - Imports: `from dataclasses import dataclass, field`, `from src.domain.entities.base_entity import BaseEntity`, `from src.domain.reference.reference import Reference`
   - Fields with legacy names: `word_count: int`, `char_count: int`, `paragraph_count: int = 0`, `title: str | None = None`, `authors: str | None = None`, `abstract: str | None = None`, `keywords: list[str] = field(default_factory=list)`, `references: list[Reference] = field(default_factory=list)`, `paragraphs: list[str] = field(default_factory=list)`, `sections: dict[str, str] = field(default_factory=dict)`
   - `__post_init__`: if `word_count == 0` and `paragraphs`, compute `word_count` from `paragraphs` (sum of words per paragraph)
-- [ ] Run `python -m pytest src/domain/tests/entities/` — all 4 entity tests green
+- [x] Run `python -m pytest src/domain/tests/entities/` — all 4 entity tests green
 
 **Work unit commit**: `feat(domain/entities): add DocumentContent entity and tests`
 
@@ -311,8 +311,8 @@
 
 ### PR 2 Integration Task
 
-- [ ] Run `python -m pytest src/domain/tests/entities/` — all green
-- [ ] Run `python -m pytest tests/` — legacy suite still passes
+- [x] Run `python -m pytest src/domain/tests/entities/` — all green
+- [x] Run `python -m pytest tests/` — legacy suite still passes (148 passed, 3 skipped)
 - [ ] Open PR 2 targeting `main` (after PR 1 merged, or on stacked branch if using feature-branch-chain)
 
 ---
