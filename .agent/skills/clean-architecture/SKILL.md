@@ -168,10 +168,12 @@ MyDatabaseRepository   → MyDatabaseAdapter
 
 ### File naming
 
-- **One class per file** — with one explicit exception: files inside `src/domain/exceptions/` MAY contain multiple related exception classes (e.g., a base hierarchy or a group of domain-specific errors).
-- Filename is `snake_case` matching the class `PascalCase`:
-  - `RegisterUserUseCase` → `register_user_use_case.py`
-  - `MyGatewayAdapter` → `my_gateway_adapter.py`
+- **One class or function per file** — every top-level class and every standalone function lives in its own file. One explicit exception: files inside `src/domain/exceptions/` MAY contain multiple related exception classes (e.g., a base hierarchy or a group of domain-specific errors).
+- **Prefer classes (OOP)**: domain logic is modeled as classes, not module-level functions. A standalone function is reserved for artifacts that are genuinely functions (e.g., decorators such as `generic_error_handler`).
+- Filename is `snake_case` matching the artifact name (class in `PascalCase`, function in `snake_case`):
+  - class `RegisterUserUseCase` → `register_user_use_case.py`
+  - class `MyGatewayAdapter` → `my_gateway_adapter.py`
+  - function `generic_error_handler` → `generic_error_handler.py`
 - Every file ends with exactly one blank line.
 
 ---
