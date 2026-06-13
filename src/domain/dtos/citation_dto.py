@@ -1,11 +1,11 @@
 from dataclasses import dataclass
 
-from src.domain.entities.base_entity import BaseEntity
+from src.domain.dtos.base_dto import BaseDTO
 from src.domain.enums.citation_type import CitationType
 
 
-@dataclass
-class Citation(BaseEntity):
+@dataclass(frozen=True)
+class Citation(BaseDTO):
     """Represents a citation found in the document."""
 
     text: str

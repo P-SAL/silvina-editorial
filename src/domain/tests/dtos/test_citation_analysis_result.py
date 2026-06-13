@@ -1,13 +1,12 @@
 from dataclasses import FrozenInstanceError
 from unittest import TestCase
 
+from src.domain.dtos.base_dto import BaseDTO
 from src.domain.dtos.citation_analysis_result_dto import CitationAnalysisResult
 
 
 class TestCitationAnalysisResult(TestCase):
     def test_citation_analysis_result_is_subclass_of_base_dto(self):
-        from src.domain.dtos.base_dto import BaseDTO
-
         self.assertTrue(issubclass(CitationAnalysisResult, BaseDTO))
 
     def test_citation_analysis_result_is_immutable(self):
