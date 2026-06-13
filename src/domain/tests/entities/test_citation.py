@@ -1,4 +1,3 @@
-from typing import get_type_hints
 from unittest import TestCase
 
 from src.domain.entities.base_entity import BaseEntity
@@ -8,6 +7,7 @@ from src.domain.enums.citation_type import CitationType
 class TestCitation(TestCase):
     def _import_citation(self):
         from src.domain.citation.citation import Citation
+
         return Citation
 
     def test_citation_is_subclass_of_base_entity(self):
@@ -41,6 +41,7 @@ class TestCitation(TestCase):
     def test_citation_type_hints_use_modern_syntax(self):
         Citation = self._import_citation()
         import inspect
+
         source = inspect.getsource(Citation)
         self.assertNotIn("Optional[", source)
         self.assertNotIn("List[", source)

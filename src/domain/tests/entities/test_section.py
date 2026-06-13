@@ -1,4 +1,3 @@
-import inspect
 from unittest import TestCase
 
 from src.domain.entities.base_entity import BaseEntity
@@ -8,6 +7,7 @@ from src.domain.enums.section_type import SectionType
 class TestSection(TestCase):
     def _import_section(self):
         from src.domain.section.section import Section
+
         return Section
 
     def test_section_is_subclass_of_base_entity(self):

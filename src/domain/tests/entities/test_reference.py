@@ -1,4 +1,3 @@
-import inspect
 from unittest import TestCase
 
 from src.domain.entities.base_entity import BaseEntity
@@ -7,6 +6,7 @@ from src.domain.entities.base_entity import BaseEntity
 class TestReference(TestCase):
     def _import_reference(self):
         from src.domain.reference.reference import Reference
+
         return Reference
 
     def test_reference_is_subclass_of_base_entity(self):

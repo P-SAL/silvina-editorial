@@ -7,10 +7,12 @@ from src.domain.entities.base_entity import BaseEntity
 class TestDocumentContent(TestCase):
     def _import_document_content(self):
         from src.domain.document.document_content import DocumentContent
+
         return DocumentContent
 
     def _import_reference(self):
         from src.domain.reference.reference import Reference
+
         return Reference
 
     def test_document_content_is_subclass_of_base_entity(self):
