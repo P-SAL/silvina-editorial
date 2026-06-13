@@ -2,14 +2,13 @@ from dataclasses import FrozenInstanceError
 from typing import Any, get_type_hints
 from unittest import TestCase
 
+from src.domain.dtos.base_dto import BaseDTO
 from src.domain.dtos.quality_result_dto import QualityResult
 from src.domain.enums.quality_level import QualityLevel
 
 
 class TestQualityResult(TestCase):
     def test_quality_result_is_subclass_of_base_dto(self):
-        from src.domain.dtos.base_dto import BaseDTO
-
         self.assertTrue(issubclass(QualityResult, BaseDTO))
 
     def test_quality_result_is_immutable(self):

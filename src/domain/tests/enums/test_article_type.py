@@ -11,9 +11,7 @@ class TestArticleType(TestCase):
         self.assertEqual(ArticleType.UNKNOWN.value, "unknown")
 
     def test_importable_independently(self):
-        from src.domain.enums.article_type import ArticleType as ImportedEnum
-
-        self.assertIsNotNone(ImportedEnum)
+        self.assertIsNotNone(ArticleType)
 
     def test_member_count(self):
         self.assertEqual(len(ArticleType), 4)

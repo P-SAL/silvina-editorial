@@ -1,11 +1,11 @@
 from dataclasses import dataclass
 
-from src.domain.entities.base_entity import BaseEntity
+from src.domain.dtos.base_dto import BaseDTO
 from src.domain.enums.section_type import SectionType
 
 
-@dataclass
-class Section(BaseEntity):
+@dataclass(frozen=True)
+class Section(BaseDTO):
     """Represents a section in an academic document."""
 
     title: str
@@ -19,11 +19,3 @@ class Section(BaseEntity):
         """Validate that section title is not empty."""
         if not self.title:
             raise ValueError("Section title cannot be empty")
-
-    def get_word_count(self) -> int:
-        """Return the word count of the section content."""
-        return len(self.content.split())
-
-    def is_empty(self) -> bool:
-        """Return True if the section content has no non-whitespace characters."""
-        return len(self.content.strip()) == 0

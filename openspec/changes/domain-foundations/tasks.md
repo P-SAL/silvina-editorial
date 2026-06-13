@@ -11,10 +11,10 @@
 
 | Metric | Estimate |
 |---|---|
-| Production files created | 19 (10 enums + 4 entities + 5 DTOs) + 4 `__init__.py` |
-| Test files created | 19 (10 enum tests + 4 entity tests + 5 DTO tests) |
-| Estimated lines — prod (avg ~25 lines/enum, ~50/entity, ~60/DTO) | ~250 + ~200 + ~300 = ~750 |
-| Estimated lines — tests (avg ~30 lines/enum test, ~60/entity test, ~80/DTO test) | ~300 + ~240 + ~400 = ~940 |
+| Production files created | 19 (10 enums + 9 DTOs) + 0 `__init__.py` for entity folders (no entity folders) |
+| Test files created | 19 (10 enum tests + 9 DTO tests) |
+| Estimated lines — prod (avg ~25 lines/enum, ~55/DTO) | ~250 + ~495 = ~745 |
+| Estimated lines — tests (avg ~30 lines/enum test, ~70/DTO test) | ~300 + ~630 = ~930 |
 | **Total estimated changed lines** | **~1 690** |
 | 400-line budget risk | **High** |
 | Chained PRs recommended | **Yes** |
@@ -25,33 +25,31 @@
 | PR | Scope | Prod lines | Test lines | Slice total | Depends on |
 |---|---|---|---|---|---|
 | PR 1 | 10 enums + `src/domain/tests/enums/__init__.py` | ~250 | ~300 | ~550 | nothing (no src/ deps) |
-| PR 2 | 4 entities (`Citation`, `Reference`, `Section`, `DocumentContent`) | ~200 | ~240 | ~440 | PR 1 (entities import enums) |
-| PR 3 | 5 DTOs (`ClassificationResult`, `QualityResult`, `StructureValidationResult`, `CitationAnalysisResult`, `AnalysisResult`) | ~300 | ~400 | ~700 | PR 1 + PR 2 (`AnalysisResult` refs `DocumentContent`) |
+| PR 2 | 4 base DTOs (`Citation`, `Reference`, `Section`, `DocumentContent`) | ~220 | ~280 | ~500 | PR 1 (DTOs import enums) |
+| PR 3 | 5 result DTOs (`ClassificationResult`, `QualityResult`, `StructureValidationResult`, `CitationAnalysisResult`, `AnalysisResult`) | ~275 | ~350 | ~625 | PR 1 + PR 2 (`AnalysisResult` refs `DocumentContent`) |
 
-> PR 3 alone is ~700 lines. If the team requires strict ≤400/PR, split it further: PR 3a = first 4 DTOs (~530 lines), PR 3b = `AnalysisResult` (~170 lines). But 3a may still exceed 400; the boundary is offered as a guide and must be confirmed by the orchestrator before apply.
+> PR 3 alone is ~625 lines. If the team requires strict ≤400/PR, split it further: PR 3a = first 4 result DTOs, PR 3b = `AnalysisResult`. Confirm with orchestrator before apply.
 
 ---
 
 ## Prerequisites (already in place — verify before starting)
 
-- [x] `src/domain/entities/base_entity.py` exists (`BaseEntity`)
+- [x] `src/domain/entities/base_entity.py` exists (`BaseEntity`, unused in this project)
 - [x] `src/domain/dtos/base_dto.py` exists (`BaseDTO`, `frozen=True`)
-- [x] `src/domain/tests/entities/` exists with `__init__.py`
 - [x] `src/domain/tests/dtos/` exists with `__init__.py`
-- [ ] `src/domain/tests/enums/` with `__init__.py` — MUST be created in Task 0
+- [x] `src/domain/tests/enums/` with `__init__.py` — created in Task 0
+- [ ] Verify no entity folders (`citation/`, `reference/`, `section/`, `document/`) under `src/domain/` (all types are DTOs)
 
 ---
 
-## Task 0 — Scaffold: create missing `__init__.py` files and entity folders
+## Task 0 — Scaffold: create missing `__init__.py` files
 
 **Spec**: REQ-STRUCTURE-1, REQ-TEST-1
 **Parallel**: No (must run first; everything depends on folder existence)
 
 - [x] Create `src/domain/tests/enums/__init__.py` (empty)
-- [x] Create `src/domain/citation/__init__.py` (empty)
-- [x] Create `src/domain/reference/__init__.py` (empty)
-- [x] Create `src/domain/section/__init__.py` (empty)
-- [x] Create `src/domain/document/__init__.py` (empty)
+
+> No entity folders needed — all types are DTOs under `src/domain/dtos/`.
 
 **Verify**: `python -m pytest src/` passes (no new test yet, just no import errors)
 
@@ -139,7 +137,7 @@
 **Parallel**: Yes (with Tasks 1–5, 7–10)
 
 - [x] Write failing test `src/domain/tests/enums/test_section_type.py`
-  - `test_member_count_is_23` — asserts `len(SectionType) == 23` (legacy has 23 members, not 22; APPENDIX+ANEXO both present)
+  - `test_member_count_is_23` — asserts `len(SectionType) == 23` (23 members, not 22; APPENDIX+ANEXO both present — verified against legacy)
   - `test_all_bilingual_section_names_present` — spot-checks `TITLE`, `RESUMEN`, `ABSTRACT`, `INTRODUCCION`, `INTRODUCTION`, `METODOLOGIA`, `METHODOLOGY`, `CONCLUSIONES`, `CONCLUSIONS`, `REFERENCIAS`, `REFERENCES`
 - [x] Create `src/domain/enums/section_type.py` with `SectionType(Enum)` (all 23 members verbatim from legacy)
 - [x] Run `python -m pytest src/domain/tests/enums/test_section_type.py` — green
@@ -208,110 +206,109 @@
 
 ### PR 1 Integration Task
 
-- [x] Run `python -m pytest src/domain/tests/enums/` — all 10 enum test files green (22 test methods)
+- [x] Run `python -m pytest src/domain/tests/enums/` — all 10 enum test files green
 - [ ] Run `python -m pytest tests/` — legacy suite still passes (coexistence REQ-COEXISTENCE-1)
 - [ ] Open PR 1 targeting `main` (or tracker branch per chosen chain strategy)
 
 ---
 
-## PR 2 — Entities (Tasks 11–14)
+## PR 2 — Base DTOs (Tasks 11–14)
 
-> Tasks 11–12 (`Citation`, `Reference`) are parallel. Task 13 (`Section`) is parallel to 11–12.
-> Task 14 (`DocumentContent`) depends on Task 11 (`Reference`) because `DocumentContent.references: list[Reference]`.
+> Tasks 11–13 (`Citation`, `Reference`, `Section`) are parallel. Task 14 (`DocumentContent`)
+> depends on Task 11 (`Reference`) because `DocumentContent.references: list[Reference]`.
+> All types are frozen DTOs under `src/domain/dtos/`.
 
-### Task 11 — `Citation` entity + test
+### Task 11 — `Citation` DTO + test
 
-**Spec**: REQ-ENTITY-CITATION-1, REQ-ENTITY-CITATION-2, REQ-ENTITY-CITATION-3
+**Spec**: REQ-DTO-CITATION-1, REQ-DTO-CITATION-2, REQ-DTO-CITATION-3
 **Parallel**: Yes (with Tasks 12, 13; must complete before Task 14 can start)
 
-- [x] Write failing test `src/domain/tests/entities/test_citation.py`
-  - `test_citation_is_subclass_of_base_entity`
+- [x] Write failing test `src/domain/tests/dtos/test_citation.py`
+  - `test_citation_is_subclass_of_base_dto`
   - `test_citation_instantiation_with_required_fields_only` — `author` and `year` are `None`
+  - `test_citation_is_immutable` — assignment raises `FrozenInstanceError`
   - `test_citation_as_dict_contains_expected_keys` — keys: `text`, `citation_type`, `location`, `author`, `year`
   - `test_citation_str_truncates_at_50_chars` — result starts with `"Citation("` and contains `"..."` for long text
   - `test_citation_type_hints_use_modern_syntax` — no `Optional[`, no `List[`, no `Dict[`
-- [x] Create `src/domain/citation/citation.py`
-  - `@dataclass` subclass of `BaseEntity`; imports: `from dataclasses import dataclass`, `from src.domain.entities.base_entity import BaseEntity`, `from src.domain.enums.citation_type import CitationType`
+- [x] Create `src/domain/dtos/citation_dto.py`
+  - `@dataclass(frozen=True)` subclass of `BaseDTO`; imports: `from dataclasses import dataclass`, `from src.domain.dtos.base_dto import BaseDTO`, `from src.domain.enums.citation_type import CitationType`
   - Fields: `text: str`, `citation_type: CitationType`, `location: int`, `author: str | None = None`, `year: str | None = None`
   - `__str__` method returning `"Citation(<text[:50]>...)"` when text > 50 chars
-- [x] Run `python -m pytest src/domain/tests/entities/test_citation.py` — green
+- [x] Run `python -m pytest src/domain/tests/dtos/test_citation.py` — green
 
-**Work unit commit**: `feat(domain/entities): add Citation entity and tests`
+**Work unit commit**: `feat(domain/dtos): add Citation DTO and tests`
 
 ---
 
-### Task 12 — `Reference` entity + test
+### Task 12 — `Reference` DTO + test
 
-**Spec**: REQ-ENTITY-REFERENCE-1, REQ-ENTITY-REFERENCE-2
+**Spec**: REQ-DTO-REFERENCE-1, REQ-DTO-REFERENCE-2
 **Parallel**: Yes (with Tasks 11, 13; must complete before Task 14)
 
-- [x] Write failing test `src/domain/tests/entities/test_reference.py`
-  - `test_reference_is_subclass_of_base_entity`
+- [x] Write failing test `src/domain/tests/dtos/test_reference.py`
+  - `test_reference_is_subclass_of_base_dto`
   - `test_reference_instantiation_with_required_field_only` — all optional fields are `None`
+  - `test_reference_is_immutable` — assignment raises `FrozenInstanceError`
   - `test_reference_str_returns_formatted_string` — `Reference(text="...", authors="Smith", year="2020")` → `"Reference(Smith, 2020)"`
   - `test_reference_str_when_authors_and_year_are_none` — no crash; handles gracefully
-- [x] Create `src/domain/reference/reference.py`
-  - `@dataclass` subclass of `BaseEntity`
+- [x] Create `src/domain/dtos/reference_dto.py`
+  - `@dataclass(frozen=True)` subclass of `BaseDTO`
   - Fields: `text: str`, `authors: str | None = None`, `year: str | None = None`, `title: str | None = None`, `source: str | None = None`
   - `__str__` returning `f"Reference({self.authors}, {self.year})"` (or equivalent graceful form)
-- [x] Run `python -m pytest src/domain/tests/entities/test_reference.py` — green
+- [x] Run `python -m pytest src/domain/tests/dtos/test_reference.py` — green
 
-**Work unit commit**: `feat(domain/entities): add Reference entity and tests`
+**Work unit commit**: `feat(domain/dtos): add Reference DTO and tests`
 
 ---
 
-### Task 13 — `Section` entity + test
+### Task 13 — `Section` DTO + test
 
-**Spec**: REQ-ENTITY-SECTION-1, REQ-ENTITY-SECTION-2, REQ-ENTITY-SECTION-3, REQ-ENTITY-SECTION-4, REQ-TEST-3 (bug #7)
+**Spec**: REQ-DTO-SECTION-1, REQ-DTO-SECTION-2, REQ-DTO-SECTION-3, REQ-TEST-3 (bug #7)
 **Parallel**: Yes (with Tasks 11, 12; no deps on them)
 
-- [x] Write failing test `src/domain/tests/entities/test_section.py`
-  - `test_section_is_subclass_of_base_entity`
+- [x] Write failing test `src/domain/tests/dtos/test_section.py`
+  - `test_section_is_subclass_of_base_dto`
+  - `test_section_is_immutable` — assignment raises `FrozenInstanceError`
   - `test_section_with_empty_title_raises_value_error`
   - `test_section_without_section_type_has_section_type_none` — bug #7 regression guard: no local import crash, `section_type is None`
   - `test_section_with_explicit_section_type_preserves_it`
-  - `test_get_word_count_returns_word_count_of_content`
-  - `test_is_empty_returns_true_for_blank_content`
-  - `test_is_empty_returns_false_for_non_blank_content`
-- [x] Create `src/domain/section/section.py`
-  - `@dataclass` subclass of `BaseEntity` (NOT frozen)
-  - Imports at top only: `from dataclasses import dataclass`, `from src.domain.entities.base_entity import BaseEntity`, `from src.domain.enums.section_type import SectionType`
+- [x] Create `src/domain/dtos/section_dto.py`
+  - `@dataclass(frozen=True)` subclass of `BaseDTO`
+  - Imports at top only: `from dataclasses import dataclass`, `from src.domain.dtos.base_dto import BaseDTO`, `from src.domain.enums.section_type import SectionType`
   - Fields: `title: str`, `content: str`, `section_type: SectionType | None = None`, `start_position: int = 0`, `end_position: int = 0`, `level: int = 1`
-  - `__post_init__`: only raises `ValueError` if `title` is empty; NO local imports; NO `classify_section_by_name` call
-  - `get_word_count(self) -> int`
-  - `is_empty(self) -> bool`
-- [x] Run `python -m pytest src/domain/tests/entities/test_section.py` — green
+  - `__post_init__`: only raises `ValueError` if `title` is empty; NO local imports; NO `classify_section_by_name` call; NO `get_word_count`/`is_empty` methods (YAGNI)
+- [x] Run `python -m pytest src/domain/tests/dtos/test_section.py` — green
 
-**Work unit commit**: `feat(domain/entities): add Section entity and tests (bug-7 fixed)`
+**Work unit commit**: `feat(domain/dtos): add Section DTO and tests (bug-7 fixed)`
 
 ---
 
-### Task 14 — `DocumentContent` entity + test
+### Task 14 — `DocumentContent` DTO + test
 
-**Spec**: REQ-ENTITY-DOCCONTENT-1, REQ-ENTITY-DOCCONTENT-2, REQ-ENTITY-DOCCONTENT-3
-**Parallel**: No — depends on Task 11 (Citation) and Task 12 (Reference) being green first
-**Sequential after**: Tasks 11 + 12
+**Spec**: REQ-DTO-DOCCONTENT-1, REQ-DTO-DOCCONTENT-2
+**Parallel**: No — depends on Task 12 (Reference) being green first
+**Sequential after**: Task 12
 
-- [x] Write failing test `src/domain/tests/entities/test_document_content.py`
-  - `test_document_content_is_subclass_of_base_entity`
-  - `test_document_content_computes_word_count_from_paragraphs_when_zero` — `word_count=0, paragraphs=["hello world", "foo"]` → `word_count == 3`
-  - `test_document_content_preserves_explicit_word_count` — `word_count=42` not overwritten
+- [x] Write failing test `src/domain/tests/dtos/test_document_content.py`
+  - `test_document_content_is_subclass_of_base_dto`
+  - `test_document_content_is_immutable` — assignment raises `FrozenInstanceError`
+  - `test_document_content_accepts_word_count_as_required_field` — `word_count=42, char_count=100` → `doc.word_count == 42`
   - `test_document_content_field_types_use_modern_syntax` — no `List[`, `Dict[`, `Optional[`
-  - `test_document_content_references_is_list_of_reference_instances` — `references` field accepts `list[Reference]`
-- [x] Create `src/domain/document/document_content.py`
-  - `@dataclass` subclass of `BaseEntity` (NOT frozen)
-  - Imports: `from dataclasses import dataclass, field`, `from src.domain.entities.base_entity import BaseEntity`, `from src.domain.reference.reference import Reference`
+  - `test_document_content_references_is_list_of_reference_dtos` — `references` field accepts `list[Reference]`
+- [x] Create `src/domain/dtos/document_content_dto.py`
+  - `@dataclass(frozen=True)` subclass of `BaseDTO`
+  - Imports: `from dataclasses import dataclass, field`, `from src.domain.dtos.base_dto import BaseDTO`, `from src.domain.dtos.reference_dto import Reference`
   - Fields with legacy names: `word_count: int`, `char_count: int`, `paragraph_count: int = 0`, `title: str | None = None`, `authors: str | None = None`, `abstract: str | None = None`, `keywords: list[str] = field(default_factory=list)`, `references: list[Reference] = field(default_factory=list)`, `paragraphs: list[str] = field(default_factory=list)`, `sections: dict[str, str] = field(default_factory=dict)`
-  - `__post_init__`: if `word_count == 0` and `paragraphs`, compute `word_count` from `paragraphs` (sum of words per paragraph)
-- [x] Run `python -m pytest src/domain/tests/entities/` — all 4 entity tests green
+  - NO `__post_init__` that assigns to `self.*` (frozen); `word_count` is caller-supplied
+- [x] Run `python -m pytest src/domain/tests/dtos/test_document_content.py` — green
 
-**Work unit commit**: `feat(domain/entities): add DocumentContent entity and tests`
+**Work unit commit**: `feat(domain/dtos): add DocumentContent DTO and tests`
 
 ---
 
 ### PR 2 Integration Task
 
-- [x] Run `python -m pytest src/domain/tests/entities/` — all green
+- [x] Run `python -m pytest src/domain/tests/dtos/test_citation.py src/domain/tests/dtos/test_reference.py src/domain/tests/dtos/test_section.py src/domain/tests/dtos/test_document_content.py` — all green
 - [x] Run `python -m pytest tests/` — legacy suite still passes (148 passed, 3 skipped)
 - [ ] Open PR 2 targeting `main` (after PR 1 merged, or on stacked branch if using feature-branch-chain)
 
@@ -410,7 +407,7 @@
 
 ---
 
-### Task 19 — `AnalysisResult` DTO + test (to_dict contract + bug #3 key fix)
+### Task 19 — `AnalysisResult` DTO + test (to_dict contract — `"category"` key)
 
 **Spec**: REQ-DTO-ANALYSIS-1, REQ-DTO-ANALYSIS-2
 **Parallel**: No — depends on Tasks 14 (`DocumentContent`), 15 (`ClassificationResult`), 16 (`QualityResult`), 17 (`StructureValidationResult`), 18 (`CitationAnalysisResult`)
@@ -420,14 +417,14 @@
   - `test_analysis_result_is_subclass_of_base_dto`
   - `test_analysis_result_is_immutable`
   - `test_to_dict_returns_all_required_top_level_keys` — keys: `filename`, `timestamp`, `classification`, `quality`, `structure`, `citations`
-  - `test_to_dict_classification_uses_article_type_key` — `result["classification"]` contains `"article_type"` (not `"category"`) with enum `.value` string (bug #3 representation)
+  - `test_to_dict_classification_uses_category_key` — `result["classification"]` contains `"category"` (NOT `"article_type"`) with enum `.value` string (legacy byte-compatible key per ADR-6)
   - `test_to_dict_timestamp_is_iso8601_string` — value is a string matching `.isoformat()` output
   - Uses a helper `_make_analysis_result()` factory inside the test class to build valid nested objects
 - [x] Create `src/domain/dtos/analysis_result_dto.py`
   - `@dataclass(frozen=True)` subclass of `BaseDTO`
-  - Imports: all DTO/entity types from their absolute `src.domain.*` paths; `from typing import Any`; `from datetime import datetime`
-  - Fields: `filename: str`, `document_content: DocumentContent`, `classification: ClassificationResult`, `quality: QualityResult`, `structure: StructureValidationResult`, `citations: CitationAnalysisResult`, `timestamp: datetime = field(default_factory=datetime.now)`
-  - `to_dict(self) -> dict[str, Any]`: custom flattened shape (preserves downstream contract per ADR-6); uses enum `.value`, ISO timestamp, selected fields per spec contract
+  - Imports: all DTO types from their absolute `src.domain.dtos.*` paths; `from typing import Any`; `from datetime import datetime`
+  - Fields: `filename: str`, `document_content: DocumentContent` (frozen DTO), `classification: ClassificationResult`, `quality: QualityResult`, `structure: StructureValidationResult`, `citations: CitationAnalysisResult`, `timestamp: datetime = field(default_factory=datetime.now)`
+  - `to_dict(self) -> dict[str, Any]`: custom flattened shape; classification sub-dict uses key `"category"` (legacy byte-compatible); uses enum `.value`, ISO timestamp, selected fields per spec contract
 - [x] Run `python -m pytest src/domain/tests/dtos/test_analysis_result.py` — green
 
 **Work unit commit**: `feat(domain/dtos): add AnalysisResult DTO with to_dict contract and tests`
@@ -436,7 +433,7 @@
 
 ### PR 3 Integration Task
 
-- [x] Run `python -m pytest src/domain/tests/dtos/` — all 5 DTO tests green
+- [x] Run `python -m pytest src/domain/tests/dtos/` — all 9 DTO tests green
 - [x] Run `python -m pytest src/` — entire new test suite green (102 passed)
 - [x] Run `python -m pytest tests/` — legacy suite still passes (148 passed, 3 skipped)
 - [ ] Open PR 3 targeting `main` (or previous stacked branch)
@@ -462,15 +459,15 @@
 ```
 Task 0 (scaffold)
     │
-    ├── Tasks 1–10 (enums — all parallel)    ← PR 1
+    ├── Tasks 1–10 (enums — all parallel)         ← PR 1
     │       │
-    │       ├── Task 11 (Citation)  ──────┐
-    │       ├── Task 12 (Reference) ──────┤  ← PR 2
-    │       └── Task 13 (Section)   ──────┤
-    │               (all parallel)         │
-    │                                      ▼
-    │                               Task 14 (DocumentContent)
-    │                                      │
+    │       ├── Task 11 (Citation DTO)   ─────────┐
+    │       ├── Task 12 (Reference DTO)  ─────────┤  ← PR 2
+    │       └── Task 13 (Section DTO)    ─────────┤
+    │               (all parallel)                 │
+    │                                              ▼
+    │                                  Task 14 (DocumentContent DTO)
+    │                                              │
     │       ┌──── Task 15 (ClassificationResult)  ──────┐
     │       ├──── Task 16 (QualityResult)          ──────┤
     │       ├──── Task 17 (StructureValidationResult) ──┤  ← PR 3
@@ -490,6 +487,6 @@ Task 0 (scaffold)
 |---|---|---|---|
 | Scaffold | T0 | Sequential first | ~5 |
 | Enums | T1–T10 | Parallel (post T0) | ~550 |
-| Entities | T11–T13 parallel, T14 after T11+T12 | Mixed | ~440 |
-| DTOs | T15–T18 parallel, T19 after T14+T15+T16+T17+T18 | Mixed | ~700 |
-| **Total** | **20 tasks** | — | **~1 695** |
+| Base DTOs | T11–T13 parallel, T14 after T12 | Mixed | ~500 |
+| Result DTOs | T15–T18 parallel, T19 after T14+T15+T16+T17+T18 | Mixed | ~625 |
+| **Total** | **20 tasks** | — | **~1 680** |

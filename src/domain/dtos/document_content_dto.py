@@ -1,11 +1,11 @@
 from dataclasses import dataclass, field
 
-from src.domain.entities.base_entity import BaseEntity
-from src.domain.reference.reference import Reference
+from src.domain.dtos.base_dto import BaseDTO
+from src.domain.dtos.reference_dto import Reference
 
 
-@dataclass
-class DocumentContent(BaseEntity):
+@dataclass(frozen=True)
+class DocumentContent(BaseDTO):
     """Represents the extracted content of a document."""
 
     word_count: int
@@ -18,8 +18,3 @@ class DocumentContent(BaseEntity):
     references: list[Reference] = field(default_factory=list)
     paragraphs: list[str] = field(default_factory=list)
     sections: dict[str, str] = field(default_factory=dict)
-
-    def __post_init__(self) -> None:
-        """Compute word count from paragraphs when word_count is zero."""
-        if self.word_count == 0 and self.paragraphs:
-            self.word_count = sum(len(paragraph.split()) for paragraph in self.paragraphs)

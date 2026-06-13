@@ -11,24 +11,27 @@ restructuring. The architectural pattern is fixed by the SKILL and the master pl
 hexagonal/clean architecture with a pure inner domain ring. Slice 0 fills only the
 innermost ring (data types) and adds nothing that performs I/O.
 
-Two base classes already exist and are the contract every migrated type slots into:
+One base class is used by all migrated types:
 
-- `src/domain/entities/base_entity.py` — `BaseEntity` exposes `as_dict()` via
-  `dataclasses.asdict`. Subclasses MUST be `@dataclass`. **Mutable** (no `frozen`).
 - `src/domain/dtos/base_dto.py` — `BaseDTO` is `@dataclass(frozen=True, eq=True)`,
-  exposes `as_dict()` and `from_dict()`. Subclasses inherit `frozen=True`.
+  exposes `as_dict()` and `from_dict()`. All 9 migrated data types extend `BaseDTO`.
 
-**Core layering decision (Entity vs DTO):** apply the SKILL criterion per type, not a
-blanket plan suggestion.
+> `src/domain/entities/base_entity.py` (`BaseEntity`) exists in the skeleton but is
+> **not used in this project** — see ADR-1 below.
 
-- **Entity** = mutable + has behavior (`__post_init__` that mutates, instance methods).
-  Extends `BaseEntity`, decorated `@dataclass` (NOT frozen).
-- **DTO** = immutable result that crosses an outward boundary, no mutation.
-  Extends `BaseDTO` (already `frozen=True`).
+**Core design decision — all data types are DTOs:**
 
-The decisive test for this slice: **can the type be frozen?** If a type mutates itself
-in `__post_init__` or exposes mutating behavior, it CANNOT be a frozen `BaseDTO` and MUST
-be an Entity. This directly resolves the two flagged cases (`DocumentContent`, `Section`).
+The project has **no database**. Following the same reasoning as the "no DB → no
+Repository / all Port" decision, there is no persistence identity layer. Domain data
+simply flows through use cases as immutable records. Therefore:
+
+- ALL 9 migrated data types (`Citation`, `Reference`, `Section`, `DocumentContent`,
+  `ClassificationResult`, `QualityResult`, `StructureValidationResult`,
+  `CitationAnalysisResult`, `AnalysisResult`) extend `BaseDTO` (`frozen=True`).
+- `Section.__post_init__` retains ONLY the empty-title `ValueError` guard (raising
+  is allowed in frozen `__post_init__`; only `self.*` assignment is forbidden).
+- `DocumentContent.word_count` is a plain required field; paragraph-based
+  auto-computation is deferred to a factory in a later slice.
 
 **Boundaries respected:**
 - Domain imports only stdlib (`from x import y`) and other `src.domain` modules.
@@ -56,22 +59,17 @@ src/domain/enums/recommendation_priority.py  RecommendationPriority
 src/domain/enums/severity_level.py           SeverityLevel
 ```
 
-### Entities — one folder per entity (`src/domain/<entity>/`)
+### DTOs — `src/domain/dtos/` (ALL data types)
 ```
-src/domain/citation/citation.py              Citation            (BaseEntity, @dataclass)
-src/domain/reference/reference.py            Reference           (BaseEntity, @dataclass)
-src/domain/section/section.py                Section             (BaseEntity, @dataclass)
-src/domain/document/document_content.py      DocumentContent     (BaseEntity, @dataclass)
-```
-Each entity folder gets an `__init__.py`.
-
-### DTOs — `src/domain/dtos/`
-```
-src/domain/dtos/classification_result_dto.py        ClassificationResult   (BaseDTO)
-src/domain/dtos/quality_result_dto.py               QualityResult          (BaseDTO)
-src/domain/dtos/structure_validation_result_dto.py  StructureValidationResult (BaseDTO)
-src/domain/dtos/citation_analysis_result_dto.py     CitationAnalysisResult (BaseDTO)
-src/domain/dtos/analysis_result_dto.py              AnalysisResult         (BaseDTO)
+src/domain/dtos/citation_dto.py                     Citation               (BaseDTO, frozen)
+src/domain/dtos/reference_dto.py                    Reference              (BaseDTO, frozen)
+src/domain/dtos/section_dto.py                      Section                (BaseDTO, frozen)
+src/domain/dtos/document_content_dto.py             DocumentContent        (BaseDTO, frozen)
+src/domain/dtos/classification_result_dto.py        ClassificationResult   (BaseDTO, frozen)
+src/domain/dtos/quality_result_dto.py               QualityResult          (BaseDTO, frozen)
+src/domain/dtos/structure_validation_result_dto.py  StructureValidationResult (BaseDTO, frozen)
+src/domain/dtos/citation_analysis_result_dto.py     CitationAnalysisResult (BaseDTO, frozen)
+src/domain/dtos/analysis_result_dto.py              AnalysisResult         (BaseDTO, frozen)
 ```
 
 > Class names keep their domain names (no `DTO` suffix on the class) to stay aligned with
@@ -92,64 +90,59 @@ src/domain/tests/enums/test_analysis_dimension.py
 src/domain/tests/enums/test_validation_status.py
 src/domain/tests/enums/test_recommendation_priority.py
 src/domain/tests/enums/test_severity_level.py
-src/domain/tests/entities/test_citation.py
-src/domain/tests/entities/test_reference.py
-src/domain/tests/entities/test_section.py
-src/domain/tests/entities/test_document_content.py
+src/domain/tests/dtos/test_citation.py
+src/domain/tests/dtos/test_reference.py
+src/domain/tests/dtos/test_section.py
+src/domain/tests/dtos/test_document_content.py
 src/domain/tests/dtos/test_classification_result.py
 src/domain/tests/dtos/test_quality_result.py
 src/domain/tests/dtos/test_structure_validation_result.py
 src/domain/tests/dtos/test_citation_analysis_result.py
 src/domain/tests/dtos/test_analysis_result.py
 ```
-`tests/entities/` and `tests/dtos/` already exist; `tests/enums/` is new (add
-`__init__.py`). Entity tests live under `tests/entities/` even though the source entity
-lives in its own `src/domain/<entity>/` folder — the SKILL maps all `src/domain/` tests
-under `src/domain/tests/<topic>/`, and `entities` is the topic for entity classes.
+`tests/dtos/` already exists; `tests/enums/` is new (add `__init__.py`).
+All data-type tests live under `tests/dtos/` — all 9 types are DTOs.
 
-## 3. Per-Type Entity vs DTO Decision (applied)
+## 3. Per-Type DTO Classification (applied)
 
-| Type | Decision | Rationale (SKILL criterion) |
+All types are frozen DTOs. The project has no database → no entities.
+
+| Type | File | Rationale |
 |---|---|---|
-| `Citation` | **Entity** | Mutable dataclass, has `__str__` behavior, no boundary-crossing immutability requirement. |
-| `Reference` | **Entity** | Same as `Citation`: mutable, `__str__` behavior. |
-| `Section` | **Entity** | Has `__post_init__` that **raises** on empty title + behavior methods `get_word_count()`, `is_empty()`. Cannot be a frozen DTO. |
-| `DocumentContent` | **Entity** | `__post_init__` **mutates** `self.word_count`. A frozen `BaseDTO` forbids attribute assignment after init → would raise `FrozenInstanceError`. MUST be a mutable Entity. |
-| `ClassificationResult` | **DTO** | Immutable output of classification; crosses to formatter/exporter. Gets corrected `create()` factory (§4). |
-| `QualityResult` | **DTO** | Immutable analysis output. Consolidation target (§5). |
-| `StructureValidationResult` | **DTO** | Immutable validation output. |
-| `CitationAnalysisResult` | **DTO** | Immutable analysis output. |
-| `AnalysisResult` | **DTO** | Immutable aggregate output consumed downstream. |
+| `Citation` | `src/domain/dtos/citation_dto.py` | No DB → no entity; frozen record; `__str__` is a display helper, not mutation |
+| `Reference` | `src/domain/dtos/reference_dto.py` | No DB → no entity; frozen record |
+| `Section` | `src/domain/dtos/section_dto.py` | No DB → no entity; `__post_init__` only raises (compatible with frozen); no `get_word_count`/`is_empty` (YAGNI — no callers) |
+| `DocumentContent` | `src/domain/dtos/document_content_dto.py` | No DB → no entity; `word_count` plain required field; paragraph-compute deferred to factory |
+| `ClassificationResult` | `src/domain/dtos/classification_result_dto.py` | Immutable output of classification; crosses to formatter/exporter. Gets corrected `create()` factory (§4). |
+| `QualityResult` | `src/domain/dtos/quality_result_dto.py` | Immutable analysis output. Consolidation target (§5). |
+| `StructureValidationResult` | `src/domain/dtos/structure_validation_result_dto.py` | Immutable validation output. |
+| `CitationAnalysisResult` | `src/domain/dtos/citation_analysis_result_dto.py` | Immutable analysis output. |
+| `AnalysisResult` | `src/domain/dtos/analysis_result_dto.py` | Immutable aggregate; now contains only frozen DTOs. |
 
-### 3.1 `DocumentContent` — frozen conflict resolution
+### 3.1 `DocumentContent` — frozen and `word_count` field
 The legacy `__post_init__` computes `word_count` from `paragraphs` when `word_count == 0`.
-This is **in-place mutation**, incompatible with `frozen=True`. Decision: keep
-`DocumentContent` as a **mutable `BaseEntity`** and preserve the `__post_init__` mutation
-verbatim (typed). No behavior change. The `references` field is typed
-`list[Reference]` referencing the migrated `Reference` entity (absolute import
-`from src.domain.reference.reference import Reference`). `keywords`/`paragraphs` →
+That is **in-place mutation** (`self.word_count = ...`), incompatible with `frozen=True`.
+**Decision:** `word_count` is a plain required `int` field. Callers supply it directly.
+Paragraph-based computation is deferred to a factory in a later slice.
+The `references` field is typed `list[Reference]` (absolute import
+`from src.domain.dtos.reference_dto import Reference`). `keywords`/`paragraphs` →
 `list[str]`, `sections` → `dict[str, str]`.
 
-### 3.2 `Section` — `__post_init__` + out-of-scope helper resolution
+### 3.2 `Section` — `__post_init__` + out-of-scope helper + YAGNI
 Legacy `Section.__post_init__` does two things:
-1. Raises `ValueError` if `title` is empty — **kept** (still raises `ValueError`; the
-   domain exception hierarchy is Slice 1, so we do NOT introduce a `BaseSrcError` subtype
-   here to avoid scope creep).
+1. Raises `ValueError` if `title` is empty — **kept** (raising in frozen `__post_init__`
+   is valid; only `self.*` assignment is forbidden).
 2. Auto-detects `section_type` via the **local import** of `classify_section_by_name`.
-   That helper is **out of scope** (it becomes the `SectionClassifier` service in a later
-   slice, plan §4.2) and currently has its own bug (returns `None` while annotated
-   `-> SectionType`).
+   That helper is **out of scope** (plan §4.2) and buggy.
 
-**Decision:** in this slice `Section.__post_init__` keeps ONLY the empty-title guard. The
-auto-detection branch is **removed**; `section_type: SectionType | None = None` is taken
-as provided by the caller. This honors "migrate data types only" — the classification
-behavior moves to its own service slice. The removal is documented as an intentional,
-test-covered behavior delta (a test asserts `section_type` stays `None` when not passed).
-Behavior methods `get_word_count()` and `is_empty()` are preserved verbatim (typed).
+**Decision:** `Section.__post_init__` keeps ONLY the empty-title guard. Auto-detection
+removed; `section_type: SectionType | None = None` is taken as provided by the caller.
+`get_word_count()` and `is_empty()` are **removed** (YAGNI — no callers exist in the
+codebase). A test asserts `section_type` stays `None` when not passed.
 
-> This is the only **intentional behavior change** in the slice beyond bug fixes. It is
-> safe because no caller is rewired in Slice 0 (legacy `Section` still auto-detects); the
-> new `src.domain.section.Section` is not yet imported by any production code.
+> This is the only **intentional behavior change** beyond bug fixes. Safe because no
+> caller is rewired in Slice 0; the new `src.domain.dtos.section_dto.Section` is not
+> yet imported by any production code.
 
 ## 4. `ClassificationResult.create(...)` Factory Design
 
@@ -235,14 +228,20 @@ in the proposal for traceability; fixed in their service slices).
 - `datetime` imported as `from datetime import datetime`.
 
 ### `AnalysisResult.to_dict()` shape
-`AnalysisResult` aggregates the other types. It extends `BaseDTO`, so it inherits
-`as_dict()` (deep `asdict`). The legacy `to_dict()` produced a **custom, flattened** shape
-(enum `.value` strings, ISO timestamp, selected fields) consumed by the formatter/exporter
-/Gradio. **Decision:** preserve that exact custom serialization as an explicit
-`to_dict()` method on the DTO (typed `-> dict[str, Any]`), separate from the inherited
-`as_dict()`. Keeping `to_dict()` byte-compatible protects the downstream contract flagged
-in plan §10.4 until the later orchestrator slice (13) formalizes it. A test pins the
-`to_dict()` shape (keys + enum `.value` flattening + ISO timestamp).
+`AnalysisResult` aggregates the other types (now all frozen DTOs). It extends `BaseDTO`,
+so it inherits `as_dict()` (deep `asdict`). The legacy `to_dict()` produced a
+**custom, flattened** shape (enum `.value` strings, ISO timestamp, selected fields)
+consumed by the formatter/exporter/Gradio. **Decision:** preserve that exact custom
+serialization as an explicit `to_dict()` method on the DTO (typed `-> dict[str, Any]`),
+separate from the inherited `as_dict()`. Keeping `to_dict()` byte-compatible protects
+the downstream contract flagged in plan §10.4 until the later orchestrator slice (13)
+formalizes it.
+
+**Critical key:** the classification sub-dict uses key `"category"` (legacy byte-compatible
+key), NOT `"article_type"`. The `ClassificationResult` *field* is named `article_type`
+(correct domain name), but `to_dict()` serializes it under `"category"` for downstream
+compatibility. A test pins the `to_dict()` shape (keys + `"category"` key + enum `.value`
+flattening + ISO timestamp).
 
 ## 6. Test Strategy (Strict TDD)
 
@@ -255,15 +254,12 @@ in plan §10.4 until the later orchestrator slice (13) formalizes it. A test pin
 - **Per-type coverage (minimum):**
   - **Enums:** member set + each `.value`. `SeverityLevel` existence test directly
     documents bug #1 is gone (it imports cleanly with no `__all__`).
-  - **Entities:** construction; `as_dict()` returns a dict; behavior preserved
-    (`Section.get_word_count`, `Section.is_empty`, `Section` empty-title raises
-    `ValueError`, `Section` leaves `section_type=None` when not provided —
-    documents §3.2 delta; `DocumentContent.__post_init__` computes `word_count`
-    from `paragraphs` when `0`).
-  - **DTOs:** construction; frozen (assignment raises `FrozenInstanceError`);
-    `as_dict()`/`from_dict()` round-trip where applicable; `ClassificationResult.create()`
-    factory (§4); `QualityResult` consolidation (bug #2); `Any` typing (bug #4);
-    `AnalysisResult.to_dict()` shape (§5).
+  - **DTOs (all 9 types):** construction; frozen (assignment raises `FrozenInstanceError`);
+    `as_dict()`/`from_dict()` round-trip where applicable; `Section` empty-title raises
+    `ValueError`, `section_type=None` when not provided (§3.2 delta);
+    `DocumentContent` accepts `word_count` as required field (no auto-compute);
+    `ClassificationResult.create()` factory (§4); `QualityResult` consolidation (bug #2);
+    `Any` typing (bug #4); `AnalysisResult.to_dict()` shape with `"category"` key (§5).
 - **Purity:** no DB, no network, no `python-docx`/`win32com`/`ollama`. Pure Python only.
 - **No docstrings/comments inside test bodies** (SKILL §6); English self-documenting
   method names (e.g. `test_document_content_computes_word_count_from_paragraphs`).
@@ -281,12 +277,15 @@ in plan §10.4 until the later orchestrator slice (13) formalizes it. A test pin
 
 ## 8. ADR-Style Decisions
 
-**ADR-1: `DocumentContent` and `Section` are Entities, not DTOs.**
-- Decision: both extend `BaseEntity` (mutable).
-- Rationale: `DocumentContent.__post_init__` mutates `word_count`; `Section.__post_init__`
-  raises and the class exposes behavior. Frozen DTOs forbid both.
-- Rejected: forcing them into `BaseDTO` and moving mutation to a factory — would change
-  the public construction contract and break the "migrate data types only" boundary.
+**ADR-1: No entities — all 9 data types are frozen DTOs.**
+- Decision: `Citation`, `Reference`, `Section`, `DocumentContent` extend `BaseDTO`
+  (frozen), not `BaseEntity`. `BaseEntity` is unused in this project.
+- Rationale: the project has no database → no persistence → no identity layer. This
+  parallels the "no DB → no Repository / all Port" decision already in effect. Domain data
+  flows through use cases as immutable records; there is no lifecycle to track.
+- Rejected: using `BaseEntity` for types with behavior — behavior is a `__str__` display
+  helper (Citation, Reference) or a raising guard (Section), neither of which requires
+  mutability. Frozen DTOs support both patterns.
 
 **ADR-2: Class names keep domain names; `_dto` is a filename marker only.**
 - Decision: `ClassificationResult` (not `ClassificationResultDTO`) in file
@@ -296,14 +295,13 @@ in plan §10.4 until the later orchestrator slice (13) formalizes it. A test pin
 - Rejected: appending `DTO` to class names — SKILL §4 lists the suffix convention but the
   plan locked these specific names; consistency with the plan wins for migrated outputs.
 
-**ADR-3: `Section` drops `section_type` auto-detection in Slice 0.**
-- Decision: `__post_init__` keeps only the empty-title guard; classification moves to the
-  future `SectionClassifier` service.
-- Rationale: the classifier helper is out of scope (plan §4.2) and buggy; reproducing it
-  would import an out-of-scope, broken function. The new `Section` is not yet wired into
-  production, so the delta is inert.
-- Rejected: copying `classify_section_by_name` into the entity — violates one-class/one-
-  service-per-file and pulls a later slice forward.
+**ADR-3: `Section` drops `section_type` auto-detection AND `get_word_count`/`is_empty`.**
+- Decision: `__post_init__` keeps only the empty-title guard; auto-detection and behavior
+  methods removed.
+- Rationale: classifier helper is out of scope (plan §4.2) and buggy. `get_word_count()`
+  and `is_empty()` have no callers — YAGNI. Frozen DTO `__post_init__` supports raising.
+- Rejected: copying `classify_section_by_name` into the DTO (out of scope, pulls a later
+  slice forward) or keeping dead behavior methods (YAGNI violation).
 
 **ADR-4: `ClassificationResult.create()` corrected factory on the DTO; legacy helper
 untouched.**
@@ -321,20 +319,23 @@ untouched.**
 - Rejected: keeping both (duplication) or merging into a new name (needless churn for
   downstream references already targeting `QualityResult`).
 
-**ADR-6: Preserve `AnalysisResult.to_dict()` custom shape verbatim.**
+**ADR-6: Preserve `AnalysisResult.to_dict()` custom shape verbatim; use `"category"` key.**
 - Decision: keep the flattened `to_dict()` as an explicit method alongside inherited
-  `as_dict()`.
+  `as_dict()`. The classification sub-dict key is `"category"` (legacy byte-compatible).
 - Rationale: formatter/exporter/Gradio depend on the exact flattened shape (plan §10.4);
   changing it now risks downstream breakage before the orchestrator slice.
 - Rejected: replacing `to_dict()` with `as_dict()` — different shape, would break the
-  downstream contract.
+  downstream contract; using `"article_type"` as key — incompatible with legacy consumers.
 
 ## 9. Risks
 
 | Risk | Likelihood | Mitigation |
 |---|---|---|
-| `Section` auto-detection removal surprises a future slice | Low | Documented ADR-3 + test pins the new behavior; classifier slice re-adds detection as a service. |
-| `AnalysisResult.to_dict()` shape drift vs legacy | Low | Test pins keys/values; method copied verbatim and typed. |
+| `Section` frozen `__post_init__` misunderstood as forbidden | Low | Documented ADR-3; raising in `__post_init__` is valid with `frozen=True`; covered by test. |
+| `DocumentContent.word_count` callers expect auto-compute | Low | No caller yet (new type); factory deferred to later slice; documented in ADR-1 and spec. |
+| `AnalysisResult` now all-DTO composition breaks assumption | Resolved | All sub-fields are now frozen DTOs; cleaner composition than before. |
+| `AnalysisResult.to_dict()` `"category"` key surprises readers | Low | Documented ADR-6 + test pins the key explicitly; comment in `to_dict()` explains legacy reason. |
+| `Section` `get_word_count`/`is_empty` removal surprises a future slice | Low | Documented ADR-3 + YAGNI rationale; no callers existed. |
 | Frozen DTO + `default_factory(timestamp)` misunderstanding | Low | Valid Python; covered by a construction test. |
 | Slice exceeds 400-line budget (19 types + 19 tests) | Med | Measured at tasks; split into chained PRs at tasks/apply per delivery strategy if over budget — NOT split in design. |
 | Accidental legacy import from `src/` | Low | Invariant enforced by review; all intra-`src` refs use absolute `src.domain.*` paths. |

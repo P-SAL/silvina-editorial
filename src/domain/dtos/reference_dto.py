@@ -1,10 +1,10 @@
 from dataclasses import dataclass
 
-from src.domain.entities.base_entity import BaseEntity
+from src.domain.dtos.base_dto import BaseDTO
 
 
-@dataclass
-class Reference(BaseEntity):
+@dataclass(frozen=True)
+class Reference(BaseDTO):
     """Represents a reference in the bibliography."""
 
     text: str

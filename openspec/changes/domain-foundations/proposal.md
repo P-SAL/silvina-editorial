@@ -5,15 +5,24 @@
 
 ## Intent
 
-Migrate the **pure domain foundations** — enums, entities, and DTOs — from the
+Migrate the **pure domain foundations** — enums and DTOs — from the
 legacy `domain/enums.py` and `domain/models.py` into the existing `src/domain/`
 skeleton, with **zero I/O, ports, adapters, or use cases**.
 
 These types are the shared vocabulary that **all 15 remaining slices depend on**.
-Until they exist as first-class `src/domain/` artifacts (`BaseEntity` / `BaseDTO`
+Until they exist as first-class `src/domain/` artifacts (`BaseDTO`
 subclasses, one class per file, `unittest.TestCase` coverage), no downstream
 slice (ValidateStructure, ValidateApa, adapters, use cases) can be built on a
 clean base. This slice unblocks the rest of the migration.
+
+> **Design correction (implemented):** The project has **no database**, therefore
+> it has **no entities** in the DDD/persistence sense. The 4 types previously
+> considered as candidates for `BaseEntity` — `Citation`, `Reference`, `Section`,
+> `DocumentContent` — are now **frozen DTOs** (`BaseDTO`, `frozen=True`) living
+> in `src/domain/dtos/`. This parallels the existing "no DB → no Repository /
+> all Port" decision. `BaseEntity` remains in the skeleton but is unused in this
+> project. All 9 migrated data types (4 former entity candidates + 5 `*Result`
+> types) are frozen DTOs.
 
 The legacy `domain/` package keeps working unchanged — old and new code
 **coexist**. This slice migrates types into `src/`; it does NOT rewire any
@@ -29,8 +38,8 @@ lets us **fix the latent bugs and duplication** in the legacy domain (see
 
 ### Success looks like
 
-- Every enum, entity, and DTO listed in scope lives in `src/domain/` following
-  the one-class-per-file convention, inheriting `BaseEntity` or `BaseDTO`.
+- Every enum and DTO listed in scope lives in `src/domain/` following
+  the one-class-per-file convention, inheriting `BaseDTO`.
 - Each migrated type has a `unittest.TestCase` in `src/domain/tests/`, written
   test-first (Strict TDD is active).
 - `python -m pytest src/` passes green.
@@ -49,9 +58,8 @@ lets us **fix the latent bugs and duplication** in the legacy domain (see
 - **Domain data types** from `domain/models.py`: `Citation`, `Reference`,
   `Section`, `DocumentContent`, `ClassificationResult`, `QualityResult`,
   `StructureValidationResult`, `CitationAnalysisResult`, `AnalysisResult` →
-  migrated as **either** `BaseEntity` (mutable, behavior) **or** `BaseDTO`
-  (immutable, crosses boundaries). The per-type Entity-vs-DTO decision is
-  **deferred to the spec phase** (see Open Decisions).
+  migrated as **frozen DTOs** (`BaseDTO`, `frozen=True`) under `src/domain/dtos/`.
+  All 9 types are frozen DTOs (see Design Correction note above).
 - **Consolidation and bug fixes** of each migrated type, documented below.
 - **`unittest.TestCase` tests** per migrated type under `src/domain/tests/`.
 - **Coexistence** with all legacy code (no legacy file touched).
@@ -75,18 +83,18 @@ lets us **fix the latent bugs and duplication** in the legacy domain (see
 
 Migrate the pure data types into the `src/domain/` skeleton **type by type**,
 test-first, following the clean-architecture SKILL. The skeleton is not
-restructured — only filled (`src/domain/enums/`, `src/domain/entities/`,
-`src/domain/dtos/`, `src/domain/tests/` already exist).
+restructured — only filled (`src/domain/enums/`, `src/domain/dtos/`,
+`src/domain/tests/` already exist).
 
 **Per-type loop (Strict TDD, runner `python -m pytest src/`):**
 
 1. Write a failing `unittest.TestCase` in `src/domain/tests/<topic>/test_<class>.py`.
 2. Migrate the type into its own snake_case file (PascalCase class):
    - Enum → `src/domain/enums/<enum>.py`.
-   - Entity → `src/domain/<entity>/<entity>.py`, subclass of `BaseEntity`,
-     `@dataclass` (mutable).
    - DTO → `src/domain/dtos/<name>_dto.py`, subclass of `BaseDTO`
-     (`@dataclass(frozen=True)`, already provided by `BaseDTO`).
+     (`@dataclass(frozen=True)`, already provided by `BaseDTO`). This covers
+     ALL 9 migrated data types, including `Citation`, `Reference`, `Section`,
+     and `DocumentContent`.
 3. Apply the documented bug fix for that type while migrating it.
 4. Run `python -m pytest src/` green; move to the next type.
 
@@ -118,30 +126,31 @@ Confirmed issues in the legacy code:
 > service-class slice runs (plan §4.2). This slice fixes only #1, #2, #4, #7,
 > which touch the data types being migrated.
 
-## Open Decisions (resolved in the spec phase)
+## Design Decisions (resolved)
 
-1. **Entity vs DTO mapping — NOT decided here.** The plan §4.1 *suggests* a
-   mapping (`Citation`/`Reference`/`Section`/`DocumentContent` → Entity;
-   the `*Result` types → DTO) but this proposal **does not lock it**. The spec
-   phase decides **case by case** per the SKILL criteria: Entity = mutable +
-   behavior (`__post_init__`, `get_word_count`, `is_empty`); DTO = immutable,
-   crosses boundaries. Notably `DocumentContent` has mutating `__post_init__`
-   logic and `Section` has behavior methods — these need explicit per-type
-   judgment in spec. A frozen `BaseDTO` cannot host the current mutating
-   `__post_init__`, so that interaction must be resolved in spec.
-2. **`QualityResult` consolidation target** — final name and exact field set of
-   the single consolidated quality type (decided in spec alongside #1).
-3. **`AnalysisResult.to_dict()` shape** — `AnalysisResult` aggregates the other
-   result types; its serialization contract (consumed later by formatter /
-   exporter / Gradio) is defined in spec, not locked here.
+1. **All data types are DTOs — no entities.** The project has no database; there
+   is no persistence identity layer. All 9 migrated data types (`Citation`,
+   `Reference`, `Section`, `DocumentContent`, `ClassificationResult`,
+   `QualityResult`, `StructureValidationResult`, `CitationAnalysisResult`,
+   `AnalysisResult`) are `BaseDTO` frozen dataclasses under `src/domain/dtos/`.
+   `Section` keeps the empty-title `ValueError` guard in `__post_init__`; frozen
+   DTOs allow read-only validation in `__post_init__` (they only forbid
+   *attribute assignment*, not raising).
+2. **`QualityResult` consolidation** — single type consolidating `QualityResult`
+   and `QualityAnalysisResult` (bug #2); `QualityAnalysisResult` is eliminated.
+3. **`AnalysisResult.to_dict()` shape** — custom flattened shape preserved for
+   downstream formatter/exporter/Gradio compatibility. The classification sub-dict
+   uses key `"category"` (legacy byte-compatible key), NOT `"article_type"`.
+4. **`word_count` in `DocumentContent`** — computation from paragraphs is deferred
+   to a factory in a later slice; `word_count` is a plain required field for now
+   (frozen DTO cannot auto-compute via `__post_init__` mutation).
 
 ## Affected Areas
 
 | Area | Impact | Description |
 |------|--------|-------------|
 | `src/domain/enums/` | New files | One module per migrated enum. |
-| `src/domain/entities/` and/or `src/domain/<entity>/` | New files | Entities migrated as `BaseEntity` subclasses (placement per spec mapping). |
-| `src/domain/dtos/` | New files | DTOs migrated as `BaseDTO` subclasses. |
+| `src/domain/dtos/` | New files | All 9 data types migrated as `BaseDTO` frozen subclasses (enums and DTOs only; no entities). |
 | `src/domain/tests/` | New files | `unittest.TestCase` per migrated type. |
 | `domain/enums.py`, `domain/models.py` | Untouched | Legacy kept for coexistence; removed in Slice 16. |
 
@@ -149,8 +158,9 @@ Confirmed issues in the legacy code:
 
 | Risk | Likelihood | Mitigation |
 |------|------------|------------|
-| Entity-vs-DTO mapping chosen wrong, churns later slices | Med | Defer to spec, decide per SKILL criteria case by case; this proposal locks nothing. |
-| `DocumentContent.__post_init__` mutation conflicts with a frozen DTO | Med | Flagged as an explicit spec open decision (#1); resolve placement before implementing the type. |
+| `Section` validation in `__post_init__` breaks frozen DTO | Low | Python allows raising in `__post_init__` on frozen dataclasses; only attribute *assignment* is forbidden. Covered by test. |
+| `DocumentContent.word_count` auto-compute incompatible with frozen | Resolved | Field is plain required; factory deferred to later slice (Design Decision #4). |
+| `AnalysisResult` contains `DocumentContent` DTO (formerly entity) | Resolved | Now both are frozen DTOs — clean composition; no mutable-inside-frozen concern. |
 | Silently re-introducing a legacy bug | Low | Every fix is tied to a `unittest` assertion; bug table is the checklist. |
 | Slice exceeds the 400-line budget | Med | Single change; size measured at tasks. If over budget, split into chained PRs at tasks/apply (per delivery strategy) — NOT split now. |
 | Breaking legacy coexistence | Low | No legacy file is modified; `src/` only adds new modules; legacy pytest suite must still pass. |
@@ -170,8 +180,8 @@ their tests; legacy behavior is unaffected.
 
 ## Success Criteria
 
-- [ ] All in-scope enums, entities, and DTOs migrated to `src/domain/`,
-      one class per file, inheriting `BaseEntity` / `BaseDTO`.
+- [ ] All in-scope enums and DTOs migrated to `src/domain/`,
+      one class per file, inheriting `BaseDTO` (no entities).
 - [ ] Each migrated type has a `unittest.TestCase`; `python -m pytest src/` is green.
 - [ ] Documented bugs (#1, #2, #4, #7) corrected in migrated types, each covered by a test.
 - [ ] No `Optional`, no `List`/`Dict`, no wildcard imports, no local imports in migrated code.

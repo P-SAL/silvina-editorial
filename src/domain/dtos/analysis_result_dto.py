@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
-from src.domain.document.document_content import DocumentContent
+from src.domain.dtos.document_content_dto import DocumentContent
 from src.domain.dtos.base_dto import BaseDTO
 from src.domain.dtos.citation_analysis_result_dto import CitationAnalysisResult
 from src.domain.dtos.classification_result_dto import ClassificationResult
