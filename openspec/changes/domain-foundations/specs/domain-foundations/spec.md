@@ -562,7 +562,8 @@ Required top-level keys: `filename`, `timestamp`, `classification`, `quality`,
 Sub-dictionaries:
 
 **`classification`**: `"category"` (enum `.value`, **legacy byte-compatible key**),
-`article_size` (enum `.value`), `confidence`, `reasoning`.
+`confidence`, `reasoning`. (No `article_size`: the legacy `to_dict()` shape did
+not include it; byte-compatibility is exact.)
 > Note: The classification sub-dict key is `"category"` — this preserves the
 > legacy `to_dict()` shape consumed by the formatter/exporter/Gradio (plan §10.4
 > byte-compatibility). The `ClassificationResult` *field* is named `article_type`
