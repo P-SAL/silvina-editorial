@@ -326,7 +326,7 @@
 **Spec**: REQ-DTO-CLASSIFICATION-1, REQ-DTO-CLASSIFICATION-2, REQ-DTO-CLASSIFICATION-3
 **Parallel**: Yes (with Tasks 16, 17, 18; after PR 1 enums)
 
-- [ ] Write failing test `src/domain/tests/dtos/test_classification_result.py`
+- [x] Write failing test `src/domain/tests/dtos/test_classification_result.py`
   - `test_classification_result_is_subclass_of_base_dto`
   - `test_classification_result_instantiation_with_correct_fields`
   - `test_classification_result_is_immutable` — assignment raises `FrozenInstanceError`
@@ -334,13 +334,13 @@
   - `test_create_factory_with_none_confidence`
   - `test_create_factory_result_is_frozen`
   - `test_str_contains_enum_values_and_confidence_percentage` — output contains `"científico"` and `"largo"` and `"%"`
-- [ ] Create `src/domain/dtos/classification_result_dto.py`
+- [x] Create `src/domain/dtos/classification_result_dto.py`
   - `@dataclass(frozen=True)` subclass of `BaseDTO`
   - Imports: `from dataclasses import dataclass, field`, `from datetime import datetime`, `from src.domain.dtos.base_dto import BaseDTO`, `from src.domain.enums.article_type import ArticleType`, `from src.domain.enums.article_size import ArticleSize`
   - Fields: `article_type: ArticleType`, `article_size: ArticleSize`, `confidence: float | None`, `reasoning: str`, `timestamp: datetime = field(default_factory=datetime.now)`
   - `@classmethod create(cls, article_type, article_size, confidence, reasoning) -> "ClassificationResult"`
   - `__str__` returning human-readable form with enum `.value` and confidence as percentage
-- [ ] Run `python -m pytest src/domain/tests/dtos/test_classification_result.py` — green
+- [x] Run `python -m pytest src/domain/tests/dtos/test_classification_result.py` — green
 
 **Work unit commit**: `feat(domain/dtos): add ClassificationResult DTO with create() factory and tests`
 
@@ -351,19 +351,19 @@
 **Spec**: REQ-DTO-QUALITY-1, REQ-DTO-QUALITY-2, REQ-TEST-3 (bugs #2 and #4)
 **Parallel**: Yes (with Tasks 15, 17, 18)
 
-- [ ] Write failing test `src/domain/tests/dtos/test_quality_result.py`
+- [x] Write failing test `src/domain/tests/dtos/test_quality_result.py`
   - `test_quality_result_is_subclass_of_base_dto`
   - `test_quality_result_is_immutable`
   - `test_quality_result_str_returns_score_and_level` — `QualityResult(overall_score=8.5, quality_level=QualityLevel.GOOD)` → `"Quality: 8.5/10 (Bueno)"`
   - `test_quality_analysis_result_does_not_exist_in_src` — `from src.domain.dtos.quality_analysis_result_dto import QualityAnalysisResult` raises `ImportError` (bug #2 regression guard)
   - `test_dimension_scores_annotation_uses_typing_any` — inspect `get_type_hints(QualityResult)["dimension_scores"]` and assert it is `dict[str, dict[str, Any]]`, not using builtin `any` (bug #4 regression guard)
-- [ ] Create `src/domain/dtos/quality_result_dto.py`
+- [x] Create `src/domain/dtos/quality_result_dto.py`
   - `@dataclass(frozen=True)` subclass of `BaseDTO`
   - Imports include `from typing import Any`; no `Dict`, `Optional`
   - Fields: `overall_score: float`, `quality_level: QualityLevel`, `dimension_scores: dict[str, dict[str, Any]] = field(default_factory=dict)`, `timestamp: datetime = field(default_factory=datetime.now)`
   - `__str__` returning `f"Quality: {self.overall_score}/10 ({self.quality_level.value})"`
-- [ ] Run `python -m pytest src/domain/tests/dtos/test_quality_result.py` — green
-- [ ] Confirm no `quality_analysis_result_dto.py` file exists under `src/domain/dtos/`
+- [x] Run `python -m pytest src/domain/tests/dtos/test_quality_result.py` — green
+- [x] Confirm no `quality_analysis_result_dto.py` file exists under `src/domain/dtos/`
 
 **Work unit commit**: `feat(domain/dtos): add QualityResult DTO and tests (bug-2 and bug-4 fixed)`
 
@@ -374,17 +374,17 @@
 **Spec**: REQ-DTO-STRUCTURE-1, REQ-TEST-3 (bug #4)
 **Parallel**: Yes (with Tasks 15, 16, 18)
 
-- [ ] Write failing test `src/domain/tests/dtos/test_structure_validation_result.py`
+- [x] Write failing test `src/domain/tests/dtos/test_structure_validation_result.py`
   - `test_structure_validation_result_is_subclass_of_base_dto`
   - `test_structure_validation_result_is_immutable`
   - `test_str_for_valid_structure` — `StructureValidationResult(is_valid=True, missing_sections=[])` → `"Structure: Valid"`
   - `test_str_for_invalid_structure_with_two_missing` — → `"Structure: Invalid (2 missing)"`
   - `test_section_details_annotation_uses_typing_any` — bug #4 regression guard
-- [ ] Create `src/domain/dtos/structure_validation_result_dto.py`
+- [x] Create `src/domain/dtos/structure_validation_result_dto.py`
   - `@dataclass(frozen=True)` subclass of `BaseDTO`
   - `from typing import Any`; fields: `is_valid: bool`, `missing_sections: list[str] = field(default_factory=list)`, `section_details: dict[str, dict[str, Any]] = field(default_factory=dict)`, `timestamp: datetime = field(default_factory=datetime.now)`
   - `__str__` branching on `is_valid`
-- [ ] Run `python -m pytest src/domain/tests/dtos/test_structure_validation_result.py` — green
+- [x] Run `python -m pytest src/domain/tests/dtos/test_structure_validation_result.py` — green
 
 **Work unit commit**: `feat(domain/dtos): add StructureValidationResult DTO and tests (bug-4 fixed)`
 
@@ -395,16 +395,16 @@
 **Spec**: REQ-DTO-CITATION-ANALYSIS-1
 **Parallel**: Yes (with Tasks 15, 16, 17)
 
-- [ ] Write failing test `src/domain/tests/dtos/test_citation_analysis_result.py`
+- [x] Write failing test `src/domain/tests/dtos/test_citation_analysis_result.py`
   - `test_citation_analysis_result_is_subclass_of_base_dto`
   - `test_citation_analysis_result_is_immutable`
   - `test_str_with_citations` — `total_citations=10, matched_count=8` → `"Citations: 10 (80.0% matched)"`
   - `test_str_with_zero_citations` — `total_citations=0` → `"Citations: 0 (0.0% matched)"` (no division by zero)
-- [ ] Create `src/domain/dtos/citation_analysis_result_dto.py`
+- [x] Create `src/domain/dtos/citation_analysis_result_dto.py`
   - `@dataclass(frozen=True)` subclass of `BaseDTO`
   - Fields: `total_citations: int`, `total_references: int`, `matched_count: int`, `unmatched_count: int`, `citations_by_type: dict[str, int] = field(default_factory=dict)`, `unmatched_citations: list[str] = field(default_factory=list)`, `timestamp: datetime = field(default_factory=datetime.now)`
   - `__str__` computing percentage with zero-safe guard (`self.total_citations or 1` denominator, but display `0.0%` when 0)
-- [ ] Run `python -m pytest src/domain/tests/dtos/test_citation_analysis_result.py` — green
+- [x] Run `python -m pytest src/domain/tests/dtos/test_citation_analysis_result.py` — green
 
 **Work unit commit**: `feat(domain/dtos): add CitationAnalysisResult DTO and tests`
 
@@ -416,19 +416,19 @@
 **Parallel**: No — depends on Tasks 14 (`DocumentContent`), 15 (`ClassificationResult`), 16 (`QualityResult`), 17 (`StructureValidationResult`), 18 (`CitationAnalysisResult`)
 **Sequential after**: Tasks 14 + 15 + 16 + 17 + 18
 
-- [ ] Write failing test `src/domain/tests/dtos/test_analysis_result.py`
+- [x] Write failing test `src/domain/tests/dtos/test_analysis_result.py`
   - `test_analysis_result_is_subclass_of_base_dto`
   - `test_analysis_result_is_immutable`
   - `test_to_dict_returns_all_required_top_level_keys` — keys: `filename`, `timestamp`, `classification`, `quality`, `structure`, `citations`
   - `test_to_dict_classification_uses_article_type_key` — `result["classification"]` contains `"article_type"` (not `"category"`) with enum `.value` string (bug #3 representation)
   - `test_to_dict_timestamp_is_iso8601_string` — value is a string matching `.isoformat()` output
   - Uses a helper `_make_analysis_result()` factory inside the test class to build valid nested objects
-- [ ] Create `src/domain/dtos/analysis_result_dto.py`
+- [x] Create `src/domain/dtos/analysis_result_dto.py`
   - `@dataclass(frozen=True)` subclass of `BaseDTO`
   - Imports: all DTO/entity types from their absolute `src.domain.*` paths; `from typing import Any`; `from datetime import datetime`
   - Fields: `filename: str`, `document_content: DocumentContent`, `classification: ClassificationResult`, `quality: QualityResult`, `structure: StructureValidationResult`, `citations: CitationAnalysisResult`, `timestamp: datetime = field(default_factory=datetime.now)`
   - `to_dict(self) -> dict[str, Any]`: custom flattened shape (preserves downstream contract per ADR-6); uses enum `.value`, ISO timestamp, selected fields per spec contract
-- [ ] Run `python -m pytest src/domain/tests/dtos/test_analysis_result.py` — green
+- [x] Run `python -m pytest src/domain/tests/dtos/test_analysis_result.py` — green
 
 **Work unit commit**: `feat(domain/dtos): add AnalysisResult DTO with to_dict contract and tests`
 
@@ -436,9 +436,9 @@
 
 ### PR 3 Integration Task
 
-- [ ] Run `python -m pytest src/domain/tests/dtos/` — all 5 DTO tests green
-- [ ] Run `python -m pytest src/` — entire new test suite green
-- [ ] Run `python -m pytest tests/` — legacy suite still passes (REQ-COEXISTENCE-1)
+- [x] Run `python -m pytest src/domain/tests/dtos/` — all 5 DTO tests green
+- [x] Run `python -m pytest src/` — entire new test suite green (102 passed)
+- [x] Run `python -m pytest tests/` — legacy suite still passes (148 passed, 3 skipped)
 - [ ] Open PR 3 targeting `main` (or previous stacked branch)
 
 ---
