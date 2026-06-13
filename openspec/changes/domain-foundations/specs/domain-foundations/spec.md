@@ -15,31 +15,37 @@ failing-first `unittest.TestCase`.
 
 ---
 
-## Entity vs DTO Classification (resolved)
+## DTO Classification (resolved — all types are DTOs)
 
-Resolved case-by-case using the SKILL criteria:
-- **Entity** (`BaseEntity` + `@dataclass` mutable): has behavior methods or
-  mutating `__post_init__` logic (enforces invariants, recalculates fields,
-  validates on construction).
-- **DTO** (`BaseDTO`, `@dataclass(frozen=True)`): immutable record that crosses
-  a boundary (enters/exits a use case or adapter); carries only data.
+The project has **no database**, therefore it has **no entities** in the
+DDD/persistence sense. All 9 migrated data types are **frozen DTOs**
+(`BaseDTO`, `@dataclass(frozen=True)`).
+
+> **ADR note — No DB → No Entities:** The existing "no DB → no Repository /
+> all Port" decision establishes the same principle: without a persistence layer
+> there is no identity, no lifecycle, and no mutable aggregate root. Domain data
+> simply flows through use cases as immutable records. `BaseEntity` remains in
+> the skeleton but is unused in this project. The 4 types previously considered
+> as entity candidates are DTOs for the same reason as the `*Result` types:
+> they carry data across boundaries without identity or persistence concerns.
 
 | Legacy type | Classification | Reason |
 |---|---|---|
-| `Citation` | **Entity** | Has `__str__` (behavior); mutable; consumed inside domain logic, not a boundary record |
-| `Reference` | **Entity** | Has `__str__` (behavior); mutable; consumed inside domain logic |
-| `Section` | **Entity** | Has behavior: `get_word_count()`, `is_empty()`; `__post_init__` validates title and auto-detects section type — **cannot be frozen** |
-| `DocumentContent` | **Entity** | `__post_init__` mutates `word_count` from paragraphs — **cannot be frozen**; aggregates mutable entities |
-| `ClassificationResult` | **DTO** | Immutable output record; crosses use-case boundary; no mutation after creation |
+| `Citation` | **DTO** | No DB → no entity; frozen record flowing through use cases |
+| `Reference` | **DTO** | No DB → no entity; frozen record flowing through use cases |
+| `Section` | **DTO** | No DB → no entity; `__post_init__` only raises (read-only validation, compatible with frozen) |
+| `DocumentContent` | **DTO** | No DB → no entity; `word_count` is a plain required field (auto-compute deferred to factory) |
+| `ClassificationResult` | **DTO** | Immutable output record; crosses use-case boundary |
 | `QualityResult` | **DTO** | Immutable output record; `QualityAnalysisResult` duplicate eliminated here |
 | `StructureValidationResult` | **DTO** | Immutable output record; boundary-crossing output of validation use case |
 | `CitationAnalysisResult` | **DTO** | Immutable output record; boundary-crossing output of citation use case |
-| `AnalysisResult` | **DTO** | Top-level immutable aggregate; crosses the boundary to presenters/formatters |
+| `AnalysisResult` | **DTO** | Top-level immutable aggregate; crosses the boundary to presenters/formatters; now contains only frozen DTOs |
 
-**Critical constraint**: `BaseDTO` is `@dataclass(frozen=True)`. Any type
-with mutating `__post_init__` or behavior methods MUST be an Entity. Placing
-`Section` or `DocumentContent` as a DTO would cause a `FrozenInstanceError`
-at runtime and violate the SKILL invariant.
+**Key constraint**: `BaseDTO` is `@dataclass(frozen=True)`. `__post_init__`
+may only *raise* (read-only validation); it must NOT assign to `self.*`.
+`Section`'s empty-title guard raises `ValueError` — this is compatible with
+frozen. `DocumentContent`'s `word_count` is a required field; paragraph-based
+computation is deferred to a factory in a later slice.
 
 ---
 
@@ -101,11 +107,11 @@ original.
 - THEN members are `CIENTIFICO`, `DIVULGACION`, `OPINION`, `UNKNOWN` with values
   `"científico"`, `"divulgación"`, `"opinión"`, `"unknown"` respectively
 
-#### Scenario: SectionType preserves all 22 members
+#### Scenario: SectionType preserves all 23 members
 
 - GIVEN `SectionType` migrated to `src/domain/enums/section_type.py`
 - WHEN the enum members are counted
-- THEN `len(SectionType)` equals 22 and all bilingual section names are present
+- THEN `len(SectionType)` equals 23 and all bilingual section names are present
 
 ### REQ-ENUM-3 — Enum imports use only stdlib
 
@@ -121,20 +127,20 @@ external imports inside an enum file.
 
 ---
 
-## Requirement: Citation Entity
+## Requirement: Citation DTO
 
-### REQ-ENTITY-CITATION-1 — Citation is a BaseEntity subclass
+### REQ-DTO-CITATION-1 — Citation is a BaseDTO subclass
 
-`Citation` SHALL be migrated to `src/domain/citation/citation.py` as a
-`@dataclass` subclass of `BaseEntity`.
+`Citation` SHALL be migrated to `src/domain/dtos/citation_dto.py` as a
+`@dataclass(frozen=True)` subclass of `BaseDTO`.
 
-#### Scenario: Citation is a BaseEntity
+#### Scenario: Citation is a BaseDTO
 
-- GIVEN `from src.domain.citation.citation import Citation`
-- WHEN `issubclass(Citation, BaseEntity)` is checked
+- GIVEN `from src.domain.dtos.citation_dto import Citation`
+- WHEN `issubclass(Citation, BaseDTO)` is checked
 - THEN the result is `True`
 
-### REQ-ENTITY-CITATION-2 — Citation fields and types
+### REQ-DTO-CITATION-2 — Citation fields and types
 
 `Citation` MUST expose fields: `text: str`, `citation_type: CitationType`,
 `location: int`, `author: str | None = None`, `year: str | None = None`.
@@ -155,7 +161,13 @@ No `Optional` type hint; Python 3.10+ union syntax only.
 - THEN the returned dict contains keys `text`, `citation_type`, `location`,
   `author`, `year`
 
-### REQ-ENTITY-CITATION-3 — Citation has __str__ behavior
+#### Scenario: Citation is immutable
+
+- GIVEN a valid `Citation` instance
+- WHEN an attempt is made to assign `citation.text = "other"`
+- THEN a `FrozenInstanceError` is raised
+
+### REQ-DTO-CITATION-3 — Citation has __str__ behavior
 
 `Citation` MUST retain `__str__` returning a preview of the text.
 
@@ -167,20 +179,20 @@ No `Optional` type hint; Python 3.10+ union syntax only.
 
 ---
 
-## Requirement: Reference Entity
+## Requirement: Reference DTO
 
-### REQ-ENTITY-REFERENCE-1 — Reference is a BaseEntity subclass
+### REQ-DTO-REFERENCE-1 — Reference is a BaseDTO subclass
 
-`Reference` SHALL be migrated to `src/domain/reference/reference.py` as a
-`@dataclass` subclass of `BaseEntity`.
+`Reference` SHALL be migrated to `src/domain/dtos/reference_dto.py` as a
+`@dataclass(frozen=True)` subclass of `BaseDTO`.
 
-#### Scenario: Reference is a BaseEntity
+#### Scenario: Reference is a BaseDTO
 
-- GIVEN `from src.domain.reference.reference import Reference`
-- WHEN `issubclass(Reference, BaseEntity)` is checked
+- GIVEN `from src.domain.dtos.reference_dto import Reference`
+- WHEN `issubclass(Reference, BaseDTO)` is checked
 - THEN the result is `True`
 
-### REQ-ENTITY-REFERENCE-2 — Reference fields
+### REQ-DTO-REFERENCE-2 — Reference fields
 
 `Reference` MUST expose: `text: str`, `authors: str | None = None`,
 `year: str | None = None`, `title: str | None = None`,
@@ -192,6 +204,12 @@ No `Optional` type hint; Python 3.10+ union syntax only.
 - WHEN the instance is created
 - THEN `reference.authors is None` and `reference.year is None`
 
+#### Scenario: Reference is immutable
+
+- GIVEN a valid `Reference` instance
+- WHEN an attempt is made to assign `reference.text = "other"`
+- THEN a `FrozenInstanceError` is raised
+
 #### Scenario: Reference __str__ returns formatted string
 
 - GIVEN `Reference(text="...", authors="Smith", year="2020")`
@@ -200,21 +218,22 @@ No `Optional` type hint; Python 3.10+ union syntax only.
 
 ---
 
-## Requirement: Section Entity
+## Requirement: Section DTO
 
-### REQ-ENTITY-SECTION-1 — Section is a BaseEntity subclass
+### REQ-DTO-SECTION-1 — Section is a BaseDTO subclass
 
-`Section` SHALL be migrated to `src/domain/section/section.py` as a
-`@dataclass` subclass of `BaseEntity`. It MUST NOT be a DTO: `get_word_count()`
-and `is_empty()` are behavior methods incompatible with `frozen=True`.
+`Section` SHALL be migrated to `src/domain/dtos/section_dto.py` as a
+`@dataclass(frozen=True)` subclass of `BaseDTO`. The empty-title guard in
+`__post_init__` raises `ValueError` — raising is allowed in frozen dataclass
+`__post_init__`; only attribute *assignment* is forbidden.
 
-#### Scenario: Section is a BaseEntity
+#### Scenario: Section is a BaseDTO
 
-- GIVEN `from src.domain.section.section import Section`
-- WHEN `issubclass(Section, BaseEntity)` is checked
+- GIVEN `from src.domain.dtos.section_dto import Section`
+- WHEN `issubclass(Section, BaseDTO)` is checked
 - THEN the result is `True`
 
-### REQ-ENTITY-SECTION-2 — Section fields
+### REQ-DTO-SECTION-2 — Section fields
 
 `Section` MUST expose: `title: str`, `content: str`,
 `section_type: SectionType | None = None`, `start_position: int = 0`,
@@ -226,7 +245,13 @@ and `is_empty()` are behavior methods incompatible with `frozen=True`.
 - WHEN the dataclass `__post_init__` runs
 - THEN a `ValueError` is raised with a message about title not being empty
 
-### REQ-ENTITY-SECTION-3 — Section __post_init__ does NOT call domain helpers
+#### Scenario: Section is immutable
+
+- GIVEN a valid `Section` instance
+- WHEN an attempt is made to assign `section.title = "other"`
+- THEN a `FrozenInstanceError` is raised
+
+### REQ-DTO-SECTION-3 — Section __post_init__ does NOT call domain helpers
 
 The legacy `Section.__post_init__` used a local import of
 `classify_section_by_name` from `domain.enums` — a local (in-function) import
@@ -236,6 +261,8 @@ scope.
 In the migrated `Section`, auto-detection via `classify_section_by_name` MUST
 be removed. `section_type` defaults to `None` when not provided; callers supply
 it explicitly. No local imports; no cross-module function calls in `__post_init__`.
+`Section` has no `get_word_count()` or `is_empty()` methods (dead code — YAGNI;
+no caller exists).
 
 #### Scenario: Section without section_type has section_type None
 
@@ -250,46 +277,31 @@ it explicitly. No local imports; no cross-module function calls in `__post_init_
 - WHEN the instance is created
 - THEN `section.section_type == SectionType.INTRODUCTION`
 
-### REQ-ENTITY-SECTION-4 — Section behavior methods
-
-`Section` MUST expose `get_word_count() -> int` and `is_empty() -> bool`.
-
-#### Scenario: get_word_count returns word count of content
-
-- GIVEN `Section(title="T", content="Hello world foo")`
-- WHEN `section.get_word_count()` is called
-- THEN the result is `3`
-
-#### Scenario: is_empty returns True for blank content
-
-- GIVEN `Section(title="T", content="   ")`
-- WHEN `section.is_empty()` is called
-- THEN the result is `True`
-
-#### Scenario: is_empty returns False for non-blank content
-
-- GIVEN `Section(title="T", content="Some text")`
-- WHEN `section.is_empty()` is called
-- THEN the result is `False`
-
 ---
 
-## Requirement: DocumentContent Entity
+## Requirement: DocumentContent DTO
 
-### REQ-ENTITY-DOCCONTENT-1 — DocumentContent is a BaseEntity subclass
+### REQ-DTO-DOCCONTENT-1 — DocumentContent is a BaseDTO subclass
 
 `DocumentContent` SHALL be migrated to
-`src/domain/document/document_content.py` as a `@dataclass` subclass of
-`BaseEntity`. It MUST NOT be a DTO: its `__post_init__` mutates `word_count`
-when paragraphs are present — frozen instances cannot be mutated after `__init__`.
+`src/domain/dtos/document_content_dto.py` as a `@dataclass(frozen=True)`
+subclass of `BaseDTO`. `word_count` is a plain required field; paragraph-based
+auto-computation is deferred to a factory in a later slice (incompatible with
+frozen — a frozen instance cannot assign to `self.word_count` in `__post_init__`).
 
-#### Scenario: DocumentContent is a BaseEntity
+#### Scenario: DocumentContent is a BaseDTO
 
-- GIVEN `from src.domain.document.document_content import DocumentContent`
-- WHEN `issubclass(DocumentContent, BaseEntity)` is checked
+- GIVEN `from src.domain.dtos.document_content_dto import DocumentContent`
+- WHEN `issubclass(DocumentContent, BaseDTO)` is checked
 - THEN the result is `True`
 
-### REQ-ENTITY-DOCCONTENT-2 — DocumentContent fields
+#### Scenario: DocumentContent is immutable
+
+- GIVEN a valid `DocumentContent` instance
+- WHEN an attempt is made to assign `doc.word_count = 99`
+- THEN a `FrozenInstanceError` is raised
+
+### REQ-DTO-DOCCONTENT-2 — DocumentContent fields
 
 `DocumentContent` MUST expose (with legacy field names preserved):
 `word_count: int`, `char_count: int`, `paragraph_count: int = 0`,
@@ -303,26 +315,9 @@ No `List`, `Dict`, `Optional`.
 
 #### Scenario: DocumentContent field types use modern Python syntax
 
-- GIVEN `DocumentContent` class definition in `src/domain/document/document_content.py`
+- GIVEN `DocumentContent` class definition in `src/domain/dtos/document_content_dto.py`
 - WHEN `get_type_hints(DocumentContent)` is inspected
 - THEN no hint contains `typing.List`, `typing.Dict`, or `typing.Optional`
-
-### REQ-ENTITY-DOCCONTENT-3 — __post_init__ auto-calculates word_count
-
-When `word_count` is `0` and `paragraphs` is non-empty, `__post_init__` MUST
-calculate `word_count` from the paragraphs.
-
-#### Scenario: word_count is auto-calculated from paragraphs
-
-- GIVEN `DocumentContent(word_count=0, char_count=100, paragraphs=["hello world", "foo"])`
-- WHEN the instance is created
-- THEN `document.word_count == 3` (sum of words across paragraphs)
-
-#### Scenario: explicit word_count is not overwritten
-
-- GIVEN `DocumentContent(word_count=42, char_count=100, paragraphs=["hello"])`
-- WHEN the instance is created
-- THEN `document.word_count == 42` (non-zero value preserved)
 
 ---
 
@@ -535,20 +530,19 @@ Fields: `total_citations: int`, `total_references: int`, `matched_count: int`,
 
 `AnalysisResult` SHALL be migrated to
 `src/domain/dtos/analysis_result_dto.py` as a `@dataclass(frozen=True)`
-subclass of `BaseDTO`. It aggregates the other result DTOs; crossing the
-use-case boundary to presenters/formatters makes it the primary boundary-crossing
-record.
+subclass of `BaseDTO`. It aggregates the other result DTOs (all frozen);
+crossing the use-case boundary to presenters/formatters makes it the primary
+boundary-crossing record.
 
 Fields: `filename: str`,
-`document_content: DocumentContent` (Entity, not frozen but contained by the frozen DTO),
+`document_content: DocumentContent` (frozen DTO),
 `classification: ClassificationResult`, `quality: QualityResult`,
 `structure: StructureValidationResult`, `citations: CitationAnalysisResult`,
 `timestamp: datetime` (default now).
 
-> Note: `document_content` is a `DocumentContent` Entity (mutable). Python's
-> `frozen=True` freezes the DTO's own attribute references, not the objects
-> they point to. `DocumentContent` instances are not mutated after they are
-> set in `AnalysisResult`, so this composition is safe.
+> Note: `AnalysisResult` now contains only frozen DTOs. The previous concern
+> about "mutable entity inside frozen DTO" is resolved — `DocumentContent` is
+> now a frozen DTO too.
 
 #### Scenario: AnalysisResult is a BaseDTO
 
@@ -567,10 +561,13 @@ Required top-level keys: `filename`, `timestamp`, `classification`, `quality`,
 
 Sub-dictionaries:
 
-**`classification`**: `article_type` (enum `.value`), `article_size` (enum
-`.value`), `confidence`, `reasoning`.
-> Note: `article_type` is the corrected key (fixing the legacy bug #3 mapping
-> where the field was named `article_type` but the broken helper passed `category=`).
+**`classification`**: `"category"` (enum `.value`, **legacy byte-compatible key**),
+`article_size` (enum `.value`), `confidence`, `reasoning`.
+> Note: The classification sub-dict key is `"category"` — this preserves the
+> legacy `to_dict()` shape consumed by the formatter/exporter/Gradio (plan §10.4
+> byte-compatibility). The `ClassificationResult` *field* is named `article_type`
+> (correct domain name), but `to_dict()` serializes it under the key `"category"`
+> for downstream compatibility.
 
 **`quality`**: `overall_score`, `quality_level` (enum `.value`),
 `dimension_scores`.
@@ -587,12 +584,12 @@ Sub-dictionaries:
 - THEN the returned dict contains exactly the keys: `filename`, `timestamp`,
   `classification`, `quality`, `structure`, `citations`
 
-#### Scenario: to_dict classification sub-dict uses article_type key
+#### Scenario: to_dict classification sub-dict uses "category" key (legacy-compatible)
 
 - GIVEN a fully-populated `AnalysisResult` instance
 - WHEN `result.to_dict()["classification"]` is inspected
-- THEN it contains key `"article_type"` (not `"category"`) with the enum's
-  string value (bug #3 corrected representation in the new type)
+- THEN it contains key `"category"` (NOT `"article_type"`) with the enum's
+  string value — preserving the legacy downstream contract
 
 #### Scenario: to_dict timestamp is an ISO-8601 string
 
@@ -647,7 +644,7 @@ All cross-domain imports within `src/` MUST use absolute paths starting with
 
 #### Scenario: Section imports SectionType via absolute path
 
-- GIVEN `src/domain/section/section.py`
+- GIVEN `src/domain/dtos/section_dto.py`
 - WHEN the import statements are inspected
 - THEN `SectionType` is imported as
   `from src.domain.enums.section_type import SectionType`; no relative import
@@ -676,10 +673,10 @@ Every migrated enum, entity, and DTO MUST have a corresponding test file under
 | `ValidationStatus` | `src/domain/tests/enums/test_validation_status.py` |
 | `RecommendationPriority` | `src/domain/tests/enums/test_recommendation_priority.py` |
 | `SeverityLevel` | `src/domain/tests/enums/test_severity_level.py` |
-| `Citation` | `src/domain/tests/entities/test_citation.py` |
-| `Reference` | `src/domain/tests/entities/test_reference.py` |
-| `Section` | `src/domain/tests/entities/test_section.py` |
-| `DocumentContent` | `src/domain/tests/entities/test_document_content.py` |
+| `Citation` | `src/domain/tests/dtos/test_citation.py` |
+| `Reference` | `src/domain/tests/dtos/test_reference.py` |
+| `Section` | `src/domain/tests/dtos/test_section.py` |
+| `DocumentContent` | `src/domain/tests/dtos/test_document_content.py` |
 | `ClassificationResult` | `src/domain/tests/dtos/test_classification_result.py` |
 | `QualityResult` | `src/domain/tests/dtos/test_quality_result.py` |
 | `StructureValidationResult` | `src/domain/tests/dtos/test_structure_validation_result.py` |
@@ -761,15 +758,14 @@ No file under `domain/`, `business_logic/`, `data_access/`, `presentation/`,
 
 SKILL §4 naming rule applied to all migrated types.
 
-#### Scenario: Entity folder structure matches convention
+#### Scenario: DTO files for Citation, Reference, Section, DocumentContent follow naming convention
 
-- GIVEN all entity source files created by this slice
+- GIVEN the source files for `Citation`, `Reference`, `Section`, `DocumentContent`
 - WHEN the directory tree is inspected
-- THEN each entity lives in its own folder: `src/domain/citation/citation.py`,
-  `src/domain/reference/reference.py`, `src/domain/section/section.py`,
-  `src/domain/document/document_content.py`
+- THEN each lives under `src/domain/dtos/`: `citation_dto.py`, `reference_dto.py`,
+  `section_dto.py`, `document_content_dto.py`
 
-#### Scenario: DTO files follow naming convention
+#### Scenario: Result DTO files follow naming convention
 
 - GIVEN all DTO source files created by this slice
 - WHEN the directory tree is inspected
@@ -811,7 +807,7 @@ The following are NOT requirements for this slice and MUST NOT be implemented:
 | #1 `SeverityLevel` in `__all__` before definition | `enums.py:277` | Fixed by construction (no shared `__all__`, one file per enum) | REQ-ENUM-1 scenario |
 | #2 `QualityAnalysisResult` duplicate | `models.py:79` | Eliminated; single `QualityResult` | REQ-DTO-QUALITY-1 scenario |
 | #4 `any` (builtin) used as type annotation | `models.py:90,102,201` | Fixed: `dict[str, dict[str, Any]]` with `from typing import Any` | REQ-DTO-QUALITY-1, REQ-DTO-STRUCTURE-1 scenarios |
-| #7 Local/mixed imports | `models.py:10-11, Section.__post_init__` | Fixed: absolute top-level imports only; local import in `__post_init__` removed | REQ-IMPORTS-2, REQ-ENTITY-SECTION-3 scenarios |
+| #7 Local/mixed imports | `models.py:10-11, Section.__post_init__` | Fixed: absolute top-level imports only; local import in `__post_init__` removed | REQ-IMPORTS-2, REQ-DTO-SECTION-3 scenarios |
 
 ---
 
