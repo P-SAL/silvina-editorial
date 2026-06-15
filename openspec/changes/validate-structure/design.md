@@ -45,25 +45,25 @@ src/
 ```python
 class RequiredSectionsProvider:
     @staticmethod
-    def get(article_type: ArticleType) -> list[str]:
+    def get(article_type: ArticleType) -> list[SectionName]:
         ...
 ```
 
-- Returns canonical required section names (capitalized, Spanish).
+- Returns `list[SectionName]` — enum members, not raw strings.
 - Faithfully ports the hardcoded lists from legacy `validate_structure()`.
 - Pure function — no instance state, no I/O.
 
 Section sets (verbatim from legacy `structure_validator.py`):
 
-| ArticleType | Required sections |
-|-------------|-------------------|
-| CIENTIFICO | ["Resumen", "Introducción", "Metodología", "Resultados", "Discusión", "Conclusiones", "Referencias"] |
-| DIVULGACION | ["Resumen", "Introducción", "Desarrollo", "Conclusiones", "Referencias"] |
-| OPINION | ["Introducción", "Argumentación", "Conclusiones"] |
+| ArticleType | Required sections (SectionName members) |
+|-------------|----------------------------------------|
+| CIENTIFICO | [SUMMARY, INTRODUCTION, METHODOLOGY, RESULTS, DISCUSSION, CONCLUSIONS, REFERENCES] (7) |
+| DIVULGACION | [SUMMARY, INTRODUCTION, DEVELOPMENT, CONCLUSIONS, REFERENCES] (5) |
+| OPINION | [INTRODUCTION, ARGUMENTATION, CONCLUSIONS] (3) |
 | UNKNOWN | [] |
 
-Note: DIVULGACION includes "Desarrollo" at the domain level (faithful port of legacy). The use case
-removes it from missing_sections unconditionally (faithful port of `main.py` line 230).
+Note: DIVULGACION INCLUDES `SectionName.DEVELOPMENT` at the domain level (faithful port of legacy).
+The use case removes it from `missing_sections` unconditionally (faithful port of `main.py:230`).
 
 ---
 
@@ -71,26 +71,33 @@ removes it from missing_sections unconditionally (faithful port of `main.py` lin
 
 ```python
 class StructureValidator:
+    _SECTION_ALIASES: dict[SectionName, list[str]] = { ... }  # 9 entries, SectionName keys
+
     def __init__(self) -> None: ...
 
     def validate(
         self,
         document_content: DocumentContent,
         article_type: ArticleType,
-    ) -> tuple[list[str], list[str]]:
+    ) -> tuple[list[SectionName], list[SectionName]]:
         """Returns (present_sections, missing_sections)."""
         ...
 
-    def _extract_present_sections(self, paragraphs: list[str]) -> list[str]:
-        """Returns canonical section names found using 100-char threshold."""
+    def _extract_present_sections(self, paragraphs: list[str]) -> list[SectionName]:
+        """Returns SectionName members found using 100-char threshold."""
         ...
 
-    def _get_required_sections(self, article_type: ArticleType) -> list[str]:
+    def _get_required_sections(self, article_type: ArticleType) -> list[SectionName]:
         """Delegates to RequiredSectionsProvider.get()."""
         ...
 ```
 
-**Design note**: `validate()` returns a raw `tuple` rather than a `StructureValidationResult` DTO. This is intentional — the DTO is frozen=True, so post-processing (has_references removal) must happen in the use case before construction. The domain service produces data; the use case constructs the immutable result.
+**Design note**: `validate()` returns a raw `tuple` rather than a `StructureValidationResult` DTO.
+This is intentional — the DTO is frozen=True, so post-processing must happen in the use case
+before construction. The domain service produces data; the use case constructs the immutable result.
+
+The caller (use case) discards `present_sections` via `_, missing = self._validator.validate(...)`.
+`present_sections` is available for future use cases that need it.
 
 ---
 
@@ -113,11 +120,12 @@ class ValidateStructureUseCase:
 **Exact execution sequence**:
 
 1. Guard: `if not document_content.paragraphs` → raise `DocumentEmpty`
-2. `present, missing = self._validator.validate(document_content, article_type)`
+2. `_, missing = self._validator.validate(document_content, article_type)`
+   (`present_sections` discarded — use case only needs `missing`)
 3. Post-process (order matters):
-   a. Always: `missing = [s for s in missing if s != "Desarrollo"]` (port of `main.py:230`)
-   b. Conditional: `if has_references: missing = [s for s in missing if s != "Referencias"]`
-4. Construct and return: `StructureValidationResult(is_valid=len(missing) == 0, missing_sections=missing)`
+   a. Always: `missing = [s for s in missing if s != SectionName.DEVELOPMENT]` (port of `main.py:230`)
+   b. Conditional: `if has_references: missing = [s for s in missing if s != SectionName.REFERENCES]`
+4. Construct and return: `StructureValidationResult(is_valid=len(missing) == 0, missing_sections=list(missing))`
 
 DTO fields used: `is_valid`, `missing_sections` (the DTO also has `section_details` and `timestamp` with defaults — not set here).
 
@@ -127,11 +135,16 @@ DTO fields used: `is_valid`, `missing_sections` (the DTO also has `section_detai
 
 ```python
 class ValidateStructureWiring:
-    @staticmethod
-    def create_use_case() -> ValidateStructureUseCase:
-        validator = StructureValidator()
-        return ValidateStructureUseCase(validator=validator)
+    def create_use_case(self) -> ValidateStructureUseCase:
+        return ValidateStructureUseCase(validator=self._get_structure_validator())
+
+    def _get_structure_validator(self) -> StructureValidator:
+        return StructureValidator()
 ```
+
+**Pattern**: instance method (not staticmethod) + one `_get_*` private method per dependency.
+This allows test subclasses to override `_get_structure_validator()` to inject mocks without
+changing the composition logic. All future wirings in this project MUST follow this pattern.
 
 No ports, no adapters, no config injection.
 
@@ -192,7 +205,9 @@ ValidateStructureUseCase
   |     └-- _extract_present_sections(paragraphs) -> list[str]
   |           (100-char threshold + section_map alias scan)
   |
-  +-- post-process: filter "Referencias" if has_references is True
+  +-- post-process: always remove SectionName.DEVELOPMENT from missing
+  |
+  +-- post-process: remove SectionName.REFERENCES if has_references is True
   |
   └-- construct StructureValidationResult(is_valid, missing_sections)
         frozen=True, built once, never mutated
@@ -227,28 +242,43 @@ ValidateStructureUseCase
 
 ---
 
-## ADR-3: DESARROLLO excluded at domain level (RequiredSectionsProvider), not use-case level
+## ADR-3: DEVELOPMENT included at domain level, removed at use-case level (legacy faithful port)
 
-**Decision**: `DIVULGACION` required sections do NOT include "Desarrollo". This is encoded in `RequiredSectionsProvider.get()`, not as a filter in `ValidateStructureUseCase`.
+**Decision**: `RequiredSectionsProvider.get(DIVULGACION)` INCLUDES `SectionName.DEVELOPMENT`.
+`ValidateStructureUseCase.execute()` removes `SectionName.DEVELOPMENT` from `missing_sections`
+unconditionally — regardless of article type, every call strips it.
 
 **Rationale**:
-- Domain invariants belong in the domain layer. If "Desarrollo is never required" were enforced only in the use case, other future use cases calling the same provider would need to duplicate the filter.
-- The legacy `validate_structure` method already omits "Desarrollo" from DIVULGACION's required list — the domain is already correct, this design makes it explicit and centralized.
+- Legacy `business_logic/structure_validator.py` includes "Desarrollo" in DIVULGACION's required list.
+- Legacy `main.py` line 230 removes it unconditionally after every `validate_structure()` call.
+- The domain service is a faithful port of `structure_validator.py`; the use case is a faithful port
+  of `main.py`'s orchestration logic. Splitting them accurately preserves the original behavior.
+- The removal is at use-case level because it is an application-layer editorial business rule
+  (not a domain invariant): the domain correctly models DIVULGACION as requiring Desarrollo;
+  the application layer decides to forgive its absence.
 
-**Rejected**: Filter "Desarrollo" in use case — scatters domain knowledge into application layer.
+**Rejected**: Exclude DEVELOPMENT from RequiredSectionsProvider — would diverge from legacy domain
+model and lose the ability to detect Desarrollo when present (which IS reported in `present_sections`).
 
 ---
 
-## ADR-4: Wiring has no ports (pure domain slice)
+## ADR-4: Wiring is instance-based with `_get_*` per dependency
 
-**Decision**: `ValidateStructureWiring.create_use_case()` is a staticmethod with no parameters, no config, no adapter injection.
+**Decision**: `ValidateStructureWiring` is an instantiable class. `create_use_case(self)` is an
+instance method. Each dependency is created in its own `_get_*(self)` private method.
 
 **Rationale**:
-- `StructureValidator` reads no files, calls no APIs, and has no I/O. There are zero infrastructure dependencies.
-- Adding empty port interfaces would be premature abstraction with no current purpose.
-- The wiring exists to establish the factory pattern for slices that will have adapters. Future slices can use this as a template and extend with constructor parameters.
+- Instance methods allow test subclasses to override individual `_get_*` methods to inject mocks/stubs
+  without touching the composition logic. `@staticmethod` makes this impossible without monkey-patching.
+- The `_get_*` pattern scales naturally: when future slices add adapters, databases, or config, each
+  becomes a new `_get_*` method — the `create_use_case()` body stays clean and readable.
+- All wirings in this project follow this same structure for consistency.
 
-**Rejected**: Port interface `IStructureValidator` — no polymorphic behavior needed; the service is concrete and pure.
+**Rejected**: `@staticmethod create_use_case()` — cannot be subclassed for testing; rejected after
+implementation revealed the pattern from the hexagonal architecture template.
+
+**Rejected**: Port interface `IStructureValidator` — no polymorphic behavior needed; the service is
+concrete and pure.
 
 ---
 

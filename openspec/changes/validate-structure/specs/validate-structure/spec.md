@@ -17,22 +17,23 @@ slice. It does NOT describe implementation details — only observable behavior.
 
 ## 1. Domain Service — StructureValidator
 
-### 1.1 Section Map (behavioral-critical)
+### 1.1 Section Alias Map (behavioral-critical)
 
-`StructureValidator` MUST use the following alias dict verbatim for header detection.
+`StructureValidator` MUST use the following `_SECTION_ALIASES` dict verbatim for header detection.
+Keys are `SectionName` enum members; values are lists of lowercase detection strings.
 Every key-value pair is required; adding or removing aliases breaks legacy test parity.
 
 ```python
-section_map = {
-    'resumen':       ['resumen', 'abstract'],
-    'introducción':  ['introducción', 'introduccion', 'introduction'],
-    'metodología':   ['metodología', 'metodologia', 'methodology'],
-    'resultados':    ['resultados', 'results'],
-    'discusión':     ['discusión', 'discusion', 'discussion'],
-    'argumentación': ['argumentación', 'argumentacion', 'argumentation'],
-    'desarrollo':    ['desarrollo', 'development'],
-    'conclusiones':  ['conclusiones', 'conclusión', 'conclusion'],
-    'referencias':   ['referencias', 'bibliografía', 'bibliografia', 'fuentes bibliográficas'],
+_SECTION_ALIASES: dict[SectionName, list[str]] = {
+    SectionName.SUMMARY:       ['resumen', 'abstract'],
+    SectionName.INTRODUCTION:  ['introducción', 'introduccion', 'introduction'],
+    SectionName.METHODOLOGY:   ['metodología', 'metodologia', 'methodology'],
+    SectionName.RESULTS:       ['resultados', 'results'],
+    SectionName.DISCUSSION:    ['discusión', 'discusion', 'discussion'],
+    SectionName.ARGUMENTATION: ['argumentación', 'argumentacion', 'argumentation'],
+    SectionName.DEVELOPMENT:   ['desarrollo', 'development'],
+    SectionName.CONCLUSIONS:   ['conclusiones', 'conclusión', 'conclusion'],
+    SectionName.REFERENCES:    ['referencias', 'bibliografía', 'bibliografia', 'fuentes bibliográficas'],
 }
 ```
 
@@ -54,35 +55,36 @@ detected canonical section name (capitalized first letter).
 
 ### 1.3 Required Sections per ArticleType
 
-`RequiredSectionsProvider` encodes the following as authoritative, pure domain knowledge:
+`RequiredSectionsProvider` encodes the following as authoritative, pure domain knowledge.
+Returns `list[SectionName]` — enum members, not raw strings.
 
 | ArticleType        | Required sections (ordered)                                                              |
 |--------------------|------------------------------------------------------------------------------------------|
-| `CIENTIFICO`       | `["Resumen", "Introducción", "Metodología", "Resultados", "Discusión", "Conclusiones", "Referencias"]` |
-| `DIVULGACION`      | `["Resumen", "Introducción", "Desarrollo", "Conclusiones", "Referencias"]`               |
-| `OPINION`          | `["Introducción", "Argumentación", "Conclusiones"]`                                      |
-| `UNKNOWN`          | `[]` (empty — no sections required)                                                      |
+| `CIENTIFICO`       | `[SUMMARY, INTRODUCTION, METHODOLOGY, RESULTS, DISCUSSION, CONCLUSIONS, REFERENCES]` (7) |
+| `DIVULGACION`      | `[SUMMARY, INTRODUCTION, DEVELOPMENT, CONCLUSIONS, REFERENCES]` (5)                      |
+| `OPINION`          | `[INTRODUCTION, ARGUMENTATION, CONCLUSIONS]` (3)                                         |
+| `UNKNOWN`          | `[]` (empty — no sections required)                                                       |
 
-**Domain invariant**: `DESARROLLO` MUST NOT appear in the required sections for `CIENTIFICO`
-or `OPINION`. Its presence only in `DIVULGACION` is intentional and immutable.
+**Domain invariant**: `SectionName.DEVELOPMENT` MUST NOT appear in the required sections for
+`CIENTIFICO` or `OPINION`. It IS included for `DIVULGACION` (faithful port of legacy).
+The use case removes it unconditionally from `missing_sections` (port of `main.py:230`).
 
 ### 1.4 Missing Sections Calculation
 
-`validate_structure(document_content: DocumentContent, article_type: ArticleType) -> StructureValidationResult`
+`validate(document_content: DocumentContent, article_type: ArticleType) -> tuple[list[SectionName], list[SectionName]]`
 
-- Calls `_extract_present_sections(document_content)` → list of detected canonical section names
-- Compares against required sections (case-insensitive): a section is missing if no detected
-  name matches it when both are lowercased.
-- Returns `StructureValidationResult(is_valid=len(missing)==0, missing_sections=missing)`.
+- Calls `_extract_present_sections(paragraphs)` → `list[SectionName]` of detected canonical sections.
+- Compares against required sections (case-insensitive via `.lower()`): a section is missing if
+  its lowercased value does not appear in the lowercased present list.
+- Returns `(present_sections, missing_sections)` as a raw tuple.
 - Does NOT apply `has_references` filtering — that is use-case responsibility.
+- Does NOT build `StructureValidationResult` — that is also use-case responsibility.
 
 ### 1.5 Output
 
-Returns `StructureValidationResult` with:
-- `is_valid: bool` — True when `missing_sections` is empty
-- `missing_sections: list[str]` — names of required sections not detected in the document
-- `section_details` defaults to `{}` (domain service does not populate it)
-- `timestamp` auto-set by the DTO
+Returns `tuple[list[SectionName], list[SectionName]]`:
+- `present_sections` — enum members detected in the document (unused by current use case: `_`)
+- `missing_sections` — enum members required but not detected
 
 ---
 
@@ -106,13 +108,16 @@ BEFORE delegating to the domain service.
 
 ### 2.3 Post-Processing Rules (applied before DTO construction)
 
-After `StructureValidator.validate_structure()` returns a raw result, the use case applies
+After `StructureValidator.validate()` returns `(_, missing)`, the use case applies
 these rules in order before building the frozen DTO:
 
-1. **Desarrollo removal (unconditional)**: Always remove `"Desarrollo"` from `missing_sections`.
+1. **Development removal (unconditional)**: Always remove `SectionName.DEVELOPMENT` from `missing`.
    Source: `main.py` line 230 — legacy removes it unconditionally after every call.
-2. **Referencias removal (conditional)**: If `has_references is True`, also remove `"Referencias"`
-   from `missing_sections`.
+2. **References removal (conditional)**: If `has_references is True`, also remove `SectionName.REFERENCES`
+   from `missing`.
+
+The `present_sections` return value from `validate()` is discarded (`_`) — the use case
+only operates on `missing_sections`.
 
 Post-processing is applied BEFORE the final DTO is constructed. The frozen DTO is built once
 and never mutated after construction.
@@ -136,9 +141,24 @@ The domain service has no knowledge of the `has_references` business rule.
 ### 3.1 Factory Behavior
 
 `ValidateStructureWiring` MUST:
-- Instantiate `StructureValidator` (no constructor arguments).
-- Instantiate `ValidateStructureUseCase` with the `StructureValidator` instance injected.
-- Return a ready-to-use `ValidateStructureUseCase` via a factory method (e.g., `create()`).
+- Be instantiable (no `@staticmethod` — instance methods allow subclassing for tests).
+- Expose `create_use_case(self) -> ValidateStructureUseCase` as the public factory method.
+- Create each dependency in its own private `_get_*` method — one method per dependency.
+  Current dependencies: `_get_structure_validator(self) -> StructureValidator`.
+- Inject dependencies via constructor arguments (not inline construction inside `create_use_case`).
+
+Pattern:
+```python
+class ValidateStructureWiring:
+    def create_use_case(self) -> ValidateStructureUseCase:
+        return ValidateStructureUseCase(validator=self._get_structure_validator())
+
+    def _get_structure_validator(self) -> StructureValidator:
+        return StructureValidator()
+```
+
+This pattern enables test subclasses to override individual `_get_*` methods to inject mocks
+without touching the composition logic. All future wirings MUST follow this same structure.
 
 ### 3.2 No Infrastructure Dependencies
 
@@ -185,7 +205,7 @@ Given a DocumentContent with paragraphs:
    "Resultados: Los resultados.", "Discusión: Discusión.", "Conclusiones: Conclusión.",
    "Referencias: Refs."]
 And article_type = ArticleType.CIENTIFICO
-When validate_structure is called on the domain service
+When validate is called on the domain service
 Then result.is_valid is True
 And result.missing_sections == []
 ```
@@ -196,7 +216,7 @@ And result.missing_sections == []
 Given a DocumentContent with paragraphs using "Section: content" format
   where all 7 CIENTIFICO sections appear as short inline-header paragraphs
 And article_type = ArticleType.CIENTIFICO
-When validate_structure is called
+When validate is called
 Then result.is_valid is True
 And result.missing_sections == []
 ```
@@ -206,7 +226,7 @@ And result.missing_sections == []
 ```
 Given a DocumentContent without any "Resumen" or "Abstract" paragraph
 And article_type = ArticleType.CIENTIFICO
-When validate_structure is called
+When validate is called
 Then result.is_valid is False
 And "Resumen" is in result.missing_sections
 ```
@@ -217,7 +237,7 @@ And "Resumen" is in result.missing_sections
 Given a DocumentContent with paragraphs:
   ["Resumen: ...", "Introducción: ...", "Desarrollo: ...", "Conclusiones: ...", "Referencias: ..."]
 And article_type = ArticleType.DIVULGACION
-When validate_structure is called
+When validate is called
 Then result.is_valid is True
 And result.missing_sections == []
 ```
@@ -227,7 +247,7 @@ And result.missing_sections == []
 ```
 Given a DocumentContent without any "Desarrollo" or "Development" paragraph
 And article_type = ArticleType.DIVULGACION
-When validate_structure is called
+When validate is called
 Then result.is_valid is False
 And "Desarrollo" is in result.missing_sections
 ```
@@ -238,7 +258,7 @@ And "Desarrollo" is in result.missing_sections
 Given a DocumentContent with paragraphs:
   ["Introducción: ...", "Argumentación: ...", "Conclusiones: ..."]
 And article_type = ArticleType.OPINION
-When validate_structure is called
+When validate is called
 Then result.is_valid is True
 And result.missing_sections == []
 ```
@@ -248,7 +268,7 @@ And result.missing_sections == []
 ```
 Given a DocumentContent with any paragraphs
 And article_type = ArticleType.DIVULGACION
-When validate_structure is called on the domain service
+When validate is called on the domain service
 Then the return value has attribute is_valid (bool)
 And the return value has attribute missing_sections (list)
 ```
@@ -344,7 +364,7 @@ And result.is_valid is False
 ```
 Given a DocumentContent without any "Desarrollo" or "Development" paragraph
 And article_type = ArticleType.DIVULGACION
-When validate_structure is called DIRECTLY on the domain service
+When validate is called DIRECTLY on the domain service
 Then "Desarrollo" IS in result.missing_sections
 ```
 
@@ -383,7 +403,7 @@ Then "referencias" appears in the lowercased detected sections
 ### S-19: Wiring creates use case without errors
 
 ```
-Given ValidateStructureWiring.create() is called
+Given ValidateStructureWiring().create_use_case() is called
 Then the return value is an instance of ValidateStructureUseCase
 And no external adapters, ports, or infrastructure classes are imported
 ```
