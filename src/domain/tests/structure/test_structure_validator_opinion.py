@@ -1,0 +1,42 @@
+from unittest import TestCase
+
+from src.domain.dtos.document_content_dto import DocumentContent
+from src.domain.enums.article_type import ArticleType
+from src.domain.enums.section_name import SectionName
+from src.domain.structure.structure_validator import StructureValidator
+
+
+def _make_document(paragraphs: list[str]) -> DocumentContent:
+    return DocumentContent(word_count=0, char_count=0, paragraphs=paragraphs)
+
+
+_OPINION_ALL_SECTIONS = [
+    s.value
+    for s in [
+        SectionName.INTRODUCTION,
+        SectionName.ARGUMENTATION,
+        SectionName.CONCLUSIONS,
+    ]
+]
+
+
+class TestStructureValidatorOpinion(TestCase):
+    def setUp(self):
+        self.validator = StructureValidator()
+
+    def test_all_opinion_sections_present_is_valid(self):
+        doc = _make_document(_OPINION_ALL_SECTIONS)
+        present, missing = self.validator.validate(doc, ArticleType.OPINION)
+        self.assertEqual(missing, [])
+
+    def test_missing_argumentacion_is_invalid(self):
+        paragraphs = [s.value for s in [SectionName.INTRODUCTION, SectionName.CONCLUSIONS]]
+        doc = _make_document(paragraphs)
+        present, missing = self.validator.validate(doc, ArticleType.OPINION)
+        self.assertIn(SectionName.ARGUMENTATION, missing)
+
+    def test_missing_conclusiones_is_invalid(self):
+        paragraphs = [s.value for s in [SectionName.INTRODUCTION, SectionName.ARGUMENTATION]]
+        doc = _make_document(paragraphs)
+        present, missing = self.validator.validate(doc, ArticleType.OPINION)
+        self.assertIn(SectionName.CONCLUSIONS, missing)
