@@ -1,12 +1,12 @@
 from unittest import TestCase
 
-from src.domain.exceptions.base_src_error import BaseSrcError, SrcBaseWarning
-from src.domain.exceptions.quality_errors import QualityAnalysisFailed
+from src.domain.exceptions.base_src_error import BaseSrcError
+from src.domain.exceptions.quality_errors import QualityAnalysisFailed, QualityError
 
 
 class TestQualityAnalysisFailed(TestCase):
-    def test_is_subclass_of_src_base_warning(self):
-        self.assertTrue(issubclass(QualityAnalysisFailed, SrcBaseWarning))
+    def test_is_subclass_of_quality_error(self):
+        self.assertTrue(issubclass(QualityAnalysisFailed, QualityError))
 
     def test_is_catchable_as_base_src_error(self):
         with self.assertRaises(BaseSrcError):
