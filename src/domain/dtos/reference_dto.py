@@ -4,7 +4,7 @@ from src.domain.dtos.base_dto import BaseDTO
 
 
 @dataclass(frozen=True)
-class Reference(BaseDTO):
+class ReferenceDTO(BaseDTO):
     """Represents a reference in the bibliography."""
 
     text: str
@@ -15,4 +15,4 @@ class Reference(BaseDTO):
 
     def __str__(self) -> str:
         """Return a formatted string with authors and year."""
-        return f"Reference({self.authors}, {self.year})"
+        return f"ReferenceDTO({self.authors}, {self.year})"

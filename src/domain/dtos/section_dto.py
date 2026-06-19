@@ -5,7 +5,7 @@ from src.domain.enums.section_type import SectionType
 
 
 @dataclass(frozen=True)
-class Section(BaseDTO):
+class SectionDTO(BaseDTO):
     """Represents a section in an academic document."""
 
     title: str

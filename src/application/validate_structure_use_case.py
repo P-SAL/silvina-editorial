@@ -1,5 +1,5 @@
-from src.domain.dtos.document_content_dto import DocumentContent
-from src.domain.dtos.structure_validation_result_dto import StructureValidationResult
+from src.domain.dtos.document_content_dto import DocumentContentDTO
+from src.domain.dtos.structure_validation_result_dto import StructureValidationResultDTO
 from src.domain.enums.article_type import ArticleType
 from src.domain.enums.section_name import SectionName
 from src.domain.exceptions.document_errors import DocumentEmpty
@@ -14,10 +14,10 @@ class ValidateStructureUseCase:
 
     def execute(
         self,
-        document_content: DocumentContent,
+        document_content: DocumentContentDTO,
         article_type: ArticleType,
         has_references: bool = False,
-    ) -> StructureValidationResult:
+    ) -> StructureValidationResultDTO:
         if not document_content.paragraphs:
             raise DocumentEmpty
 
@@ -27,7 +27,7 @@ class ValidateStructureUseCase:
         if has_references:
             missing = [s for s in missing if s != SectionName.REFERENCES]
 
-        return StructureValidationResult(
+        return StructureValidationResultDTO(
             is_valid=len(missing) == 0,
             missing_sections=list(missing),
         )

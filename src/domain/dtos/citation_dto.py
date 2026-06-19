@@ -5,7 +5,7 @@ from src.domain.enums.citation_type import CitationType
 
 
 @dataclass(frozen=True)
-class Citation(BaseDTO):
+class CitationDTO(BaseDTO):
     """Represents a citation found in the document."""
 
     text: str
@@ -16,4 +16,4 @@ class Citation(BaseDTO):
 
     def __str__(self) -> str:
         """Return a short string representation truncated at 50 characters."""
-        return f"Citation({self.text[:50]}...)"
+        return f"CitationDTO({self.text[:50]}...)"
