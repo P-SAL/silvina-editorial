@@ -1,4 +1,4 @@
-from src.domain.dtos.document_content_dto import DocumentContent
+from src.domain.dtos.document_content_dto import DocumentContentDTO
 from src.domain.enums.article_type import ArticleType
 from src.domain.enums.section_name import SectionName
 from src.domain.structure.required_sections_provider import RequiredSectionsProvider
@@ -29,7 +29,7 @@ class StructureValidator:
 
     def validate(
         self,
-        document_content: DocumentContent,
+        document_content: DocumentContentDTO,
         article_type: ArticleType,
     ) -> tuple[list[SectionName], list[SectionName]]:
         """Return (present_sections, missing_sections)."""

@@ -2,21 +2,21 @@ from dataclasses import FrozenInstanceError
 from unittest import TestCase
 
 from src.domain.dtos.base_dto import BaseDTO
-from src.domain.dtos.citation_dto import Citation
+from src.domain.dtos.citation_dto import CitationDTO
 from src.domain.enums.citation_type import CitationType
 
 
-class TestCitation(TestCase):
+class TestCitationDTO(TestCase):
     def test_citation_is_subclass_of_base_dto(self):
-        self.assertTrue(issubclass(Citation, BaseDTO))
+        self.assertTrue(issubclass(CitationDTO, BaseDTO))
 
     def test_citation_instantiation_with_required_fields_only(self):
-        citation = Citation(text="Some text", citation_type=CitationType.AUTHOR_YEAR, location=0)
+        citation = CitationDTO(text="Some text", citation_type=CitationType.AUTHOR_YEAR, location=0)
         self.assertIsNone(citation.author)
         self.assertIsNone(citation.year)
 
     def test_citation_field_values_match_constructor_arguments(self):
-        citation = Citation(
+        citation = CitationDTO(
             text="Some text",
             citation_type=CitationType.NUMERIC,
             location=1,
@@ -30,12 +30,12 @@ class TestCitation(TestCase):
         self.assertEqual(citation.year, "2020")
 
     def test_citation_is_immutable(self):
-        citation = Citation(text="Some text", citation_type=CitationType.FOOTNOTE, location=0)
+        citation = CitationDTO(text="Some text", citation_type=CitationType.FOOTNOTE, location=0)
         with self.assertRaises(FrozenInstanceError):
             citation.text = "Modified"
 
     def test_citation_as_dict_contains_expected_keys(self):
-        citation = Citation(text="Some text", citation_type=CitationType.NUMERIC, location=1)
+        citation = CitationDTO(text="Some text", citation_type=CitationType.NUMERIC, location=1)
         result = citation.as_dict()
         self.assertIn("text", result)
         self.assertIn("citation_type", result)
@@ -45,7 +45,7 @@ class TestCitation(TestCase):
 
     def test_citation_str_truncates_at_50_chars(self):
         long_text = "A" * 60
-        citation = Citation(text=long_text, citation_type=CitationType.FOOTNOTE, location=2)
+        citation = CitationDTO(text=long_text, citation_type=CitationType.FOOTNOTE, location=2)
         result = str(citation)
-        self.assertTrue(result.startswith("Citation("))
+        self.assertTrue(result.startswith("CitationDTO("))
         self.assertIn("...", result)

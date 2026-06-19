@@ -7,7 +7,7 @@ from src.domain.enums.article_type import ArticleType
 
 
 @dataclass(frozen=True)
-class ClassificationResult(BaseDTO):
+class ClassificationResultDTO(BaseDTO):
     """Immutable result of article classification."""
 
     article_type: ArticleType
@@ -23,7 +23,7 @@ class ClassificationResult(BaseDTO):
         article_size: ArticleSize,
         confidence: float | None,
         reasoning: str,
-    ) -> "ClassificationResult":
+    ) -> "ClassificationResultDTO":
         """Build a ClassificationResult with all required fields."""
         return cls(
             article_type=article_type,

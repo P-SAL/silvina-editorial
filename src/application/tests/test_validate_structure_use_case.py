@@ -2,15 +2,15 @@ from dataclasses import FrozenInstanceError
 from unittest import TestCase
 from unittest.mock import MagicMock
 
-from src.domain.dtos.document_content_dto import DocumentContent
+from src.domain.dtos.document_content_dto import DocumentContentDTO
 from src.domain.enums.article_type import ArticleType
 from src.domain.enums.section_name import SectionName
 from src.domain.exceptions.document_errors import DocumentEmpty
 from src.application.validate_structure_use_case import ValidateStructureUseCase
 
 
-def _make_document(paragraphs: list[str]) -> DocumentContent:
-    return DocumentContent(word_count=0, char_count=0, paragraphs=paragraphs)
+def _make_document(paragraphs: list[str]) -> DocumentContentDTO:
+    return DocumentContentDTO(word_count=0, char_count=0, paragraphs=paragraphs)
 
 
 class TestValidateStructureUseCase(TestCase):

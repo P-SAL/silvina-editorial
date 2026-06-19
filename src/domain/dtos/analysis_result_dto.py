@@ -2,24 +2,24 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
-from src.domain.dtos.document_content_dto import DocumentContent
+from src.domain.dtos.document_content_dto import DocumentContentDTO
 from src.domain.dtos.base_dto import BaseDTO
-from src.domain.dtos.citation_analysis_result_dto import CitationAnalysisResult
-from src.domain.dtos.classification_result_dto import ClassificationResult
-from src.domain.dtos.quality_result_dto import QualityResult
-from src.domain.dtos.structure_validation_result_dto import StructureValidationResult
+from src.domain.dtos.citation_analysis_result_dto import CitationAnalysisResultDTO
+from src.domain.dtos.classification_result_dto import ClassificationResultDTO
+from src.domain.dtos.quality_result_dto import QualityResultDTO
+from src.domain.dtos.structure_validation_result_dto import StructureValidationResultDTO
 
 
 @dataclass(frozen=True)
-class AnalysisResult(BaseDTO):
+class AnalysisResultDTO(BaseDTO):
     """Immutable aggregate output DTO for a complete document analysis."""
 
     filename: str
-    document_content: DocumentContent
-    classification: ClassificationResult
-    quality: QualityResult
-    structure: StructureValidationResult
-    citations: CitationAnalysisResult
+    document_content: DocumentContentDTO
+    classification: ClassificationResultDTO
+    quality: QualityResultDTO
+    structure: StructureValidationResultDTO
+    citations: CitationAnalysisResultDTO
     timestamp: datetime = field(default_factory=datetime.now)
 
     def to_dict(self) -> dict[str, Any]:

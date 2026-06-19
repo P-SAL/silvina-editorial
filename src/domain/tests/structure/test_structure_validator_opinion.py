@@ -1,13 +1,13 @@
 from unittest import TestCase
 
-from src.domain.dtos.document_content_dto import DocumentContent
+from src.domain.dtos.document_content_dto import DocumentContentDTO
 from src.domain.enums.article_type import ArticleType
 from src.domain.enums.section_name import SectionName
 from src.domain.structure.structure_validator import StructureValidator
 
 
-def _make_document(paragraphs: list[str]) -> DocumentContent:
-    return DocumentContent(word_count=0, char_count=0, paragraphs=paragraphs)
+def _make_document(paragraphs: list[str]) -> DocumentContentDTO:
+    return DocumentContentDTO(word_count=0, char_count=0, paragraphs=paragraphs)
 
 
 _OPINION_ALL_SECTIONS = [

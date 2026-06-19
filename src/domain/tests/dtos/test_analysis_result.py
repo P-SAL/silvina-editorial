@@ -1,39 +1,39 @@
 from dataclasses import FrozenInstanceError
 from unittest import TestCase
 
-from src.domain.dtos.analysis_result_dto import AnalysisResult
+from src.domain.dtos.analysis_result_dto import AnalysisResultDTO
 from src.domain.dtos.base_dto import BaseDTO
-from src.domain.dtos.citation_analysis_result_dto import CitationAnalysisResult
-from src.domain.dtos.classification_result_dto import ClassificationResult
-from src.domain.dtos.document_content_dto import DocumentContent
-from src.domain.dtos.quality_result_dto import QualityResult
-from src.domain.dtos.structure_validation_result_dto import StructureValidationResult
+from src.domain.dtos.citation_analysis_result_dto import CitationAnalysisResultDTO
+from src.domain.dtos.classification_result_dto import ClassificationResultDTO
+from src.domain.dtos.document_content_dto import DocumentContentDTO
+from src.domain.dtos.quality_result_dto import QualityResultDTO
+from src.domain.dtos.structure_validation_result_dto import StructureValidationResultDTO
 from src.domain.enums.article_size import ArticleSize
 from src.domain.enums.article_type import ArticleType
 from src.domain.enums.quality_level import QualityLevel
 
 
-class TestAnalysisResult(TestCase):
-    def _make_analysis_result(self) -> AnalysisResult:
-        document_content = DocumentContent(word_count=500, char_count=3000)
-        classification = ClassificationResult(
+class TestAnalysisResultDTO(TestCase):
+    def _make_analysis_result(self) -> AnalysisResultDTO:
+        document_content = DocumentContentDTO(word_count=500, char_count=3000)
+        classification = ClassificationResultDTO(
             article_type=ArticleType.CIENTIFICO,
             article_size=ArticleSize.LARGO,
             confidence=0.9,
             reasoning="Scientific article",
         )
-        quality = QualityResult(
+        quality = QualityResultDTO(
             overall_score=8.0,
             quality_level=QualityLevel.GOOD,
         )
-        structure = StructureValidationResult(is_valid=True)
-        citations = CitationAnalysisResult(
+        structure = StructureValidationResultDTO(is_valid=True)
+        citations = CitationAnalysisResultDTO(
             total_citations=10,
             total_references=8,
             matched_count=8,
             unmatched_count=2,
         )
-        return AnalysisResult(
+        return AnalysisResultDTO(
             filename="test_article.docx",
             document_content=document_content,
             classification=classification,
@@ -43,7 +43,7 @@ class TestAnalysisResult(TestCase):
         )
 
     def test_analysis_result_is_subclass_of_base_dto(self):
-        self.assertTrue(issubclass(AnalysisResult, BaseDTO))
+        self.assertTrue(issubclass(AnalysisResultDTO, BaseDTO))
 
     def test_analysis_result_is_immutable(self):
         result = self._make_analysis_result()

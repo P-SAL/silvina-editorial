@@ -6,7 +6,7 @@ from src.domain.dtos.base_dto import BaseDTO
 
 
 @dataclass(frozen=True)
-class StructureValidationResult(BaseDTO):
+class StructureValidationResultDTO(BaseDTO):
     """Immutable result of structure validation."""
 
     is_valid: bool

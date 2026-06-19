@@ -7,7 +7,7 @@ from src.domain.enums.quality_level import QualityLevel
 
 
 @dataclass(frozen=True)
-class QualityResult(BaseDTO):
+class QualityResultDTO(BaseDTO):
     """Immutable result of quality analysis."""
 
     overall_score: float

@@ -5,7 +5,7 @@ from src.domain.dtos.base_dto import BaseDTO
 
 
 @dataclass(frozen=True)
-class CitationAnalysisResult(BaseDTO):
+class CitationAnalysisResultDTO(BaseDTO):
     """Immutable result of citation analysis."""
 
     total_citations: int
