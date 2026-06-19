@@ -174,15 +174,15 @@ logic of its own.
 
 ### Requirement: MatchCitationsUseCaseWiring Assembly
 
-`MatchCitationsUseCaseWiring` MUST expose `get_match_citations_use_case() ->
+`MatchCitationsUseCaseWiring` MUST expose `create_use_case() ->
 MatchCitationsUseCase` as its single public method, assembling dependencies via
-private `_get_*` accessor methods, following the Slice 2/3 instance-based wiring
+private `_get_*` accessor methods, following the Slice 3 instance-based wiring
 pattern. The wiring MUST NOT contain business logic.
 
 #### Scenario: Wiring produces a usable use case instance
 
 - GIVEN a `MatchCitationsUseCaseWiring` instance
-- WHEN `get_match_citations_use_case()` is called
+- WHEN `create_use_case()` is called
 - THEN it returns a `MatchCitationsUseCase` ready to call `.execute(...)`
 
 ## Out of Scope
