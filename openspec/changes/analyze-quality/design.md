@@ -1,215 +1,342 @@
 # Design: analyze-quality (Slice 5)
 
+> **Update note**: This revision supersedes the original PR-A design. PR #13 is open,
+> not yet merged, with 273 passing tests against the original monolithic `QualityAnalyzer`
+> (240 lines: sampling + prompt building + parsing + orchestration all in one class). The
+> user's 6 follow-up decisions split that monolith into focused collaborators. ADR-1 through
+> ADR-5 below (port/adapter shape, fallback constant, direct per-call assignment, full-call
+> failure detection) are UNCHANGED from the original design and kept for reference. What
+> changes is everything inside `quality_analyzer.py` and 2 brand-new files plus 2 prompt
+> resource files — see "ADR-6 through ADR-9" below for the new decisions.
+
 ## Module Layout
 
-First slice to introduce `src/domain/ports/` and `src/infrastructure/adapters/` — both
-new top-level folders in the migration.
+First slice to introduce `src/domain/ports/`, `src/infrastructure/adapters/`, AND
+`src/infrastructure/resources/` — three new top-level folders in the migration.
 
 ```
 src/
 ├── domain/
-│   ├── ports/                                   # NEW — first port folder in the migration
-│   │   └── llm_generator_port.py                # LlmGeneratorPort (Protocol)
+│   ├── ports/
+│   │   └── llm_generator_port.py                     # LlmGeneratorPort (Protocol) — unchanged
 │   ├── enums/
-│   │   ├── quality_dimension.py                 # NEW — CLARIDAD/COHERENCIA/ARGUMENTACION/CONCLUSIONES
-│   │   └── quality_level.py                     # MODIFIED — add get_quality_level_from_score()
-│   ├── quality/                                  # NEW — entity folder (mirrors structure/citation)
-│   │   └── quality_analyzer.py                  # QualityAnalyzer domain service
+│   │   ├── quality_dimension.py                       # member names renamed to English (CLARITY/COHERENCE/ARGUMENTATION/CONCLUSIONS) — .value strings unchanged (matched literally against LLM responses)
+│   │   ├── quality_level.py                           # unchanged — get_quality_level_from_score() already present
+│   │   └── reference_line_marker.py                   # NEW — HTTP/DOI/HTTPS/ISBN, replaces tuple constant
 │   ├── dtos/
-│   │   └── quality_result_dto.py                # UNCHANGED — reused as-is
+│   │   ├── quality_result_dto.py                      # unchanged — reused as-is
+│   │   ├── dimension_score_dto.py                     # NEW — replaces private _DimensionScore
+│   │   └── parsed_response_dto.py                     # NEW — replaces private _ParsedResponse
+│   ├── quality/                                        # entity folder — now 3 files instead of 1
+│   │   ├── quality_analyzer.py                        # REWRITTEN — thin orchestrator, ~70 lines
+│   │   ├── quality_text_sampler.py                    # NEW — owns sampling heuristic
+│   │   └── quality_response_parser.py                 # NEW — owns response-parsing logic
 │   └── tests/
+│       ├── dtos/
+│       │   ├── test_dimension_score_dto.py            # NEW
+│       │   └── test_parsed_response_dto.py             # NEW
+│       ├── enums/
+│       │   └── test_reference_line_marker.py          # NEW
 │       └── quality/
-│           └── test_quality_analyzer.py         # NEW — fake LlmGeneratorPort double
+│           ├── test_quality_analyzer.py               # rewritten — fake collaborators, not fake LLM + real parsing
+│           ├── test_quality_text_sampler.py            # NEW — moves sampling scenarios out of analyzer tests
+│           └── test_quality_response_parser.py         # NEW — moves parsing scenarios out of analyzer tests
 ├── application/
-│   └── analyze_quality_use_case.py              # NEW — AnalyzeQualityUseCase
+│   └── analyze_quality_use_case.py                    # unchanged — thin pass-through
 └── infrastructure/
-    ├── adapters/                                 # NEW — first adapter folder in the migration
+    ├── adapters/
     │   └── llm_generator/
-    │       └── ollama_generator_adapter.py      # OllamaGeneratorAdapter(LlmGeneratorPort)
+    │       └── ollama_generator_adapter.py             # unchanged
+    ├── resources/                                       # NEW — first resources folder in the migration
+    │   └── prompts/
+    │       └── quality/
+    │           ├── clarity_coherence_prompt.txt      # NEW — Call 1 template, {text_sample} placeholder
+    │           └── argumentation_conclusions_prompt.txt  # NEW — Call 2 template, {text_sample} placeholder
     ├── wirings/
-    │   └── analyze_quality_use_case_wiring.py   # NEW — assembles adapter + domain service
+    │   └── analyze_quality_use_case_wiring.py          # PR-B scope — will load 2 .txt files + 2 env vars
     └── tests/
-        └── test_ollama_generator_adapter.py     # NEW — mocked ollama client
+        └── test_ollama_generator_adapter.py            # unchanged
 ```
 
-`business_logic/quality_analyzer.py` stays untouched (coexistence).
+`business_logic/quality_analyzer.py` stays untouched (coexistence). `requirements.txt` gets
+`python-dotenv` added (PR-B). `.env.example` at repo root documents
+`QUALITY_MIN_SAMPLE_WORD_COUNT=400` and `QUALITY_TEXT_SAMPLE_CHARACTER_LIMIT=8000` (PR-B).
 
 ---
 
-## ADR-1: Port Abstraction — `Protocol` over `abc.ABC`
+## ADR-1 through ADR-5 (unchanged from original design)
 
-**Decision**: `LlmGeneratorPort` is a `typing.Protocol`, not an `abc.ABC` subclass.
+Port-as-`Protocol`, adapter-wraps-`ollama.generate()`-directly, single fallback constant,
+direct per-call assignment with no cross-call merge, and full-call parse-failure detection via
+`matched_dimensions: frozenset[QualityDimension]` are all unchanged in substance. Only their
+physical location moves: the `_ParsedResponse`/`_DimensionScore` private dataclasses described
+in the original ADR-5 are now `ParsedResponseDTO`/`DimensionScoreDTO` — real `BaseDTO`
+subclasses in `src/domain/dtos/`, because `QualityResponseParser.parse()` now returns
+`ParsedResponseDTO` across a class boundary (parser → analyzer), which is exactly what
+`BaseDTO` exists for — a private dataclass was acceptable on the original design only because
+parsing and consuming happened inside the same class.
 
-**Rationale**: Grepped `src/domain/` and `src/infrastructure/` for `abc`, `Protocol`,
-`abstractmethod` — zero hits. No existing precedent either way. Per the proposal's own
-guidance, default to `Protocol` for a pure single-method interface: no inheritance coupling
-required from the adapter side (`OllamaGeneratorAdapter` satisfies the protocol structurally),
-no `ABCMeta` metaclass machinery needed, and it keeps the port file dependency-free
-(`typing` is stdlib, already used everywhere in this codebase per the PEP 604 rule).
+---
 
-**Rejected alternative**: `abc.ABC` + `@abstractmethod`. Would work identically at the call
-site but adds an explicit `class OllamaGeneratorAdapter(LlmGeneratorPort, ABC)` inheritance
-requirement. `Protocol` is lighter and equally clear for a one-method interface; this becomes
-the project's convention for ports going forward (worth revisiting only if a future port needs
-shared default-method behavior, which favors ABC instead).
+## ADR-6: Three-Way Split — Sampler / Parser / Orchestrator
+
+**Decision**: Split the original 240-line `QualityAnalyzer` into 3 classes, each owning one
+responsibility:
+
+- `QualityTextSampler` — owns the strategic-excerpt heuristic (title + intro + middle +
+  conclusion-or-tail, fallback to full text below a word threshold).
+- `QualityResponseParser` — owns response parsing (header splitting, score extraction,
+  narrative inference, feedback extraction/truncation, dimension mapping).
+- `QualityAnalyzer` — owns orchestration only: sample once, render 2 prompts, call the port
+  twice, parse twice, validate usability, assign dimensions directly, average, map to
+  `QualityLevel`, return `QualityResultDTO`.
+
+**Rationale**: the original design satisfied "one port call site" and "no Ollama leakage," but
+left 3 unrelated responsibilities (sampling, parsing, orchestration) fused into one class —
+each changes for a different reason (sampling heuristic tuning vs. LLM prompt-format changes
+vs. orchestration flow), which is a Single Responsibility Principle violation the user
+correctly flagged before merge. Splitting also makes each piece independently testable without
+needing a fake `LlmGeneratorPort` to exercise sampling or parsing edge cases — the original
+`test_quality_analyzer.py` was forced to drive sampling/parsing scenarios through a fake LLM
+response just to reach the regex logic.
+
+**Rejected alternative**: keep parsing/sampling as private methods but extract them to mixins
+or module-level functions. Rejected — per the clean-architecture skill, "prefer classes (OOP)"
+and "one class per file" for domain logic; mixins add inheritance coupling for no benefit here,
+and module-level functions would require either passing constants as parameters on every call
+or falling back to module constants (which blocks the constructor-parameter requirement below).
+
+---
+
+## ADR-7: Sampling Tunables Are Constructor Parameters, Not Module Constants
+
+**Decision**: `QualityTextSampler.__init__(self, min_sample_word_count: int = 400,
+text_sample_character_limit: int = 8000)`. No `os.getenv`, no `load_dotenv`, no environment
+access anywhere in `src/domain/`.
+
+**Rationale**: these 2 values are genuinely tunable per the user's decision — operators may
+want a lower word-count threshold for short documents or a larger character budget for a
+larger-context model. Reading env vars directly inside the domain class would violate the
+import invariant (`src/domain/` must not depend on infrastructure/file/env concerns) and would
+make the sampler untestable without monkeypatching `os.environ`. Constructor injection keeps
+the domain class pure and lets PR-B's wiring resolve the env vars once, at startup, via
+`python-dotenv` — consistent with how `AnalyzeQualityUseCaseWiring` already assembles
+`OllamaGeneratorAdapter` in the original design.
+
+**Rejected alternative**: keep them as module-level constants in `quality_text_sampler.py`
+(original design's approach for `_MINIMUM_SAMPLE_WORD_COUNT` / `_TEXT_SAMPLE_CHARACTER_LIMIT`).
+Rejected per the user's explicit decision — module constants can't be overridden without
+editing source, whereas constructor parameters can be wired from configuration.
+
+---
+
+## ADR-8: `ReferenceLineMarker` Enum Replaces the Reference-Line Tuple
+
+**Decision**: `_REFERENCE_LINE_MARKERS = ("http", "doi.org", "https", "ISBN")` becomes a real
+`Enum` with members `HTTP`, `DOI`, `HTTPS`, `ISBN`. Membership check becomes
+`any(marker.value in paragraph[:80] for marker in ReferenceLineMarker)`.
+
+**Rationale**: this is a closed, named category of "what a reference line looks like" — exactly
+what enums are for in this codebase (see `QualityDimension`, `QualityLevel`). A bare string
+tuple loses the ability to refer to "the DOI marker" by name in tests or call sites, and risks
+silent typos (`"htttp"`) that a tuple of strings can't catch at all whereas an enum member
+reference at least fails loudly if misspelled as an attribute access.
+
+**Rejected alternative**: leave it as a tuple but promote it to a shared module constant
+importable from multiple files. Rejected — the user's decision specifically calls for an enum,
+and a categorical "one of these 4 fixed string markers" concept is the textbook enum use case,
+not a constant-sharing problem.
+
+---
+
+## ADR-9: Prompt Templates as External Files, Injected as Strings
+
+**Decision**: the 2 prompt bodies move from Python f-string methods (`_build_prompt_one` /
+`_build_prompt_two`) to plain `.txt` files under
+`src/infrastructure/resources/prompts/quality/`, with a single `{text_sample}` placeholder
+using Python's `.format()` syntax (not f-string, since the domain class only holds the loaded
+string, not a live f-string context). `QualityAnalyzer` receives both template strings as
+constructor parameters and renders each via one private `_render_prompt(template, text_sample)`
+helper that calls `.format(text_sample=text_sample)`.
+
+**Rationale**: the original `_build_prompt_one`/`_build_prompt_two` were ~20 lines each of
+near-identical f-string boilerplate differing only in the embedded Spanish copy — a textbook
+duplication smell, and one that couples prompt *wording* (a content/copy concern, likely to be
+tuned by a non-engineer or A/B tested later) to the domain class's *source code* (requiring a
+redeploy to change a single sentence). Externalizing to files: (a) collapses the duplicated
+method into one generic renderer, (b) keeps `src/domain/` free of any file I/O — the domain
+class never reads a file, it only receives the already-loaded string at construction time
+(consistent with the constructor-injection pattern already used for `LlmGeneratorPort`,
+`QualityTextSampler`, `QualityResponseParser`), and (c) lets future prompt-wording iteration
+happen without touching Python code at all.
+
+**Rejected alternative**: keep prompts as Python string constants (module-level instead of
+method-level) inside `quality_analyzer.py`. Rejected — still mixes prompt copy with domain
+source, and still requires a code change + redeploy for a wording tweak; only marginally better
+than the original status quo. The user's decision explicitly calls for file-based templates
+with wiring-time loading.
+
+**Why `.format()` and not an f-string**: an f-string requires the variable to be in scope at
+string-literal-definition time; the loaded template is a plain string read from disk, so
+`.format(text_sample=...)` is the correct (and only) interpolation mechanism for a
+runtime-loaded template string.
+
+---
+
+## `ReferenceLineMarker` Enum
 
 ```python
-# src/domain/ports/llm_generator_port.py
-from typing import Protocol
+# src/domain/enums/reference_line_marker.py
+from enum import Enum
 
 
-class LlmGeneratorPort(Protocol):
-    """Capability to generate text from a prompt via a language model backend."""
+class ReferenceLineMarker(Enum):
+    """Substrings that mark a paragraph's opening characters as reference-like."""
 
-    def generate(self, prompt: str) -> str:
-        """Return the generated text for the given prompt."""
-        ...
+    HTTP = "http"
+    DOI = "doi.org"
+    HTTPS = "https"
+    ISBN = "ISBN"
 ```
 
 ---
 
-## ADR-2: Adapter Wraps `ollama.generate()` Directly, No `Client` Field
-
-**Decision**: `OllamaGeneratorAdapter` calls module-level `ollama.generate(...)` exactly like
-legacy's `self.ollama.generate(...)`. Does **not** carry over the unused `self.client =
-ollama.Client(host=...)` field — confirmed dead in the proposal's Out-of-Scope section.
-
-**Rejected alternative**: Porting the `Client` field "for completeness." Rejected — it was
-never called in 247 lines of legacy code; carrying dead fields into a fresh port/adapter
-defeats the purpose of cleanup-via-migration. Tracked in `migration/dead-code-registry`
-already; no need to resurrect it here.
+## `DimensionScoreDTO` and `ParsedResponseDTO`
 
 ```python
-# src/infrastructure/adapters/llm_generator/ollama_generator_adapter.py
-import ollama
-
-from src.domain.exceptions.decorators.generic_error_handler import generic_error_handler
-from src.domain.exceptions.language_model_errors import LanguageModelUnavailable
-from src.domain.ports.llm_generator_port import LlmGeneratorPort
-
-_MODEL_NAME = "llama3-gradient:8b-instruct-1048k-q4_K_M"
-_GENERATION_OPTIONS = {
-    "temperature": 0.2,
-    "num_predict": 1000,
-    "num_ctx": 4096,
-    "repeat_penalty": 1.1,
-    "timeout": 120,
-}
-
-
-class OllamaGeneratorAdapter(LlmGeneratorPort):
-    """Adapter that generates text via a local Ollama backend."""
-
-    def __init__(self, model_name: str = _MODEL_NAME) -> None:
-        self._model_name = model_name
-
-    @generic_error_handler
-    def generate(self, prompt: str) -> str:
-        """Return the stripped response text from Ollama for the given prompt."""
-        try:
-            response = ollama.generate(
-                model=self._model_name,
-                prompt=prompt,
-                options=_GENERATION_OPTIONS,
-            )
-        except Exception as exc:
-            raise LanguageModelUnavailable() from exc
-        return response.get("response", "").strip()
-```
-
-Note: `@generic_error_handler` wraps *unexpected* exceptions into `SrcGenericError`; the
-explicit `try/except Exception → LanguageModelUnavailable` inside `generate()` runs first and
-takes priority, satisfying the spec's exact requirement ("backend failure raises
-`LanguageModelUnavailable`", not a generic wrapper). The decorator still adds logging/no-op
-re-raise behavior for `LanguageModelUnavailable` itself (it's a `BaseSrcError` subclass, hits
-the `except BaseSrcError` branch, gets logged once, re-raised unchanged).
-
-`OllamaGeneratorAdapter(LlmGeneratorPort)` — explicit inheritance from the `Protocol` is
-optional in Python (structural typing satisfies it either way), but it is written explicitly
-here for readability and to make the implemented-port relationship grep-able, matching the
-existing codebase pattern of explicit relationships (e.g. exception hierarchies).
-
----
-
-## ADR-3: Fallback Granularity — Single Named Constant, Not Three Duplicated Literals
-
-**Decision**: One module-level constant in `quality_analyzer.py`:
-
-```python
-_UNSCORED_DIMENSION_SCORE = 7.0
-_UNSCORED_DIMENSION_FEEDBACK = "No disponible"
-```
-
-used both for (a) a single dimension missing from an otherwise-parseable response, and (b) as
-the seed/default values the parser starts from before overwriting matched blocks. This
-replaces legacy's 3 duplicated `{"score": 7.0, "feedback": "No disponible"}` literals
-(initial `result` dict, `s1` get-default, `s2` get-default) with one source of truth.
-
-**Rejected alternative**: legacy's separate "Análisis no disponible" feedback string used only
-in the `except Exception` fallback path. That entire fallback path is removed — the spec
-mandates raising `QualityAnalysisFailed` instead of returning a fabricated result, so that
-string has no caller left and is dropped, not ported.
-
----
-
-## ADR-4: Direct Per-Call Assignment, Cross-Call Merge Removed
-
-**Decision**: Per proposal Open Question 1 — simplify to direct per-dimension lookup.
-Claridad/Coherencia are read directly from `parse_response(text_1)`; Argumentacion/Conclusiones
-directly from `parse_response(text_2)`. The legacy `s1 if s1["feedback"] != "No disponible"
-else s2` merge loop is deleted entirely.
-
-**Rationale**: confirmed in the proposal as behaviorally a no-op (Claridad/Coherencia headers
-never appear in Call 2's prompt template, and vice versa for Argumentacion/Conclusiones — the
-two prompts ask for disjoint dimension pairs). Removing it loses no behavior and removes a
-4-line loop that could never branch the way its name implies.
-
----
-
-## ADR-5: Full-Call Parse Failure Detection
-
-**Decision**: `_parse_response(text: str) -> dict[QualityDimension, DimensionScore]` always
-returns all 4 dimension keys (2 real + 2 untouched defaults, structurally), but
-`QualityAnalyzer.analyze()` only inspects the **2 dimensions relevant to that call** when
-deciding whether to raise. A call's response "fully fails" when *neither* of its two relevant
-headers matched, i.e. both relevant entries are still the sentinel default after parsing.
-
-Implementation approach: `_parse_response` returns a dict keyed by all 4 `QualityDimension`
-members PLUS a `set[QualityDimension]` of which dimensions were genuinely matched (not just
-left as the default). `QualityAnalyzer.analyze()` checks, per call, whether at least one of its
-2 relevant dimensions is in the matched set; if neither is, raise `QualityAnalysisFailed`.
-
-```python
-@dataclass(frozen=True)
-class _ParsedResponse:
-    scores: dict[QualityDimension, "_DimensionScore"]
-    matched_dimensions: frozenset[QualityDimension]
-```
-
-This is an internal/private structure inside `quality_analyzer.py` — not exported, not a DTO
-(no `BaseDTO` needed for an implementation-internal value object).
-
----
-
-## `QualityAnalyzer` Domain Service — Full Design
-
-```python
-# src/domain/quality/quality_analyzer.py
-import re
+# src/domain/dtos/dimension_score_dto.py
 from dataclasses import dataclass
 
-from src.domain.dtos.document_content_dto import DocumentContentDTO
-from src.domain.dtos.quality_result_dto import QualityResultDTO
-from src.domain.enums.quality_dimension import QualityDimension
-from src.domain.enums.quality_level import get_quality_level_from_score
-from src.domain.exceptions.quality_errors import QualityAnalysisFailed
-from src.domain.ports.llm_generator_port import LlmGeneratorPort
+from src.domain.dtos.base_dto import BaseDTO
 
-_UNSCORED_DIMENSION_SCORE = 7.0
-_UNSCORED_DIMENSION_FEEDBACK = "No disponible"
-_MINIMUM_SAMPLE_WORD_COUNT = 400
-_TEXT_SAMPLE_CHARACTER_LIMIT = 8000
-_REFERENCE_LINE_MARKERS = ("http", "doi.org", "https", "ISBN")
+
+@dataclass(frozen=True)
+class DimensionScoreDTO(BaseDTO):
+    """A single dimension's parsed score and feedback text."""
+
+    score: float
+    feedback: str
+```
+
+```python
+# src/domain/dtos/parsed_response_dto.py
+from dataclasses import dataclass, field
+
+from src.domain.dtos.base_dto import BaseDTO
+from src.domain.dtos.dimension_score_dto import DimensionScoreDTO
+from src.domain.enums.quality_dimension import QualityDimension
+
+
+@dataclass(frozen=True)
+class ParsedResponseDTO(BaseDTO):
+    """The result of parsing one LLM response into per-dimension scores."""
+
+    scores: dict[QualityDimension, DimensionScoreDTO] = field(default_factory=dict)
+    matched_dimensions: frozenset[QualityDimension] = field(default_factory=frozenset)
+```
+
+Both follow the exact `BaseDTO` / `@dataclass(frozen=True)` pattern used by
+`DocumentContentDTO` and `QualityResultDTO` — no `__str__` override needed (neither is rendered
+directly to a user), `field(default_factory=...)` used for the mutable-typed defaults
+(`dict`, `frozenset`) per dataclass rules, matching `DocumentContentDTO`'s use of
+`field(default_factory=list)` for its own mutable-typed fields.
+
+---
+
+## `QualityTextSampler` — Full Design
+
+```python
+# src/domain/quality/quality_text_sampler.py
+import re
+
+from src.domain.dtos.document_content_dto import DocumentContentDTO
+from src.domain.enums.reference_line_marker import ReferenceLineMarker
+
+_CONCLUSION_HEADER_PATTERN = re.compile(r"conclusi", re.IGNORECASE)
+
+
+class QualityTextSampler:
+    """Builds a strategic text excerpt for LLM-based quality analysis."""
+
+    def __init__(
+        self,
+        min_sample_word_count: int = 400,
+        text_sample_character_limit: int = 8000,
+        reference_line_prefix_length: int = 80,
+        introduction_paragraph_count: int = 3,
+        middle_paragraph_count: int = 2,
+        conclusion_paragraph_limit: int = 3,
+        fallback_tail_paragraph_count: int = 2,
+    ) -> None:
+        self._min_sample_word_count = min_sample_word_count
+        self._text_sample_character_limit = text_sample_character_limit
+        self._reference_line_prefix_length = reference_line_prefix_length
+        self._introduction_paragraph_count = introduction_paragraph_count
+        self._middle_paragraph_count = middle_paragraph_count
+        self._conclusion_paragraph_limit = conclusion_paragraph_limit
+        self._fallback_tail_paragraph_count = fallback_tail_paragraph_count
+
+    def build_sample(self, document_content: DocumentContentDTO) -> str:
+        """Return a strategic excerpt of the document, or its full text if too short."""
+        parts = [document_content.title or ""]
+        parts.extend(document_content.paragraphs[: self._introduction_paragraph_count])
+        middle_index = len(document_content.paragraphs) // 2
+        parts.extend(
+            document_content.paragraphs[
+                middle_index : middle_index + self._middle_paragraph_count
+            ]
+        )
+        parts.extend(self._collect_conclusion_or_tail_paragraphs(document_content.paragraphs))
+
+        text_sample = " ".join(parts)[: self._text_sample_character_limit]
+        if len(text_sample.split()) < self._min_sample_word_count:
+            return " ".join(document_content.paragraphs)[: self._text_sample_character_limit]
+        return text_sample
+
+    def _collect_conclusion_or_tail_paragraphs(self, paragraphs: list[str]) -> list[str]:
+        conclusion_paragraphs = []
+        in_conclusion = False
+        for paragraph in paragraphs:
+            if _CONCLUSION_HEADER_PATTERN.search(paragraph):
+                in_conclusion = True
+            if in_conclusion and not self._is_reference_like(paragraph):
+                conclusion_paragraphs.append(paragraph)
+
+        if conclusion_paragraphs:
+            return conclusion_paragraphs[: self._conclusion_paragraph_limit]
+
+        non_reference_paragraphs = [
+            paragraph for paragraph in paragraphs if not self._is_reference_like(paragraph)
+        ]
+        return non_reference_paragraphs[-self._fallback_tail_paragraph_count :]
+
+    def _is_reference_like(self, paragraph: str) -> bool:
+        prefix = paragraph[: self._reference_line_prefix_length]
+        return any(marker.value in prefix for marker in ReferenceLineMarker)
+```
+
+Logic is copied verbatim from legacy `_build_text_sample` /
+`_collect_conclusion_or_tail_paragraphs` / `_is_reference_like` — the module constants
+(`_MINIMUM_SAMPLE_WORD_COUNT`, `_TEXT_SAMPLE_CHARACTER_LIMIT`, `_REFERENCE_LINE_MARKERS`) and the
+paragraph-slicing magic numbers (`3`, `2`, `3`, `2`) all become constructor parameters with
+defaults identical to the legacy values — keeping every tunable value injectable (future `.env`
+reads happen in infrastructure wiring, never in this domain class, which stays free of
+`os`/`dotenv` imports) without changing behavior. `_CONCLUSION_HEADER_PATTERN` stays a module
+constant — it is a Spanish-language domain heuristic (detects "conclusión"/"conclusiones"
+headers), not a technical/tunable value.
+
+---
+
+## `QualityResponseParser` — Full Design
+
+```python
+# src/domain/quality/quality_response_parser.py
+import re
+
+from src.domain.dtos.dimension_score_dto import DimensionScoreDTO
+from src.domain.dtos.parsed_response_dto import ParsedResponseDTO
+from src.domain.enums.quality_dimension import QualityDimension
+
 _DIMENSION_HEADER_PATTERN = re.compile(
     r"(?=\*\*(?:\d+\.\s*)?(?:Claridad|Coherencia|Argumentaci[oó]n|Conclusiones))",
     re.IGNORECASE,
@@ -225,54 +352,181 @@ _NARRATIVE_SCORE_KEYWORDS = (
     (("aceptable", "suficiente", "regular"), 6.0),
     (("deficiente", "débil", "pobre", "insuficiente"), 4.0),
 )
+_DIMENSION_KEYWORDS: tuple[tuple[QualityDimension, tuple[str, ...]], ...] = (
+    (QualityDimension.ARGUMENTATION, ("argumentaci",)),
+    (QualityDimension.CONCLUSIONS, ("conclusi",)),
+    (QualityDimension.COHERENCE, ("coherencia",)),
+    (QualityDimension.CLARITY, ("claridad", "argumento")),
+)
 
 
-@dataclass(frozen=True)
-class _DimensionScore:
-    score: float
-    feedback: str
+class QualityResponseParser:
+    """Parses a single LLM response into per-dimension scores and feedback."""
 
+    def __init__(
+        self,
+        unscored_dimension_score: float = 7.0,
+        unscored_dimension_feedback: str = "No disponible",
+    ) -> None:
+        self._unscored_dimension_score = unscored_dimension_score
+        self._unscored_dimension_feedback = unscored_dimension_feedback
 
-@dataclass(frozen=True)
-class _ParsedResponse:
-    scores: dict[QualityDimension, _DimensionScore]
-    matched_dimensions: frozenset[QualityDimension]
+    def parse(self, response_text: str) -> ParsedResponseDTO:
+        """Return the parsed scores for every dimension found in the response text."""
+        scores = {
+            dimension: DimensionScoreDTO(
+                self._unscored_dimension_score, self._unscored_dimension_feedback
+            )
+            for dimension in QualityDimension
+        }
+        matched_dimensions: set[QualityDimension] = set()
+
+        blocks = _DIMENSION_HEADER_PATTERN.split(response_text.strip())
+        for block in blocks:
+            if not block.strip():
+                continue
+
+            dimension = self._map_block_to_dimension(block)
+            if dimension is None:
+                continue
+
+            score = self._extract_score(block)
+            feedback = self._extract_feedback(block)
+            scores[dimension] = DimensionScoreDTO(score, feedback)
+            matched_dimensions.add(dimension)
+
+        return ParsedResponseDTO(scores=scores, matched_dimensions=frozenset(matched_dimensions))
+
+    def _extract_score(self, block: str) -> float:
+        match = _EXPLICIT_SCORE_PATTERN.search(block)
+        if match is None:
+            return self._infer_score_from_narrative(block)
+
+        score_text = match.group(1) or match.group(2)
+        try:
+            return max(0.0, min(10.0, float(score_text)))
+        except ValueError:
+            return self._unscored_dimension_score
+
+    def _infer_score_from_narrative(self, block: str) -> float:
+        block_lower = block.lower()
+        for keywords, score in _NARRATIVE_SCORE_KEYWORDS:
+            if any(keyword in block_lower for keyword in keywords):
+                return score
+        return self._unscored_dimension_score
+
+    def _extract_feedback(self, block: str) -> str:
+        lines = block.strip().split("\n")
+        feedback_lines = [line.strip() for line in lines[1:] if line.strip()]
+        feedback = " ".join(feedback_lines)
+        feedback = _RECOMMENDATION_TAIL_PATTERN.sub("", feedback).strip()
+        feedback = " ".join(feedback.split())
+
+        if len(feedback) < 10:
+            return self._unscored_dimension_feedback
+
+        sentences = [sentence.strip() for sentence in feedback.split(".") if sentence.strip()]
+        if len(sentences) > 3:
+            return ". ".join(sentences[:3]) + "."
+        return feedback
+
+    def _map_block_to_dimension(self, block: str) -> QualityDimension | None:
+        block_lower = block[:200].lower()
+        for dimension, keywords in _DIMENSION_KEYWORDS:
+            if any(keyword in block_lower for keyword in keywords):
+                return dimension
+        return None
+```
+
+Logic copied verbatim from legacy `_parse_response` / `_extract_score` /
+`_infer_score_from_narrative` / `_extract_feedback` / `_map_block_to_dimension`. The 3 regex
+patterns and `_NARRATIVE_SCORE_KEYWORDS` constants relocate here as named module-level
+constants — not enums, per the spec's explicit reasoning (a compiled regex isn't a categorical
+value; a lone default isn't a category set), mirroring `_SECTION_ALIASES` in
+`structure_validator.py`. `_UNSCORED_DIMENSION_SCORE`/`_UNSCORED_DIMENSION_FEEDBACK` become
+constructor parameters with defaults identical to the legacy values (same rationale as
+`QualityTextSampler`'s tunables: injectable without the domain reading `.env` directly).
+`_map_block_to_dimension` uses the declarative `_DIMENSION_KEYWORDS` table instead of an
+if/elif chain, for the same reason `_NARRATIVE_SCORE_KEYWORDS` is already declarative in this
+file — same evaluation order, same substrings, no behavior change.
+
+---
+
+## `QualityAnalyzer` — Rewritten as Thin Orchestrator
+
+```python
+# src/domain/quality/quality_analyzer.py
+from src.domain.dtos.document_content_dto import DocumentContentDTO
+from src.domain.dtos.parsed_response_dto import ParsedResponseDTO
+from src.domain.dtos.quality_result_dto import QualityResultDTO
+from src.domain.enums.quality_dimension import QualityDimension
+from src.domain.enums.quality_level import get_quality_level_from_score
+from src.domain.exceptions.quality_errors import QualityAnalysisFailed
+from src.domain.ports.llm_generator_port import LlmGeneratorPort
+from src.domain.quality.quality_response_parser import QualityResponseParser
+from src.domain.quality.quality_text_sampler import QualityTextSampler
 
 
 class QualityAnalyzer:
-    """Domain service that scores document quality across 4 dimensions via an LLM."""
+    """Domain service that orchestrates LLM-backed quality scoring across 4 dimensions."""
 
-    def __init__(self, llm_generator: LlmGeneratorPort) -> None:
+    def __init__(
+        self,
+        llm_generator: LlmGeneratorPort,
+        text_sampler: QualityTextSampler,
+        response_parser: QualityResponseParser,
+        clarity_coherence_prompt_template: str,
+        argumentation_conclusions_prompt_template: str,
+    ) -> None:
         self._llm_generator = llm_generator
-
-    def analyze(
-        self, document_content: DocumentContentDTO, article_type
-    ) -> QualityResultDTO:
-        """Score document quality across Claridad, Coherencia, Argumentación and Conclusiones."""
-        text_sample = self._build_text_sample(document_content)
-
-        prompt_1 = self._build_prompt_one(text_sample)
-        prompt_2 = self._build_prompt_two(text_sample)
-
-        response_1 = self._llm_generator.generate(prompt_1)
-        response_2 = self._llm_generator.generate(prompt_2)
-
-        parsed_1 = self._parse_response(response_1)
-        self._ensure_call_produced_usable_content(
-            parsed_1, relevant_dimensions=(QualityDimension.CLARIDAD, QualityDimension.COHERENCIA)
+        self._text_sampler = text_sampler
+        self._response_parser = response_parser
+        self._clarity_coherence_prompt_template = clarity_coherence_prompt_template
+        self._argumentation_conclusions_prompt_template = (
+            argumentation_conclusions_prompt_template
         )
 
-        parsed_2 = self._parse_response(response_2)
+    def analyze(self, document_content: DocumentContentDTO, article_type) -> QualityResultDTO:
+        """Score document quality across Claridad, Coherencia, Argumentación and Conclusiones."""
+        text_sample = self._text_sampler.build_sample(document_content)
+
+        clarity_coherence_prompt = self._render_prompt(
+            self._clarity_coherence_prompt_template, text_sample
+        )
+        argumentation_conclusions_prompt = self._render_prompt(
+            self._argumentation_conclusions_prompt_template, text_sample
+        )
+
+        clarity_coherence_response = self._llm_generator.generate(clarity_coherence_prompt)
+        argumentation_conclusions_response = self._llm_generator.generate(
+            argumentation_conclusions_prompt
+        )
+
+        clarity_coherence_parsed = self._response_parser.parse(clarity_coherence_response)
         self._ensure_call_produced_usable_content(
-            parsed_2,
-            relevant_dimensions=(QualityDimension.ARGUMENTACION, QualityDimension.CONCLUSIONES),
+            clarity_coherence_parsed,
+            relevant_dimensions=(QualityDimension.CLARITY, QualityDimension.COHERENCE),
+        )
+
+        argumentation_conclusions_parsed = self._response_parser.parse(
+            argumentation_conclusions_response
+        )
+        self._ensure_call_produced_usable_content(
+            argumentation_conclusions_parsed,
+            relevant_dimensions=(QualityDimension.ARGUMENTATION, QualityDimension.CONCLUSIONS),
         )
 
         dimension_scores = {
-            QualityDimension.CLARIDAD: parsed_1.scores[QualityDimension.CLARIDAD],
-            QualityDimension.COHERENCIA: parsed_1.scores[QualityDimension.COHERENCIA],
-            QualityDimension.ARGUMENTACION: parsed_2.scores[QualityDimension.ARGUMENTACION],
-            QualityDimension.CONCLUSIONES: parsed_2.scores[QualityDimension.CONCLUSIONES],
+            QualityDimension.CLARITY: clarity_coherence_parsed.scores[QualityDimension.CLARITY],
+            QualityDimension.COHERENCE: clarity_coherence_parsed.scores[
+                QualityDimension.COHERENCE
+            ],
+            QualityDimension.ARGUMENTATION: argumentation_conclusions_parsed.scores[
+                QualityDimension.ARGUMENTATION
+            ],
+            QualityDimension.CONCLUSIONS: argumentation_conclusions_parsed.scores[
+                QualityDimension.CONCLUSIONS
+            ],
         }
 
         overall_score = sum(d.score for d in dimension_scores.values()) / len(dimension_scores)
@@ -287,46 +541,33 @@ class QualityAnalyzer:
             },
         )
 
+    def _render_prompt(self, template: str, text_sample: str) -> str:
+        return template.format(text_sample=text_sample)
+
     def _ensure_call_produced_usable_content(
         self,
-        parsed_response: _ParsedResponse,
+        parsed_response: ParsedResponseDTO,
         relevant_dimensions: tuple[QualityDimension, QualityDimension],
     ) -> None:
-        if not any(dimension in parsed_response.matched_dimensions for dimension in relevant_dimensions):
+        if not any(
+            dimension in parsed_response.matched_dimensions for dimension in relevant_dimensions
+        ):
             raise QualityAnalysisFailed()
+```
 
-    def _build_text_sample(self, document_content: DocumentContentDTO) -> str:
-        parts = [document_content.title or ""]
-        parts.extend(document_content.paragraphs[:3])
-        middle_index = len(document_content.paragraphs) // 2
-        parts.extend(document_content.paragraphs[middle_index : middle_index + 2])
-        parts.extend(self._collect_conclusion_or_tail_paragraphs(document_content.paragraphs))
+~75 lines, down from 240. Zero `import re`, zero regex, zero file I/O, zero `os`/`dotenv` —
+every line is either delegation to an injected collaborator or pure orchestration arithmetic
+(`average`, `get_quality_level_from_score`, dict assembly). Satisfies the spec's "exactly one
+class defined in this file" requirement — `DimensionScoreDTO`/`ParsedResponseDTO` no longer
+live here.
 
-        text_sample = " ".join(parts)[:_TEXT_SAMPLE_CHARACTER_LIMIT]
-        if len(text_sample.split()) < _MINIMUM_SAMPLE_WORD_COUNT:
-            return " ".join(document_content.paragraphs)[:_TEXT_SAMPLE_CHARACTER_LIMIT]
-        return text_sample
+---
 
-    def _collect_conclusion_or_tail_paragraphs(self, paragraphs: list[str]) -> list[str]:
-        conclusion_paragraphs = []
-        in_conclusion = False
-        for paragraph in paragraphs:
-            if re.search(r"conclusi", paragraph, re.IGNORECASE):
-                in_conclusion = True
-            if in_conclusion and not self._is_reference_like(paragraph):
-                conclusion_paragraphs.append(paragraph)
+## Prompt Template Files
 
-        if conclusion_paragraphs:
-            return conclusion_paragraphs[:3]
-
-        non_reference_paragraphs = [p for p in paragraphs if not self._is_reference_like(p)]
-        return non_reference_paragraphs[-2:]
-
-    def _is_reference_like(self, paragraph: str) -> bool:
-        return any(marker in paragraph[:80] for marker in _REFERENCE_LINE_MARKERS)
-
-    def _build_prompt_one(self, text_sample: str) -> str:
-        return f"""Eres un revisor editorial académico experto. Analiza este fragmento en DOS dimensiones.
+```text
+# src/infrastructure/resources/prompts/quality/clarity_coherence_prompt.txt
+Eres un revisor editorial académico experto. Analiza este fragmento en DOS dimensiones.
 
 TEXTO A ANALIZAR:
 {text_sample}
@@ -345,10 +586,11 @@ FORMATO DE RESPUESTA (OBLIGATORIO):
 [Analiza si las ideas se conectan lógicamente. ¿Hay transiciones claras entre secciones?]
 
 CRITERIOS: 9-10 Excelente | 7-8 Bueno | 5-6 Aceptable | 3-4 Deficiente | 0-2 Inaceptable
-"""
+```
 
-    def _build_prompt_two(self, text_sample: str) -> str:
-        return f"""Eres un revisor editorial académico experto. Analiza este fragmento en DOS dimensiones.
+```text
+# src/infrastructure/resources/prompts/quality/argumentation_conclusions_prompt.txt
+Eres un revisor editorial académico experto. Analiza este fragmento en DOS dimensiones.
 
 TEXTO A ANALIZAR:
 {text_sample}
@@ -367,228 +609,86 @@ FORMATO DE RESPUESTA (OBLIGATORIO):
 [OBLIGATORIO: Evalúa siempre. Si no hay sección formal, analiza el párrafo final del texto y asigna puntuación.]
 
 CRITERIOS: 9-10 Excelente | 7-8 Bueno | 5-6 Aceptable | 3-4 Deficiente | 0-2 Inaceptable
-"""
-
-    def _parse_response(self, text: str) -> _ParsedResponse:
-        scores = {
-            dimension: _DimensionScore(_UNSCORED_DIMENSION_SCORE, _UNSCORED_DIMENSION_FEEDBACK)
-            for dimension in QualityDimension
-        }
-        matched_dimensions: set[QualityDimension] = set()
-
-        blocks = _DIMENSION_HEADER_PATTERN.split(text.strip())
-        for block in blocks:
-            if not block.strip():
-                continue
-
-            score = self._extract_score(block)
-            feedback = self._extract_feedback(block)
-            dimension = self._map_block_to_dimension(block)
-            if dimension is None:
-                continue
-
-            scores[dimension] = _DimensionScore(score, feedback)
-            matched_dimensions.add(dimension)
-
-        return _ParsedResponse(scores=scores, matched_dimensions=frozenset(matched_dimensions))
-
-    def _extract_score(self, block: str) -> float:
-        match = _EXPLICIT_SCORE_PATTERN.search(block)
-        if match is None:
-            return self._infer_score_from_narrative(block)
-
-        score_text = match.group(1) or match.group(2)
-        try:
-            return max(0.0, min(10.0, float(score_text)))
-        except ValueError:
-            return _UNSCORED_DIMENSION_SCORE
-
-    def _infer_score_from_narrative(self, block: str) -> float:
-        block_lower = block.lower()
-        for keywords, score in _NARRATIVE_SCORE_KEYWORDS:
-            if any(keyword in block_lower for keyword in keywords):
-                return score
-        return _UNSCORED_DIMENSION_SCORE
-
-    def _extract_feedback(self, block: str) -> str:
-        lines = block.strip().split("\n")
-        feedback_lines = [line.strip() for line in lines[1:] if line.strip()]
-        feedback = " ".join(feedback_lines)
-        feedback = _RECOMMENDATION_TAIL_PATTERN.sub("", feedback).strip()
-        feedback = " ".join(feedback.split())
-
-        if len(feedback) < 10:
-            return _UNSCORED_DIMENSION_FEEDBACK
-
-        sentences = [s.strip() for s in feedback.split(".") if s.strip()]
-        if len(sentences) > 3:
-            return ". ".join(sentences[:3]) + "."
-        return feedback
-
-    def _map_block_to_dimension(self, block: str) -> QualityDimension | None:
-        block_lower = block[:200].lower()
-        if "argumentaci" in block_lower:
-            return QualityDimension.ARGUMENTACION
-        if "conclusi" in block_lower:
-            return QualityDimension.CONCLUSIONES
-        if "coherencia" in block_lower:
-            return QualityDimension.COHERENCIA
-        if "claridad" in block_lower or "argumento" in block_lower:
-            return QualityDimension.CLARIDAD
-        return None
 ```
 
-### Notes on the port-call count requirement
-
-The spec requires `generate()` to be called exactly twice per `analyze()` invocation. The
-design above calls `self._llm_generator.generate(prompt_1)` then `generate(prompt_2)`
-sequentially and unconditionally — satisfies the requirement directly, matches legacy's
-sequential (not parallel/async) call order.
-
-### `QualityDimension` enum and `dimension_scores` dict shape
-
-`QualityResultDTO.dimension_scores` is `dict[str, dict[str, Any]]` (existing DTO, unchanged).
-The domain service keys the final dict by `dimension.value` (the enum's string value), not by
-the enum member itself, to match the DTO's `dict[str, ...]` contract and mirror legacy's
-`dict[str, dict]` shape exactly (legacy used `"claridad"`, `"coherencia"`, etc. as literal
-string keys).
-
-```python
-# src/domain/enums/quality_dimension.py
-from enum import Enum
-
-
-class QualityDimension(Enum):
-    """The 4 semantic dimensions scored during quality analysis."""
-
-    CLARIDAD = "claridad"
-    COHERENCIA = "coherencia"
-    ARGUMENTACION = "argumentacion"
-    CONCLUSIONES = "conclusiones"
-```
-
-### Porting `get_quality_level_from_score`
-
-Not yet in `src/domain/enums/quality_level.py` — confirmed by reading the file (only the enum
-exists). Port the legacy function verbatim into the same module, as a plain function (no class
-wrapper needed — it's a pure mapping function, consistent with "prefer classes" rule's
-exception for non-domain-entity helpers... but to stay strictly within the skill's "prefer
-classes" rule, it is added as a module-level function in `quality_level.py` since it is a
-direct companion/factory function for the enum it lives next to, similar to how enums
-sometimes expose classmethod-style lookups):
-
-```python
-# appended to src/domain/enums/quality_level.py
-def get_quality_level_from_score(score: float) -> QualityLevel:
-    """Map a numeric overall score to its corresponding QualityLevel."""
-    if score >= 9.0:
-        return QualityLevel.EXCELLENT
-    if score >= 7.0:
-        return QualityLevel.GOOD
-    if score >= 5.0:
-        return QualityLevel.ACCEPTABLE
-    if score >= 3.0:
-        return QualityLevel.NEEDS_IMPROVEMENT
-    return QualityLevel.POOR
-```
+Each file's body is verbatim from legacy's `_build_prompt_one`/`_build_prompt_two` f-strings,
+with `{text_sample}` retained as a literal placeholder — identical syntax works for both
+f-string (original) and `.format()` (new), so the rendered output is byte-for-byte unchanged.
 
 ---
 
-## `AnalyzeQualityUseCase` — Thin Pass-Through
+## `AnalyzeQualityUseCase` and `AnalyzeQualityUseCaseWiring` — Unchanged Shape, PR-B Scope
 
-```python
-# src/application/analyze_quality_use_case.py
-from src.domain.dtos.document_content_dto import DocumentContentDTO
-from src.domain.dtos.quality_result_dto import QualityResultDTO
-from src.domain.quality.quality_analyzer import QualityAnalyzer
+`AnalyzeQualityUseCase` is unchanged from the original design (thin pass-through, unchanged
+signature). `AnalyzeQualityUseCaseWiring`'s shape (`create_use_case()` public method,
+`_get_*` private accessors returning port/domain types) is unchanged, but its implementation
+is now PR-B scope per the spec's "Updated Dependencies for PR-B" section, and must additionally:
 
+1. Read `clarity_coherence_prompt.txt` and `argumentation_conclusions_prompt.txt` from
+   `src/infrastructure/resources/prompts/quality/` at assembly time (plain file read, no
+   templating library — the files already contain the literal `{text_sample}` placeholder
+   consumed by `.format()` inside the domain).
+2. Read whichever of `QualityTextSampler`'s 7 constructor parameters (`min_sample_word_count`,
+   `text_sample_character_limit`, `reference_line_prefix_length`,
+   `introduction_paragraph_count`, `middle_paragraph_count`, `conclusion_paragraph_limit`,
+   `fallback_tail_paragraph_count`) the team decides are worth exposing via `python-dotenv`
+   (new `requirements.txt` dependency), falling back to the constructor defaults when unset.
+   Exact `.env` variable names and which of the 7 are actually exposed is a PR-B design
+   decision — all 7 already exist as constructor parameters with legacy-equivalent defaults
+   (post-rework hardening), so none require domain changes to wire later.
+3. Construct `QualityResponseParser()`, optionally passing `unscored_dimension_score` /
+   `unscored_dimension_feedback` if PR-B's wiring decides those should also be `.env`-tunable
+   (both also already exist as constructor parameters with legacy-equivalent defaults).
+4. Inject all 4 non-port constructor arguments into `QualityAnalyzer`, alongside the existing
+   `OllamaGeneratorAdapter` instance for `llm_generator`.
 
-class AnalyzeQualityUseCase:
-    def __init__(self, quality_analyzer: QualityAnalyzer) -> None:
-        self._quality_analyzer = quality_analyzer
-
-    def execute(self, document_content: DocumentContentDTO, article_type) -> QualityResultDTO:
-        return self._quality_analyzer.analyze(document_content, article_type)
-```
-
-`article_type` stays unused in the body — per proposal, tracked in the dead-code registry, not
-cleaned up in this slice.
+This is not designed in full here — PR-B's own design/tasks phase will define the wiring's
+private accessor methods and `.env.example` content in detail, per the spec's explicit framing.
 
 ---
 
-## `AnalyzeQualityUseCaseWiring` — First Wiring Assembling a Real Adapter
+## Test Doubles (updated)
+
+`QualityAnalyzer`'s test double construction changes shape — tests now inject real
+`QualityTextSampler()` / `QualityResponseParser()` instances (no fakes needed, they're pure and
+fast) alongside a fake `LlmGeneratorPort`, plus literal prompt template strings containing
+`{text_sample}`. This isolates `test_quality_analyzer.py` to orchestration concerns only
+(port called twice, dimensions assigned from the correct call, failure raised on full-call
+parse failure) — sampling and parsing edge cases move to their own dedicated test files
+(`test_quality_text_sampler.py`, `test_quality_response_parser.py`), each driving the
+respective class directly with no LLM fake required.
 
 ```python
-# src/infrastructure/wirings/analyze_quality_use_case_wiring.py
-from src.application.analyze_quality_use_case import AnalyzeQualityUseCase
-from src.domain.ports.llm_generator_port import LlmGeneratorPort
-from src.domain.quality.quality_analyzer import QualityAnalyzer
-from src.infrastructure.adapters.llm_generator.ollama_generator_adapter import (
-    OllamaGeneratorAdapter,
+fake_llm_generator = FakeLlmGeneratorPort(responses=[response_1_text, response_2_text])
+analyzer = QualityAnalyzer(
+    llm_generator=fake_llm_generator,
+    text_sampler=QualityTextSampler(),
+    response_parser=QualityResponseParser(),
+    clarity_coherence_prompt_template="...{text_sample}...",
+    argumentation_conclusions_prompt_template="...{text_sample}...",
 )
-
-
-class AnalyzeQualityUseCaseWiring:
-    """Factory for building a ready-to-use AnalyzeQualityUseCase."""
-
-    def create_use_case(self) -> AnalyzeQualityUseCase:
-        return AnalyzeQualityUseCase(quality_analyzer=self._get_quality_analyzer())
-
-    def _get_quality_analyzer(self) -> QualityAnalyzer:
-        return QualityAnalyzer(llm_generator=self._get_llm_generator_port())
-
-    def _get_llm_generator_port(self) -> LlmGeneratorPort:
-        return OllamaGeneratorAdapter()
 ```
 
-This follows the `create_use_case()` naming established by Slices 2-4's wirings
-(`ValidateStructureWiring`, `ValidateApaWiring`, `MatchCitationsUseCaseWiring`), with
-`_get_llm_generator_port` returning the `LlmGeneratorPort` type, not the concrete adapter —
-the instance-based `_get_*` accessor pattern, now extended one level deeper to assemble a
-concrete infrastructure adapter for the first time in the migration.
-
----
-
-## Test Doubles
-
-```python
-# src/infrastructure/tests/test_doubles/analyze_quality_use_case_wiring_for_test.py
-from src.domain.ports.llm_generator_port import LlmGeneratorPort
-from src.infrastructure.wirings.analyze_quality_use_case_wiring import (
-    AnalyzeQualityUseCaseWiring,
-)
-
-
-class AnalyzeQualityUseCaseWiringForTest(AnalyzeQualityUseCaseWiring):
-    def __init__(self, fake_llm_generator: LlmGeneratorPort) -> None:
-        self._fake_llm_generator = fake_llm_generator
-
-    def _get_llm_generator_port(self) -> LlmGeneratorPort:
-        return self._fake_llm_generator
-```
-
-Domain tests for `QualityAnalyzer` use a minimal fake implementing `LlmGeneratorPort`
-structurally (no inheritance required — `Protocol` satisfied by duck typing), returning
-scripted responses per call to exercise: numbered/unnumbered headers, narrative-only scoring,
-short-feedback fallback, sentence truncation, `argumentaci`-vs-`argumento` disambiguation,
-partial-call success, and full-call failure raising `QualityAnalysisFailed`.
-
-Adapter tests mock `ollama.generate` (patch at the `ollama` module level inside
-`ollama_generator_adapter.py`) to verify: success path strips `response['response']`, and any
-raised exception from `ollama.generate` becomes `LanguageModelUnavailable`.
+Adapter tests (`OllamaGeneratorAdapter`) are unchanged from the original design.
 
 ---
 
 ## Risks / Open Items for Tasks Phase
 
-- `get_quality_level_from_score` is a net-new function append to an existing file
-  (`quality_level.py`) rather than a new file — slightly bends the "one function per file"
-  rule's spirit, but it is a companion/factory function for the enum directly above it in the
-  same file, consistent with how the file already groups the enum's domain concept. Tasks
-  phase should add a corresponding test in `domain/tests/enums/test_quality_level.py` (new or
-  extended) for the 5 threshold scenarios in the spec.
-- `_ParsedResponse` and `_DimensionScore` are private dataclasses local to
-  `quality_analyzer.py`, not promoted to `domain/dtos/`. They are implementation details that
-  never cross the domain-service boundary (the public `analyze()` method only returns
-  `QualityResultDTO`), so they correctly stay un-promoted per BaseDTO's purpose (transfer
-  across layers).
+- All 273 existing PR-A tests for the old monolithic `quality_analyzer.py` must be redistributed:
+  sampling-heuristic tests move to `test_quality_text_sampler.py`, parsing tests move to
+  `test_quality_response_parser.py`, and only orchestration tests remain in
+  `test_quality_analyzer.py`. Tasks phase must enumerate this redistribution explicitly so no
+  scenario is silently dropped during the restructuring.
+- `python-dotenv` is a new third-party dependency — first one added since the migration began.
+  Tasks phase should confirm it's not already transitively available before adding to
+  `requirements.txt`.
+- `src/infrastructure/resources/` is a new top-level folder not previously listed in the
+  clean-architecture skill's standard skeleton — acceptable as a deliberate, documented
+  extension (skill doc explicitly allows non-skeleton folders for adapter-specific needs);
+  worth a one-line addition to the skill file in a future housekeeping pass, not blocking this
+  slice.
+- `QualityResponseParser` and `QualityTextSampler` are both stateless after construction
+  (`QualityResponseParser` takes no constructor args at all) — confirms they are domain
+  *services* per the clean-architecture naming convention (no `Service` suffix, descriptive
+  name), not entities.

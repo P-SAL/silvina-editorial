@@ -1,0 +1,89 @@
+from unittest import TestCase
+
+from src.domain.dtos.document_content_dto import DocumentContentDTO
+from src.domain.quality.quality_text_sampler import QualityTextSampler
+
+
+def build_document_content(
+    paragraphs: list[str], title: str | None = "Title"
+) -> DocumentContentDTO:
+    full_text = " ".join(paragraphs)
+    return DocumentContentDTO(
+        word_count=len(full_text.split()),
+        char_count=len(full_text),
+        paragraph_count=len(paragraphs),
+        title=title,
+        paragraphs=paragraphs,
+    )
+
+
+class TestQualityTextSampler(TestCase):
+    def test_short_document_uses_full_text_fallback_instead_of_sample(self):
+        paragraphs = ["Intro corta."] * 3 + ["Parrafo de relleno."] * 2 + ["Conclusion breve."]
+        document_content = build_document_content(paragraphs)
+        sampler = QualityTextSampler()
+
+        sample = sampler.build_sample(document_content)
+
+        full_text = " ".join(paragraphs)
+        self.assertIn(full_text[:200], sample)
+
+    def test_long_document_uses_strategic_sample_not_full_text(self):
+        excluded_paragraph = "PARRAFO_EXCLUIDO_UNICO " + ("relleno " * 10)
+        paragraphs = (
+            [
+                "Intro uno " + "palabra " * 60,
+                "Intro dos " + "palabra " * 60,
+                "Intro tres " + "palabra " * 60,
+            ]
+            + [excluded_paragraph]
+            + ["Relleno extra uno " + "palabra " * 100]
+            + ["Relleno extra dos " + "palabra " * 100]
+            + ["Relleno medio uno " + "palabra " * 100]
+            + ["Relleno medio dos " + "palabra " * 100]
+            + ["Relleno extra tres " + "palabra " * 100]
+            + ["Conclusion final " + "palabra " * 100]
+        )
+        document_content = build_document_content(paragraphs)
+        sampler = QualityTextSampler()
+
+        sample = sampler.build_sample(document_content)
+
+        self.assertNotIn("PARRAFO_EXCLUIDO_UNICO", sample)
+
+    def test_conclusion_paragraphs_exclude_reference_like_lines(self):
+        paragraphs = (
+            ["Intro uno.", "Intro dos.", "Intro tres."]
+            + ["Relleno extra uno " + "palabra " * 100]
+            + ["Relleno medio uno " + "palabra " * 100]
+            + ["Relleno medio dos " + "palabra " * 100]
+            + ["Relleno extra dos " + "palabra " * 100]
+            + ["En conclusion, el trabajo demuestra " + "palabra " * 100]
+            + ["https://doi.org/10.1234 referencia bibliografica excluida " + "palabra " * 100]
+            + ["Conclusion final reafirmada " + "palabra " * 100]
+        )
+        document_content = build_document_content(paragraphs)
+        sampler = QualityTextSampler()
+
+        sample = sampler.build_sample(document_content)
+
+        self.assertNotIn("referencia bibliografica excluida", sample)
+
+    def test_constructor_parameters_override_legacy_defaults(self):
+        paragraphs = ["Palabra " * 20] * 10
+        document_content = build_document_content(paragraphs)
+        sampler = QualityTextSampler(min_sample_word_count=10, text_sample_character_limit=500)
+
+        sample = sampler.build_sample(document_content)
+
+        self.assertLessEqual(len(sample), 500)
+
+    def test_defaults_match_legacy_hardcoded_constants(self):
+        paragraphs = ["Intro corta."] * 3 + ["Parrafo de relleno."] * 2 + ["Conclusion breve."]
+        document_content = build_document_content(paragraphs)
+        sampler = QualityTextSampler()
+
+        sample = sampler.build_sample(document_content)
+
+        full_text = " ".join(paragraphs)
+        self.assertEqual(sample, full_text[:8000])
