@@ -56,16 +56,21 @@ MUST be decorated with `@generic_error_handler`.
 ### Requirement: QualityDimension Enum
 
 `QualityDimension` (`src/domain/enums/quality_dimension.py`) MUST define exactly 4
-members corresponding to the 4 scored dimensions: `CLARIDAD`, `COHERENCIA`,
-`ARGUMENTACION`, `CONCLUSIONES`. It MUST NOT reuse or modify the existing
-`AnalysisDimension` enum.
+members corresponding to the 4 scored dimensions: `CLARITY = "claridad"`,
+`COHERENCE = "coherencia"`, `ARGUMENTATION = "argumentacion"`,
+`CONCLUSIONS = "conclusiones"`. Member names are English identifiers (this enum
+is new in the migration, not legacy-carried vocabulary); `.value` strings stay
+in Spanish because they are matched literally against the LLM's Spanish-language
+response headers. It MUST NOT reuse or modify the existing `AnalysisDimension`
+enum.
 
 #### Scenario: Enum has exactly the 4 expected members
 
 - GIVEN the `QualityDimension` enum
 - WHEN its members are enumerated
-- THEN there are exactly 4: `CLARIDAD`, `COHERENCIA`, `ARGUMENTACION`,
-  `CONCLUSIONES`
+- THEN there are exactly 4: `CLARITY`, `COHERENCE`, `ARGUMENTATION`,
+  `CONCLUSIONS`, with `.value`s `"claridad"`, `"coherencia"`, `"argumentacion"`,
+  `"conclusiones"` respectively
 
 #### Scenario: AnalysisDimension is left untouched
 
@@ -265,8 +270,8 @@ following rules exactly for a single LLM response string:
   `. ` and a trailing `.`).
 - Map each parsed block to a dimension by inspecting the first 200 characters of
   the block (case-insensitive), checking in this order: `argumentaci` →
-  `ARGUMENTACION`; else `conclusi` → `CONCLUSIONES`; else `coherencia` →
-  `COHERENCIA`; else `claridad` or `argumento` → `CLARIDAD`. (Order matters: the
+  `ARGUMENTATION`; else `conclusi` → `CONCLUSIONS`; else `coherencia` →
+  `COHERENCE`; else `claridad` or `argumento` → `CLARITY`. (Order matters: the
   `argumentaci` check MUST run before the `claridad`/`argumento` check to avoid a
   false match on the substring `argumento` inside `argumentacion`.)
 - Any dimension not matched by any block in the response keeps a named neutral
@@ -307,7 +312,7 @@ following rules exactly for a single LLM response string:
 - GIVEN a block whose first 200 characters contain both `argumentaci` and the
   word `argumento`
 - WHEN the block is mapped to a dimension
-- THEN it is mapped to `ARGUMENTACION`, not `CLARIDAD`
+- THEN it is mapped to `ARGUMENTATION`, not `CLARITY`
 
 #### Scenario: One missing dimension in an otherwise valid response keeps the rest
 
@@ -340,9 +345,9 @@ following rules exactly for a single LLM response string:
 
 ### Requirement: Direct Per-Call Dimension Assignment, No Cross-Call Heuristic
 
-`QualityAnalyzer` MUST assign `CLARIDAD` and `COHERENCIA` directly from Call 1's
+`QualityAnalyzer` MUST assign `CLARITY` and `COHERENCE` directly from Call 1's
 `ParsedResponseDTO` (produced by `QualityResponseParser.parse()`), and
-`ARGUMENTACION` and `CONCLUSIONES` directly from Call 2's `ParsedResponseDTO`. It
+`ARGUMENTATION` and `CONCLUSIONS` directly from Call 2's `ParsedResponseDTO`. It
 MUST NOT apply any cross-call fallback or "prefer whichever call has real
 feedback" heuristic — each dimension has exactly one authoritative source call.
 
