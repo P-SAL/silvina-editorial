@@ -6,19 +6,7 @@ from src.domain.exceptions.quality_errors import QualityAnalysisFailed
 from src.domain.quality.quality_analyzer import QualityAnalyzer
 from src.domain.quality.quality_response_parser import QualityResponseParser
 from src.domain.quality.quality_text_sampler import QualityTextSampler
-
-
-class FakeLlmGeneratorPort:
-    def __init__(self, responses: list[str]) -> None:
-        self._responses = responses
-        self.call_count = 0
-        self.received_prompts: list[str] = []
-
-    def generate(self, prompt: str) -> str:
-        self.received_prompts.append(prompt)
-        response = self._responses[self.call_count]
-        self.call_count += 1
-        return response
+from src.domain.tests.quality.fake_llm_generator_port import FakeLlmGeneratorPort
 
 
 def build_document_content(
