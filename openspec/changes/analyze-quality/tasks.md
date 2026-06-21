@@ -382,3 +382,157 @@ regression gate.
      branch-protection or CI reasons.
   Do not silently choose — surface this explicitly, but note the strong structural preference for
   option 1 given PR #13's unmerged state.
+
+---
+
+# PR-B Tasks
+
+> **Context**: PR-A (domain + port) merged into `refactor/hexagonal-migration`. PR-B adds the
+> adapter, use case, and wiring — the infrastructure/application layer that makes
+> `AnalyzeQualityUseCase` real and runnable. Strict TDD RED→GREEN per piece, same conventions as
+> Slice 4 (`MatchCitationsUseCase`/`MatchCitationsUseCaseWiring`): one `TestCase` class per test
+> file, `setUp()` for shared fixtures.
+
+## Phase 7 — `OllamaGeneratorAdapter`
+
+### T-23: RED — write `OllamaGeneratorAdapter` tests
+- File: `src/infrastructure/tests/test_ollama_generator_adapter.py` — one `TestCase` class,
+  `@patch("src.infrastructure.adapters.llm_generator.ollama_generator_adapter.ollama")` per test
+  (module imported in the adapter file, not the global package).
+- `test_generate_returns_stripped_response_text` — mock returns `{"response": "  some text  "}`,
+  assert `adapter.generate("prompt") == "some text"`.
+- `test_generate_raises_language_model_unavailable_on_backend_failure` — mock
+  `side_effect=ConnectionError(...)`, assert `LanguageModelUnavailable` is raised.
+- **Satisfies**: Requirement "OllamaGeneratorAdapter Implements the Port" (both scenarios).
+- **Parallel/Sequential**: Parallel with T-25, T-27 (independent files). Sequential RED before
+  T-24 GREEN.
+
+### T-24: GREEN — implement `OllamaGeneratorAdapter`
+- File: `src/infrastructure/adapters/llm_generator/ollama_generator_adapter.py` — exact code from
+  design.md: constructor `model_name`/`base_url` defaults, `@generic_error_handler` on
+  `generate()`, inner `try/except Exception` re-raising as `LanguageModelUnavailable`.
+- **Satisfies**: same requirement.
+- **Parallel/Sequential**: Sequential after T-23.
+
+## Phase 8 — `AnalyzeQualityUseCase`
+
+### T-25: RED — write `AnalyzeQualityUseCase` test
+- File: `src/application/tests/test_analyze_quality_use_case.py` — one `TestCase` class,
+  `setUp()` instantiates `AnalyzeQualityUseCase(analyzer=QualityAnalyzer(...))` with real
+  collaborators (mirrors `test_match_citations_use_case.py`'s pattern).
+- `test_execute_matches_domain_service_result` — call `use_case.execute(document_content,
+  article_type)`, assert result equals `analyzer.analyze(document_content, article_type)` called
+  directly with the same input.
+- **Satisfies**: Requirement "AnalyzeQualityUseCase Thin Pass-Through" (both scenarios).
+- **Parallel/Sequential**: Parallel with T-23, T-27. Sequential RED before T-26 GREEN.
+
+### T-26: GREEN — implement `AnalyzeQualityUseCase`
+- File: `src/application/analyze_quality_use_case.py` — exact code from design.md: constructor
+  takes `analyzer: QualityAnalyzer`, `execute()` is a one-line delegation, `article_type` kept
+  unused/undocumented per the dead-parameter decision.
+- **Satisfies**: same requirement.
+- **Parallel/Sequential**: Sequential after T-25.
+
+## Phase 9 — `AnalyzeQualityUseCaseWiring`
+
+### T-27: RED — write `AnalyzeQualityUseCaseWiring` tests
+- File: `src/infrastructure/tests/test_analyze_quality_use_case_wiring.py` — one `TestCase`
+  class, `setUp()` instantiates `self.wiring = AnalyzeQualityUseCaseWiring()` (mirrors
+  `test_match_citations_use_case_wiring.py`'s pattern).
+- `test_create_use_case_returns_correct_type` — assert `isinstance(wiring.create_use_case(),
+  AnalyzeQualityUseCase)`.
+- `test_llm_generator_accessor_returns_port_type` — inspect `_get_llm_generator`'s return type
+  annotation (e.g. via `typing.get_type_hints` or `inspect.signature`), assert it is
+  `LlmGeneratorPort`, not `OllamaGeneratorAdapter`.
+- **Satisfies**: Requirement "AnalyzeQualityUseCaseWiring Assembles Domain Service and Adapter"
+  (both scenarios).
+- **Parallel/Sequential**: Parallel with T-23, T-25 (test-writing only; GREEN depends on T-24,
+  T-26, T-11's prompt files, and T-29's `.env.example`/dotenv addition). Sequential RED before
+  T-28 GREEN.
+
+### T-28: GREEN — implement `AnalyzeQualityUseCaseWiring`
+- File: `src/infrastructure/wirings/analyze_quality_use_case_wiring.py` — exact code from
+  design.md: `_PROMPTS_DIR` resolved via `Path(__file__).resolve().parents[1]`, module-level
+  `load_dotenv()`, `create_use_case()`, `_get_quality_analyzer()`, `_get_llm_generator() ->
+  LlmGeneratorPort`, `_get_text_sampler()` reading `QUALITY_MIN_SAMPLE_WORD_COUNT`/
+  `QUALITY_TEXT_SAMPLE_CHARACTER_LIMIT` via `getenv()` with `int()` casts, `_read_prompt_template()`.
+- **Satisfies**: same requirement, plus "Updated Dependencies for PR-B" obligations (prompt file
+  loading, env var reads).
+- **Parallel/Sequential**: Sequential after T-24, T-26, T-27, and PR-A's T-11 (prompt template
+  files must already exist).
+
+## Phase 10 — Config and dependency files (no test; static content)
+
+### T-29: Create `.env.example` at repo root
+- File: `.env.example` — exact content from design.md: `OLLAMA_MODEL_NAME`, `OLLAMA_BASE_URL`,
+  `QUALITY_MIN_SAMPLE_WORD_COUNT`, `QUALITY_TEXT_SAMPLE_CHARACTER_LIMIT`, values matching the
+  constructors' current defaults exactly.
+- No test file — static text, same convention as PR-A's prompt `.txt` files (T-11).
+- **Satisfies**: "Updated Dependencies for PR-B" (documents the `.env` override surface).
+- **Parallel/Sequential**: Parallel with Phase 7, 8, 9 (fully independent).
+
+### T-30: Add `python-dotenv` to `requirements.txt`
+- File: `requirements.txt` — append `python-dotenv` per design.md's diff (after `pytest`).
+- Confirmed absent before this addition; first new third-party dependency since migration began.
+- **Satisfies**: Requirement "AnalyzeQualityUseCaseWiring Assembles Domain Service and Adapter"
+  (dependency prerequisite for T-28's `load_dotenv()`/`getenv()` usage).
+- **Parallel/Sequential**: Parallel with Phase 7, 8, 9. Must complete before T-28 is runnable in a
+  clean environment (install step), though the source line itself has no code dependency.
+
+## Phase 11 — Cross-cutting verification (sequential, after all GREEN)
+
+### T-31: Verify zero `print()` calls in all new PR-A + PR-B code
+- Grep every file introduced by PR-A and PR-B (port, adapter, enum, DTOs, sampler, parser,
+  domain service, use case, wiring) for `print(`; assert zero matches.
+- **Satisfies**: Requirement "No print() Statements in Migrated Code".
+- **Parallel/Sequential**: Parallel with T-32.
+
+### T-32: Verify `ollama` is imported only in `ollama_generator_adapter.py`
+- Grep the full `src/` tree for `import ollama`/`from ollama`; assert the only match is
+  `src/infrastructure/adapters/llm_generator/ollama_generator_adapter.py`.
+- **Satisfies**: Requirement "OllamaGeneratorAdapter Implements the Port" — "Adapter is the sole
+  Ollama import site" scenario.
+- **Parallel/Sequential**: Parallel with T-31. Sequential before T-33.
+
+### T-33: ruff check on all new PR-B files
+- Run `ruff check` against: `ollama_generator_adapter.py`, `analyze_quality_use_case.py`,
+  `analyze_quality_use_case_wiring.py`, and the 3 new test files.
+- Fix any lint findings before proceeding to T-34.
+- **Satisfies**: general code-quality gate, not requirement-specific.
+- **Parallel/Sequential**: Sequential after T-31, T-32.
+
+### T-34: Full regression suite run
+- Run `python -m pytest src/ -q`.
+- Expect the existing PR-A baseline (284 passed) plus PR-B's new tests (2 adapter + 1 use case +
+  2 wiring = 5 new test methods), zero regressions.
+- **Satisfies**: overall PR-B acceptance gate.
+- **Parallel/Sequential**: Sequential, last task.
+
+---
+
+## Review Workload Forecast — PR-B
+
+| Field | Value |
+|-------|-------|
+| Estimated changed lines | ~180-220 |
+| 400-line budget risk | Low |
+| Chained PRs recommended | No |
+| Suggested split | Single PR |
+| Delivery strategy | ask-on-risk |
+| Chain strategy | pending |
+
+Decision needed before apply: No
+Chained PRs recommended: No
+Chain strategy: pending
+400-line budget risk: Low
+
+### Suggested Work Units
+
+| Unit | Goal | Likely PR | Notes |
+|------|------|-----------|-------|
+| 1 | PR-B complete (adapter + use case + wiring + config) | Single PR | Builds on merged PR-A; ~9 new files, no further split needed given Low budget risk |
+
+**Breakdown**: `ollama_generator_adapter.py` (~25 lines) + `analyze_quality_use_case.py` (~10) +
+`analyze_quality_use_case_wiring.py` (~40) + `.env.example` (~8) + `requirements.txt` diff
+(1 line) + 3 new test files (~25 + ~20 + ~25 = ~70) ≈ **175-220 lines total**. Well under the
+400-line budget — no chaining needed, proceed as a single PR.

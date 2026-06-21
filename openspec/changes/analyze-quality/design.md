@@ -617,33 +617,292 @@ f-string (original) and `.format()` (new), so the rendered output is byte-for-by
 
 ---
 
-## `AnalyzeQualityUseCase` and `AnalyzeQualityUseCaseWiring` — Unchanged Shape, PR-B Scope
+## PR-B: `OllamaGeneratorAdapter` — Full Design
 
-`AnalyzeQualityUseCase` is unchanged from the original design (thin pass-through, unchanged
-signature). `AnalyzeQualityUseCaseWiring`'s shape (`create_use_case()` public method,
-`_get_*` private accessors returning port/domain types) is unchanged, but its implementation
-is now PR-B scope per the spec's "Updated Dependencies for PR-B" section, and must additionally:
+```python
+# src/infrastructure/adapters/llm_generator/ollama_generator_adapter.py
+import ollama
 
-1. Read `clarity_coherence_prompt.txt` and `argumentation_conclusions_prompt.txt` from
-   `src/infrastructure/resources/prompts/quality/` at assembly time (plain file read, no
-   templating library — the files already contain the literal `{text_sample}` placeholder
-   consumed by `.format()` inside the domain).
-2. Read whichever of `QualityTextSampler`'s 7 constructor parameters (`min_sample_word_count`,
-   `text_sample_character_limit`, `reference_line_prefix_length`,
-   `introduction_paragraph_count`, `middle_paragraph_count`, `conclusion_paragraph_limit`,
-   `fallback_tail_paragraph_count`) the team decides are worth exposing via `python-dotenv`
-   (new `requirements.txt` dependency), falling back to the constructor defaults when unset.
-   Exact `.env` variable names and which of the 7 are actually exposed is a PR-B design
-   decision — all 7 already exist as constructor parameters with legacy-equivalent defaults
-   (post-rework hardening), so none require domain changes to wire later.
-3. Construct `QualityResponseParser()`, optionally passing `unscored_dimension_score` /
-   `unscored_dimension_feedback` if PR-B's wiring decides those should also be `.env`-tunable
-   (both also already exist as constructor parameters with legacy-equivalent defaults).
-4. Inject all 4 non-port constructor arguments into `QualityAnalyzer`, alongside the existing
-   `OllamaGeneratorAdapter` instance for `llm_generator`.
+from src.domain.exceptions.decorators.generic_error_handler import generic_error_handler
+from src.domain.exceptions.language_model_errors import LanguageModelUnavailable
+from src.domain.ports.llm_generator_port import LlmGeneratorPort
 
-This is not designed in full here — PR-B's own design/tasks phase will define the wiring's
-private accessor methods and `.env.example` content in detail, per the spec's explicit framing.
+
+class OllamaGeneratorAdapter(LlmGeneratorPort):
+    """Generates text via a local Ollama backend."""
+
+    def __init__(self, model_name: str, base_url: str) -> None:
+        self._model_name = model_name
+        self._base_url = base_url
+
+    @generic_error_handler
+    def generate(self, prompt: str) -> str:
+        """Return Ollama's generated text for the given prompt."""
+        try:
+            response = ollama.generate(model=self._model_name, prompt=prompt)
+        except Exception as exc:
+            raise LanguageModelUnavailable() from exc
+        return response.get("response", "").strip()
+```
+
+**Decision**: constructor takes `model_name`/`base_url` as required parameters, no defaults —
+the single source of truth for their fallback values is `AnalyzeQualityUseCaseWiring._get_llm_generator()`,
+where `getenv("OLLAMA_MODEL_NAME", "llama3-gradient:8b-instruct-1048k-q4_K_M")` and the
+equivalent for `base_url` live (matching legacy's values exactly). Duplicating the same default
+literals in both the adapter's `__init__` and the wiring's `getenv()` call would mean two places
+to keep in sync if the legacy default ever changes; the adapter stays a pure constructor-injected
+class with no implicit behavior of its own. Calls the module-level
+`ollama.generate(model=..., prompt=...)` function
+directly — no `ollama.Client(host=...)` instantiation. The inner `try/except Exception` catches
+any failure from the `ollama` library itself (connection error, timeout, backend error) and
+re-raises as `LanguageModelUnavailable`; `@generic_error_handler` wraps the whole method so that
+`LanguageModelUnavailable` (a `LanguageModelError` → `BaseSrcError` subclass, confirmed by
+reading `src/domain/exceptions/language_model_errors.py` — NOT a `SrcBaseWarning`) passes through
+unmodified per the decorator's `except BaseSrcError as exc: ... raise exc` branch (logging it
+once via `was_error_logged`, then re-raising), while any exception the inner `try` didn't
+anticipate (e.g. a bug in this adapter itself, not an Ollama failure) still gets logged and
+wrapped into `SrcGenericError` by the decorator's outer `except Exception` branch — this is
+exactly the layering `generic_error_handler` is built for, confirmed by reading its source:
+`BaseSrcError` subtypes (including this one) re-raise untouched after logging, anything else
+gets wrapped.
+
+**Rejected alternative**: let the decorator alone translate the raw `ollama` exception into
+`LanguageModelUnavailable`. Rejected — `generic_error_handler` has no per-adapter exception-
+mapping mechanism; it only distinguishes "already a `BaseSrcError`" from "anything else," so the
+adapter itself must perform the Ollama-specific translation before the decorator sees it.
+
+**Rejected alternative**: keep the unused `self.client = ollama.Client(host=...)` field from
+legacy. Rejected per the proposal's explicit "Out of Scope" — confirmed dead, never called.
+
+`ollama_generator_adapter.py` is confirmed the only file in the slice importing `ollama`
+(spec requirement, scenario "Adapter is the sole Ollama import site").
+
+---
+
+## PR-B: `AnalyzeQualityUseCase` — Full Design
+
+```python
+# src/application/analyze_quality_use_case.py
+from src.domain.dtos.document_content_dto import DocumentContentDTO
+from src.domain.dtos.quality_result_dto import QualityResultDTO
+from src.domain.quality.quality_analyzer import QualityAnalyzer
+
+
+class AnalyzeQualityUseCase:
+    def __init__(self, analyzer: QualityAnalyzer) -> None:
+        self._analyzer = analyzer
+
+    def execute(self, document_content: DocumentContentDTO, article_type) -> QualityResultDTO:
+        return self._analyzer.analyze(document_content, article_type)
+```
+
+Identical shape to `MatchCitationsUseCase` (`src/application/match_citations_use_case.py`) —
+constructor takes the single domain collaborator, `execute()` is one-line delegation, no
+business logic, no type annotation on `article_type` (kept undocumented/unused per the
+proposal's explicit dead-parameter decision — not cleaned up this slice).
+
+---
+
+## PR-B: `.env` Exposure Decision — Which Tunables Get a Variable
+
+9 tunable constructor parameters exist across the two PR-A collaborators:
+
+| Class | Parameter | Exposed via `.env`? | Reason |
+|---|---|---|---|
+| `QualityTextSampler` | `min_sample_word_count` | **Yes** — `QUALITY_MIN_SAMPLE_WORD_COUNT` | Spec's "Updated Dependencies for PR-B" names this exact var; legacy's only 2 originally-tunable values |
+| `QualityTextSampler` | `text_sample_character_limit` | **Yes** — `QUALITY_TEXT_SAMPLE_CHARACTER_LIMIT` | Same as above |
+| `QualityTextSampler` | `reference_line_prefix_length` | No — constructor default (`80`) | Structural heuristic (how many chars of a paragraph count as "the prefix" for reference detection), not an operational knob; no plausible deployment reason to change it without also reviewing the regex/marker logic itself |
+| `QualityTextSampler` | `introduction_paragraph_count` | No — default (`3`) | Paragraph-slicing shape, tied to the prompt's expectations; changing it without re-tuning the prompt risks degrading LLM output, not a safe standalone tunable |
+| `QualityTextSampler` | `middle_paragraph_count` | No — default (`2`) | Same reasoning as above |
+| `QualityTextSampler` | `conclusion_paragraph_limit` | No — default (`3`) | Same reasoning as above |
+| `QualityTextSampler` | `fallback_tail_paragraph_count` | No — default (`2`) | Same reasoning as above |
+| `QualityResponseParser` | `unscored_dimension_score` | No — default (`7.0`) | Internal fallback value for unparseable LLM output; an operator changing this is tuning *failure-mode severity*, not a deployment concern — better reviewed/changed in code with tests, not via `.env` |
+| `QualityResponseParser` | `unscored_dimension_feedback` | No — default (`"No disponible"`) | Same reasoning — a user-facing fallback string, changing it casually via `.env` risks an untested/untranslated value reaching end users |
+
+**Rationale for the 2 exposed values**: both directly affect cost/quality tradeoffs an operator
+plausibly tunes per deployment — a smaller `min_sample_word_count` lets short documents skip
+full-text fallback sooner (faster, cheaper LLM calls), and `text_sample_character_limit` is a
+direct token-budget control tied to the model's context window, which varies by which Ollama
+model is configured. These are the same 2 values the *original* (pre-split) design already
+flagged as the only operationally tunable parameters before the user's ADR-7 decision turned
+all 7 sampler params into constructor parameters for testability — PR-B's `.env` exposure
+narrows back down to those original 2, while the other 5 (plus the parser's 2) stay
+constructor-injectable-but-not-`.env`-sourced: still overridable in code/tests, just not exposed
+as a deployment knob.
+
+**Rejected alternative**: expose all 9 via `.env` since they're all already constructor
+parameters. Rejected — `.env` exposure is a UX/operational surface, not a structural
+constraint; exposing heuristic/failure-mode values as environment variables invites
+misconfiguration with no corresponding test coverage at deploy time, for parameters whose
+"correct" values are coupled to the prompt wording and parsing regexes, not to deployment
+environment.
+
+---
+
+## PR-B: `AnalyzeQualityUseCaseWiring` — Full Design
+
+```python
+# src/infrastructure/resources/prompts/quality/__init__.py
+from os import path
+
+PROMPTS_DIR = path.dirname(__file__)
+```
+
+```python
+# src/infrastructure/wirings/analyze_quality_use_case_wiring.py
+from os.path import join
+from pathlib import Path
+
+from dotenv import load_dotenv
+from os import getenv
+
+from src.application.analyze_quality_use_case import AnalyzeQualityUseCase
+from src.domain.ports.llm_generator_port import LlmGeneratorPort
+from src.domain.quality.quality_analyzer import QualityAnalyzer
+from src.domain.quality.quality_response_parser import QualityResponseParser
+from src.domain.quality.quality_text_sampler import QualityTextSampler
+from src.infrastructure.adapters.llm_generator.ollama_generator_adapter import (
+    OllamaGeneratorAdapter,
+)
+from src.infrastructure.resources.prompts.quality import PROMPTS_DIR
+
+load_dotenv()
+
+
+class AnalyzeQualityUseCaseWiring:
+    """Factory for building a ready-to-use AnalyzeQualityUseCase."""
+
+    def create_use_case(self) -> AnalyzeQualityUseCase:
+        return AnalyzeQualityUseCase(analyzer=self._get_quality_analyzer())
+
+    def _get_quality_analyzer(self) -> QualityAnalyzer:
+        return QualityAnalyzer(
+            llm_generator=self._get_llm_generator(),
+            text_sampler=self._get_text_sampler(),
+            response_parser=QualityResponseParser(),
+            clarity_coherence_prompt_template=self._read_prompt_template(
+                "clarity_coherence_prompt.txt"
+            ),
+            argumentation_conclusions_prompt_template=self._read_prompt_template(
+                "argumentation_conclusions_prompt.txt"
+            ),
+        )
+
+    def _get_llm_generator(self) -> LlmGeneratorPort:
+        model_name = getenv("OLLAMA_MODEL_NAME", "llama3-gradient:8b-instruct-1048k-q4_K_M")
+        base_url = getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+        return OllamaGeneratorAdapter(model_name=model_name, base_url=base_url)
+
+    def _get_text_sampler(self) -> QualityTextSampler:
+        return QualityTextSampler(
+            min_sample_word_count=int(getenv("QUALITY_MIN_SAMPLE_WORD_COUNT", "400")),
+            text_sample_character_limit=int(
+                getenv("QUALITY_TEXT_SAMPLE_CHARACTER_LIMIT", "8000")
+            ),
+        )
+
+    def _read_prompt_template(self, filename: str) -> str:
+        file_path = Path(join(PROMPTS_DIR, filename))
+        return file_path.read_text(encoding="utf-8")
+```
+
+**Decision**: `PROMPTS_DIR` is exported from the resources package's own `__init__.py`
+(`src/infrastructure/resources/prompts/quality/__init__.py`) as `path.dirname(__file__)`,
+not computed inline in the wiring via `Path(__file__).resolve().parents[N]`. This is the
+**reusable convention going forward for any future slice that needs to read its own resource
+files**: a resources package exports its own directory constant, so wiring/adapter code that
+consumes those resources never has to know or maintain a relative-path depth (`parents[1]`,
+`parents[2]`, ...) from its own file location to the resources folder — that coupling lives
+once, inside the resources package itself, and survives the wiring file moving or being
+restructured. `_read_prompt_template` joins `PROMPTS_DIR` and the filename via `os.path.join`
+(consistent string-based path building, no `pathlib`-operator (`/`) mixing), then wraps the
+joined string in `Path(...)` before calling `.read_text(encoding="utf-8")` — `os.path.join`
+itself returns a plain `str`, which has no `.read_text()` method, so the `Path(...)` wrap is
+required for the call to resolve.
+
+`load_dotenv()` is called once at module load time (matching the common `python-dotenv` usage
+pattern: load the `.env` file into `os.environ` before any `getenv()` call reads from it), not
+inside a method — wiring classes in this codebase are already instantiated once per process
+(see `ValidateApaWiring`, `MatchCitationsUseCaseWiring`), so module-level `load_dotenv()` runs
+exactly once per process too, with no risk of being called multiple times per use-case
+construction.
+
+**Rejected alternative**: call `load_dotenv()` inside `_get_text_sampler()` or
+`_get_llm_generator()`. Rejected — calling it per-accessor is redundant (the `.env` file doesn't
+change between accessor calls within one process) and `python-dotenv`'s own convention is to
+call `load_dotenv()` once near process start.
+
+**Rejected alternative**: read `getenv()` results directly without `int()` conversion, relying
+on `QualityTextSampler`'s constructor type hints. Rejected — `os.getenv()` always returns `str |
+None`; without an explicit `int()` cast the wiring would pass a string into a parameter typed
+`int`, silently breaking arithmetic comparisons (`len(text_sample.split()) <
+self._min_sample_word_count`) the first time a value is read from `.env` instead of the Python
+default.
+
+---
+
+## PR-B: `.env.example` Content
+
+```dotenv
+# .env.example
+# Ollama backend connection (OllamaGeneratorAdapter)
+OLLAMA_MODEL_NAME=llama3-gradient:8b-instruct-1048k-q4_K_M
+OLLAMA_BASE_URL=http://localhost:11434
+
+# Quality analysis text sampling (QualityTextSampler)
+QUALITY_MIN_SAMPLE_WORD_COUNT=400
+QUALITY_TEXT_SAMPLE_CHARACTER_LIMIT=8000
+```
+
+First `.env.example` in the repository. Values shown are the same defaults already baked into
+the constructors, so an operator copying this file unmodified to `.env` reproduces current
+behavior exactly — `.env.example` documents the override surface, it does not change any
+default.
+
+---
+
+## PR-B: `requirements.txt` Addition
+
+```diff
+ python-docx
+ gradio
+ ollama
+ language-tool-python
+ Pillow
+ pywin32; sys_platform == 'win32'
+ pytest
++python-dotenv
+```
+
+Confirmed absent from `requirements.txt` (read before this design was written) and not already
+a transitive dependency of any listed package — first new third-party dependency added since
+the migration began, per the spec's "Risks / Open Items" note.
+
+---
+
+## PR-B: Adapter Test Strategy
+
+```python
+# src/infrastructure/tests/test_ollama_generator_adapter.py
+@patch("src.infrastructure.adapters.llm_generator.ollama_generator_adapter.ollama")
+def test_generate_returns_stripped_response_text(self, mock_ollama):
+    mock_ollama.generate.return_value = {"response": "  some text  "}
+    adapter = OllamaGeneratorAdapter()
+    assert adapter.generate("prompt") == "some text"
+
+@patch("src.infrastructure.adapters.llm_generator.ollama_generator_adapter.ollama")
+def test_generate_raises_language_model_unavailable_on_backend_failure(self, mock_ollama):
+    mock_ollama.generate.side_effect = ConnectionError("backend unreachable")
+    adapter = OllamaGeneratorAdapter()
+    with self.assertRaises(LanguageModelUnavailable):
+        adapter.generate("prompt")
+```
+
+Mocks the `ollama` module imported inside the adapter file (not the third-party package
+globally) — same `@patch("...module_under_test.ollama")` pattern any adapter test in this
+codebase would use to isolate the real network call. `ConnectionError` stands in for "any
+backend exception" per the spec scenario; the test only needs to prove the catch-and-reraise
+path, not enumerate every possible `ollama` failure mode.
 
 ---
 
