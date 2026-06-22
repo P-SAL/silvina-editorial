@@ -1,6 +1,3 @@
-from os.path import join
-from pathlib import Path
-
 from dotenv import load_dotenv
 from os import getenv
 
@@ -13,6 +10,7 @@ from src.infrastructure.adapters.llm_generator.ollama_generator_adapter import (
     OllamaGeneratorAdapter,
 )
 from src.infrastructure.resources.prompts.quality import PROMPTS_DIR
+from src.infrastructure.resources.text_resource_loader import read_text_resource
 
 load_dotenv()
 
@@ -28,11 +26,11 @@ class AnalyzeQualityUseCaseWiring:
             llm_generator=self._get_llm_generator(),
             text_sampler=self._get_text_sampler(),
             response_parser=QualityResponseParser(),
-            clarity_coherence_prompt_template=self._read_prompt_template(
-                "clarity_coherence_prompt.txt"
+            clarity_coherence_prompt_template=read_text_resource(
+                PROMPTS_DIR, "clarity_coherence_prompt.txt"
             ),
-            argumentation_conclusions_prompt_template=self._read_prompt_template(
-                "argumentation_conclusions_prompt.txt"
+            argumentation_conclusions_prompt_template=read_text_resource(
+                PROMPTS_DIR, "argumentation_conclusions_prompt.txt"
             ),
         )
 
@@ -46,7 +44,3 @@ class AnalyzeQualityUseCaseWiring:
             min_sample_word_count=int(getenv("QUALITY_MIN_SAMPLE_WORD_COUNT", "400")),
             text_sample_character_limit=int(getenv("QUALITY_TEXT_SAMPLE_CHARACTER_LIMIT", "8000")),
         )
-
-    def _read_prompt_template(self, filename: str) -> str:
-        file_path = Path(join(PROMPTS_DIR, filename))
-        return file_path.read_text(encoding="utf-8")
