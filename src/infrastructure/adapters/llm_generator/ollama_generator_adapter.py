@@ -13,10 +13,10 @@ class OllamaGeneratorAdapter(LlmGeneratorPort):
         self._base_url = base_url
 
     @generic_error_handler
-    def generate(self, prompt: str) -> str:
+    def generate(self, prompt: str, options: dict | None = None) -> str:
         """Return Ollama's generated text for the given prompt."""
         try:
-            response = ollama.generate(model=self._model_name, prompt=prompt)
+            response = ollama.generate(model=self._model_name, prompt=prompt, options=options)
         except (ollama.RequestError, ollama.ResponseError, ConnectionError) as exc:
             raise LanguageModelUnavailable() from exc
         return response.get("response", "").strip()

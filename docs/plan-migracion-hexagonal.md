@@ -403,6 +403,7 @@ Cada slice está **terminado** cuando:
 | Config | No va a `src/`; se inyecta vía wiring o controller |
 | Python | 3.10+, `X | None` en vez de `Optional[X]`, imports de nombres específicos |
 | Errores | Jerarquía `BaseSrcError`; adapters con `@generic_error_handler` |
+| Orden de métodos en una clase | No aplica a dunder methods (`__init__` siempre primero). Después, métodos públicos y luego privados (prefijo `_`), **sin intercalar — regla dura, sin excepción**. Dentro de cada grupo, orden alfabético por nombre — preferente pero casi obligatorio: romperlo requiere una razón muy determinante y permiso explícito |
 
 ---
 

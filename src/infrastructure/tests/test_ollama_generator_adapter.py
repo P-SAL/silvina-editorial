@@ -28,3 +28,27 @@ class TestOllamaGeneratorAdapter(TestCase):
 
         with self.assertRaises(LanguageModelUnavailable):
             self.adapter.generate("prompt")
+
+    @patch("src.infrastructure.adapters.llm_generator.ollama_generator_adapter.ollama.generate")
+    def test_generate_forwards_options_dict_to_ollama_generate(self, mock_generate):
+        mock_generate.return_value = {"response": "some text"}
+
+        self.adapter.generate("prompt", options={"temperature": 0.1, "num_predict": 300})
+
+        mock_generate.assert_called_once_with(
+            model="llama3-gradient:8b-instruct-1048k-q4_K_M",
+            prompt="prompt",
+            options={"temperature": 0.1, "num_predict": 300},
+        )
+
+    @patch("src.infrastructure.adapters.llm_generator.ollama_generator_adapter.ollama.generate")
+    def test_generate_without_options_argument_preserves_prior_behavior(self, mock_generate):
+        mock_generate.return_value = {"response": "some text"}
+
+        self.adapter.generate("prompt")
+
+        mock_generate.assert_called_once_with(
+            model="llama3-gradient:8b-instruct-1048k-q4_K_M",
+            prompt="prompt",
+            options=None,
+        )
