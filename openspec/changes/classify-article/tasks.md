@@ -258,7 +258,7 @@
 > remain at this point (ADR-3/6/7 already resolved every behavior-relevant choice); this is pure,
 > verified transcription.
 
-### T-17: RED — write `fake_llm_generator_port.py` test double
+### [x] T-17: RED — write `fake_llm_generator_port.py` test double
 - File: `src/domain/tests/classification/fake_llm_generator_port.py` — mirrors
   `src/domain/tests/quality/fake_llm_generator_port.py`'s shape exactly: records `generate()`
   call arguments (including `options`), returns a configurable canned response.
@@ -269,7 +269,7 @@
   Orchestrates Classification").
 - **Parallel/Sequential**: Parallel with Phase 0-7. Must exist before T-19's RED.
 
-### T-18: RED — write `_ClassificationSignals` + reference/vocabulary signal tests
+### [x] T-18: RED — write `_ClassificationSignals` + reference/vocabulary signal tests
 - File: `src/domain/tests/classification/test_article_classifier_signals.py` — new file, tests
   the 3 pure signal-detection methods directly (not via full `classify()`), using a minimal
   `ArticleClassifier` construction with the fake port from T-17.
@@ -294,7 +294,7 @@
   target module — write RED first, hold GREEN until T-19/T-21/T-23/T-25/T-27 land together since
   they share one file). Depends on T-04 (`ClassificationConfidence`), T-17 (fake port) existing.
 
-### T-19: GREEN — implement `_ClassificationSignals` dataclass + reference/vocabulary signal
+### [x] T-19: GREEN — implement `_ClassificationSignals` dataclass + reference/vocabulary signal
 methods on `ArticleClassifier`
 - File: `src/domain/classification/article_classifier.py` — create the file with: module
   constants `_METHODOLOGICAL_VOCABULARY` (~70 terms) and `_HARD_METHODOLOGICAL_TERMS` (~30 terms,
@@ -317,7 +317,7 @@ methods on `ArticleClassifier`
   imports" scenarios (fully verified later in T-33/T-34).
 - **Parallel/Sequential**: Sequential after T-18 (and T-04, T-17).
 
-### T-20: RED — write IMRyD override + LLM-call-options tests on `ArticleClassifier`
+### [x] T-20: RED — write IMRyD override + LLM-call-options tests on `ArticleClassifier`
 - File: `src/domain/tests/classification/test_article_classifier_imryd_override.py` — case 1.
 - `test_imryd_override_short_circuits_remaining_five_signals` — fake `ImrydSignalDetector`-like
   double (or real `ImrydSignalDetector` with input crafted to set `imryd_complete=True`) plus
@@ -341,7 +341,7 @@ methods on `ArticleClassifier`
   (constructor + signal methods) for GREEN; RED can be written referencing not-yet-existing
   `classify()` per standard TDD.
 
-### T-21: GREEN — implement `classify()` entry point + IMRyD override branch
+### [x] T-21: GREEN — implement `classify()` entry point + IMRyD override branch
 - File: `src/domain/classification/article_classifier.py` — MODIFY: add `classify(document_content)
   -> ClassificationResultDTO`: raise `ClassificationFailed()` if `document_content.paragraphs` is
   empty; compute `article_size` via `classify_article_size()`; compute `imryd_signals` via
@@ -358,7 +358,7 @@ methods on `ArticleClassifier`
   full rule-table application verified once `_apply_rule` lands).
 - **Parallel/Sequential**: Sequential after T-19, T-20.
 
-### T-22: RED — write CIENTIFICO cases 2-5 tests
+### [x] T-22: RED — write CIENTIFICO cases 2-5 tests
 - File: `src/domain/tests/classification/test_article_classifier_cientifico.py`.
 - `test_case_2_full_signal_set_produces_zero_point_nine_confidence` — signals
   `s2a=True, s2b=True, s3=True, s4=True, s5=True, s6=True`; assert
@@ -380,7 +380,7 @@ methods on `ArticleClassifier`
 - **Parallel/Sequential**: Parallel with T-24, T-26, T-28 (different test files). Sequential RED
   before T-23 GREEN.
 
-### T-23: GREEN — implement `_RuleCase`/`_RULE_TABLE` rows for CIENTIFICO (cases 2-5) +
+### [x] T-23: GREEN — implement `_RuleCase`/`_RULE_TABLE` rows for CIENTIFICO (cases 2-5) +
 `_apply_rule` dispatch loop skeleton
 - File: `src/domain/classification/article_classifier.py` — MODIFY: add `_RuleCase` frozen
   dataclass (`predicate`, `article_type`, `confidence`, `reasoning` callable); `_FULL_CORE` lambda
@@ -394,7 +394,7 @@ methods on `ArticleClassifier`
 - **Satisfies**: same requirement as T-22 (cases 2-5 portion).
 - **Parallel/Sequential**: Sequential after T-21, T-22.
 
-### T-24: RED — write DIVULGACION near-miss cases 6-9 tests
+### [x] T-24: RED — write DIVULGACION near-miss cases 6-9 tests
 - File: `src/domain/tests/classification/test_article_classifier_divulgacion_near_miss.py`.
 - `test_case_6_full_core_with_theoretical_justification_only` — `s3∧s4∧s5∧s6`, none of cases 2-5
   matched (i.e. `s2a=False, s2b=False`); assert `ArticleType.DIVULGACION`, `confidence=None`,
@@ -410,7 +410,7 @@ methods on `ArticleClassifier`
   scenario explicitly; 6-8 as additional "all 19 cases" coverage).
 - **Parallel/Sequential**: Parallel with T-22, T-26, T-28. Sequential RED before T-25 GREEN.
 
-### T-25: GREEN — implement `_RULE_TABLE` rows for DIVULGACION near-miss (cases 6-9)
+### [x] T-25: GREEN — implement `_RULE_TABLE` rows for DIVULGACION near-miss (cases 6-9)
 - File: `src/domain/classification/article_classifier.py` — MODIFY: append the 4 near-miss
   `_RuleCase` rows (cases 6-9) to `_RULE_TABLE`, each `_FULL_CORE(s) and <extra condition>`
   predicate per design ADR-6's exact lambda definitions, paired with `_reasoning_case_6` through
@@ -418,7 +418,7 @@ methods on `ArticleClassifier`
 - **Satisfies**: same requirement as T-24.
 - **Parallel/Sequential**: Sequential after T-23, T-24.
 
-### T-26: RED — write DIVULGACION standard cases 10-18 tests
+### [x] T-26: RED — write DIVULGACION standard cases 10-18 tests
 - File: `src/domain/tests/classification/test_article_classifier_divulgacion_standard.py`.
 - One test per case 10-18, each asserting `ArticleType.DIVULGACION`, `confidence=None`, and
   reasoning matching the corresponding legacy `_reasoning_case_N` string exactly:
@@ -438,7 +438,7 @@ methods on `ArticleClassifier`
   scenario explicitly; 10-15/17-18 as "all 19 cases" coverage).
 - **Parallel/Sequential**: Parallel with T-22, T-24, T-28. Sequential RED before T-27 GREEN.
 
-### T-27: GREEN — implement `_RULE_TABLE` rows for DIVULGACION standard (cases 10-18)
+### [x] T-27: GREEN — implement `_RULE_TABLE` rows for DIVULGACION standard (cases 10-18)
 - File: `src/domain/classification/article_classifier.py` — MODIFY: append the 9 standard
   DIVULGACION `_RuleCase` rows (cases 10-18) to `_RULE_TABLE`, exact predicates per design ADR-6
   (note: cases 10/11 do NOT use `_FULL_CORE` — they test `s3∧s4` and `s3∧s5` individually, which
@@ -452,7 +452,7 @@ methods on `ArticleClassifier`
 - **Satisfies**: same requirement as T-26.
 - **Parallel/Sequential**: Sequential after T-25, T-26.
 
-### T-28: RED — write OPINION case 19 test + "all 19 cases" coverage audit test
+### [x] T-28: RED — write OPINION case 19 test + "all 19 cases" coverage audit test
 - File: `src/domain/tests/classification/test_article_classifier_opinion.py`.
 - `test_case_19_no_signals_detected_yields_opinion` — signals
   `s2a=False, s2b=False, s3=False, s4=False, s5=False, s6=False`; assert
@@ -468,7 +468,7 @@ methods on `ArticleClassifier`
   scenario + "all 19 cases are covered" scenario).
 - **Parallel/Sequential**: Parallel with T-22, T-24, T-26. Sequential RED before T-29 GREEN.
 
-### T-29: GREEN — implement OPINION fallback, finalize `_apply_rule`/`classify()` wiring
+### [x] T-29: GREEN — implement OPINION fallback, finalize `_apply_rule`/`classify()` wiring
 - File: `src/domain/classification/article_classifier.py` — MODIFY: replace `_apply_rule`'s
   temporary `NotImplementedError` fallback (from T-23) with the real OPINION fallback path: when
   the loop exhausts `_RULE_TABLE` with no match, return
@@ -483,7 +483,7 @@ methods on `ArticleClassifier`
 
 ## Phase 9 — `ClassificationFailed` empty-paragraphs validation test
 
-### T-30: RED+GREEN — write and verify empty-paragraphs validation test
+### [x] T-30: RED+GREEN — write and verify empty-paragraphs validation test
 - File: add to `src/domain/tests/classification/test_article_classifier_imryd_override.py` (or a
   new small test method in an existing classification test file — no new file needed for one
   test): `test_empty_paragraphs_raises_classification_failed` — construct `document_content` with

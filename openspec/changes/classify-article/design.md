@@ -1431,3 +1431,55 @@ doesn't bloat this PR):
   is missing the `options` parameter added to `LlmGeneratorPort` in this slice (ADR-4) — latent
   signature drift, not currently exercised by any test that passes `options=`, found incidentally
   while checking ABC-conversion impact, not part of this review's original scope.
+
+---
+
+## Amendment 2 (PR-2 code review, post-implementation)
+
+PR-2's first draft named the 19 reasoning functions `_reasoning_case_2`...`_reasoning_case_19`
+(legacy case numbers as identifiers). User review rejected this: numbers inside identifiers
+aren't self-explanatory, and the project already has the right precedent —
+`ClassificationConfidence`'s 4 members (`FULL_SIGNAL_MATCH`, `RECENT_BIBLIOGRAPHY_SUPPORT`,
+`COMPLETE_BIBLIOGRAPHY_SUPPORT`, `SUFFICIENT_REFERENCE_COUNT`) describe the *condition*, not the
+legacy case number, with the case-number cross-reference kept only in this doc's ADR-3 table.
+
+**Renamed, all 19 now describe the signal combination that triggers them** (same vocabulary as
+`_ClassificationSignals`'s field names):
+
+| Old (rejected) | New | Legacy case |
+|---|---|---|
+| `_reasoning_case_2` | `_reasoning_full_signal_match` | 2 |
+| `_reasoning_case_3` | `_reasoning_recent_bibliography_support` | 3 |
+| `_reasoning_case_4` | `_reasoning_complete_bibliography_support` | 4 |
+| `_reasoning_case_5` | `_reasoning_sufficient_reference_count` | 5 |
+| `_reasoning_case_6` | `_reasoning_near_miss_theoretical_justification_only` | 6 |
+| `_reasoning_case_7` | `_reasoning_near_miss_recent_bibliography_only` | 7 |
+| `_reasoning_case_8` | `_reasoning_near_miss_sufficient_references_only` | 8 |
+| `_reasoning_case_9` | `_reasoning_near_miss_no_bibliographic_support` | 9 |
+| `_reasoning_case_10` | `_reasoning_vocabulary_and_research_intent` | 10 |
+| `_reasoning_case_11` | `_reasoning_vocabulary_and_evidence_based_contribution` | 11 |
+| `_reasoning_case_12` | `_reasoning_vocabulary_and_complete_bibliography` | 12 |
+| `_reasoning_case_13` | `_reasoning_vocabulary_and_sufficient_references` | 13 |
+| `_reasoning_case_14` | `_reasoning_vocabulary_and_recent_bibliography` | 14 |
+| `_reasoning_case_15` | `_reasoning_vocabulary_only` | 15 |
+| `_reasoning_case_16` | `_reasoning_research_intent_and_evidence_based_contribution` | 16 |
+| `_reasoning_case_17` | `_reasoning_research_intent_only` | 17 |
+| `_reasoning_case_18` | `_reasoning_evidence_based_contribution_only` | 18 |
+| `_reasoning_case_19` | `_reasoning_no_signals_detected` | 19 (OPINION fallback) |
+
+With no numbers in any name, alphabetical order (the project's method-ordering convention) needs
+no special-case rule here — the 18 `@staticmethod` functions sort cleanly by string comparison.
+Re-verified after the rename: legacy vs. new `_apply_rule()` produce byte-identical
+`article_type`/`confidence`/`reasoning` for all 19 cases (programmatic diff, not just visual
+inspection — see PR-2's review notes).
+
+**Separate doc-only correction**: ADR-6's text above says the rule table has "18" rows; the
+table itself (and the legacy source) has 17 rows (cases 2-18) plus the case-19 fallback outside
+the table. `len(_RULE_TABLE) == 17` is correct; "18" in the prose was a miscount, not a behavior
+change.
+
+**New general rule, for any future case where a number must stay inside a method name** (recorded
+in `docs/plan-migracion-hexagonal.md` §9): numeric order takes precedence over lexicographic
+string order — `_2`/`_02` sorts before `_19`/`_019`, not after, the way plain string comparison
+would put it. Not exercised in this slice since the rename above eliminated the only case that
+would have needed it, but the rule stands for future code.
