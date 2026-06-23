@@ -1483,3 +1483,41 @@ in `docs/plan-migracion-hexagonal.md` §9): numeric order takes precedence over 
 string order — `_2`/`_02` sorts before `_19`/`_019`, not after, the way plain string comparison
 would put it. Not exercised in this slice since the rename above eliminated the only case that
 would have needed it, but the rule stands for future code.
+
+---
+
+## Amendment 3 (PR-3 implementation, doc-only correction)
+
+This doc's `ClassifyArticleUseCaseWiring` code sketch (above, in the PR-3 section) is stale: it
+was written before PR-2's `ArticleClassifier` constructor grew from the originally-sketched 7
+params to its actual 11. The sketch never reflected `article_size_classifier`,
+`methodological_vocabulary_detector`, `reference_signal_detector`, or `rule_table` — all four
+landed during PR-2's RED/GREEN cycles (T-19, T-23) as the signal-detection and rule-table layers
+were built out, after this design section was drafted.
+
+**Actual constructor call, as implemented**:
+
+```python
+def _get_article_classifier(self) -> ArticleClassifier:
+    return ArticleClassifier(
+        llm_generator=self._get_llm_generator(),
+        signal_detector=ImrydSignalDetector(),
+        article_size_classifier=ArticleSizeClassifier(),
+        text_sampler=ArticleClassificationTextSampler(),
+        response_parser=ArticleClassificationResponseParser(),
+        signal_prompt_template=read_text_resource(PROMPTS_DIR, "s4_s5_s6_signal_prompt.txt"),
+        temperature=float(getenv("ARTICLE_CLASSIFIER_TEMPERATURE", "0.1")),
+        num_predict=int(getenv("ARTICLE_CLASSIFIER_NUM_PREDICT", "300")),
+        methodological_vocabulary_detector=MethodologicalVocabularyDetector(),
+        reference_signal_detector=ReferenceSignalDetector(),
+        rule_table=ClassificationRuleTable(),
+    )
+```
+
+Also note: the sketch's private `_read_prompt_template()` helper was never implemented —
+PR-1 (T-13/T-14) already introduced the shared `read_text_resource()` helper
+(`src/infrastructure/resources/text_resource_loader.py`), so the wiring calls that directly
+instead of duplicating a private reader, consistent with `AnalyzeQualityUseCaseWiring`.
+
+No behavior change; this section's narrative (constructor purpose, DI rationale) remains
+accurate — only the literal param list and helper name were out of date.

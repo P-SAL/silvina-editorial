@@ -502,7 +502,7 @@ methods on `ArticleClassifier`
 
 ## Phase 10 — `ClassifyArticleUseCase`
 
-### T-31: RED — write `ClassifyArticleUseCase` test
+### [x] T-31: RED — write `ClassifyArticleUseCase` test
 - File: `src/application/tests/test_classify_article_use_case.py` — one `TestCase` class,
   `setUp()` instantiates `ClassifyArticleUseCase(classifier=ArticleClassifier(...))` with real
   collaborators (mirrors `test_analyze_quality_use_case.py`'s pattern from Slice 5 PR-B).
@@ -513,7 +513,7 @@ methods on `ArticleClassifier`
 - **Parallel/Sequential**: Parallel with Phase 7 (T-16), Phase 11's RED. Sequential RED before
   T-32 GREEN. Depends on Phase 8 (`ArticleClassifier`) being fully GREEN.
 
-### T-32: GREEN — implement `ClassifyArticleUseCase`
+### [x] T-32: GREEN — implement `ClassifyArticleUseCase`
 - File: `src/application/classify_article_use_case.py` — exact code from design.md: constructor
   takes `classifier: ArticleClassifier`, `execute(document_content)` is a one-line delegation to
   `self._classifier.classify(document_content)`. No `article_type` parameter (classification
@@ -525,7 +525,7 @@ methods on `ArticleClassifier`
 
 ## Phase 11 — `ClassifyArticleUseCaseWiring`
 
-### T-33: RED — write `ClassifyArticleUseCaseWiring` tests
+### [x] T-33: RED — write `ClassifyArticleUseCaseWiring` tests
 - File: `src/infrastructure/tests/test_classify_article_use_case_wiring.py` — one `TestCase`
   class, `setUp()` instantiates `self.wiring = ClassifyArticleUseCaseWiring()` (mirrors
   `test_analyze_quality_use_case_wiring.py`'s pattern).
@@ -539,7 +539,7 @@ methods on `ArticleClassifier`
 - **Parallel/Sequential**: Parallel with T-31 (test-writing only; GREEN depends on T-12, T-29,
   T-32, T-14/T-16, and T-37's `.env.example` addition). Sequential RED before T-34 GREEN.
 
-### T-34: GREEN — implement `ClassifyArticleUseCaseWiring`
+### [x] T-34: GREEN — implement `ClassifyArticleUseCaseWiring`
 - File: `src/infrastructure/wirings/classify_article_use_case_wiring.py` — exact code from
   design.md: `create_use_case()`, `_get_article_classifier()` (assembles `ArticleClassifier` with
   `ImrydSignalDetector()`, `ArticleClassificationTextSampler()`,
@@ -558,7 +558,7 @@ methods on `ArticleClassifier`
 
 ## Phase 12 — Config files (no test; static content)
 
-### T-35: Add `ARTICLE_CLASSIFIER_TEMPERATURE`/`ARTICLE_CLASSIFIER_NUM_PREDICT` to `.env.example`
+### [x] T-35: Add `ARTICLE_CLASSIFIER_TEMPERATURE`/`ARTICLE_CLASSIFIER_NUM_PREDICT` to `.env.example`
 - File: `.env.example` — append `ARTICLE_CLASSIFIER_TEMPERATURE=0.1` and
   `ARTICLE_CLASSIFIER_NUM_PREDICT=300`, matching legacy's exact hardcoded tuning values. Read the
   current file first to confirm exact formatting/grouping convention used by Slice 5's existing
@@ -575,7 +575,7 @@ methods on `ArticleClassifier`
 
 ## Phase 13 — Smoke parity test
 
-### T-36: Write `tests/smoke/test_classify_article_parity.py`
+### [x] T-36: Write `tests/smoke/test_classify_article_parity.py`
 - File: `tests/smoke/test_classify_article_parity.py` — exact code from design.md (ADR-9):
   `TestCase` + `setUpClass()` shape mirroring `test_validate_structure_parity.py`, against the
   same 3 real `.docx` files (`1. test_Científico.docx`, `2. test_divulgacion_v2.docx`,
@@ -605,7 +605,7 @@ methods on `ArticleClassifier`
 
 ## Phase 14 — Cross-cutting verification (sequential, after all GREEN)
 
-### T-37: Verify no class named `StructureAnalyzer` exists under `src/domain/`
+### [x] T-37: Verify no class named `StructureAnalyzer` exists under `src/domain/`
 - Grep the full `src/domain/` tree for `class StructureAnalyzer`; assert zero matches.
 - Confirm `src/domain/structure/structure_validator.py`'s `StructureValidator` class definition,
   `_SECTION_ALIASES` table, and `validate()` method are byte-for-byte unchanged from before this
@@ -614,14 +614,14 @@ methods on `ArticleClassifier`
   scenarios).
 - **Parallel/Sequential**: Parallel with T-38, T-39, T-40.
 
-### T-38: Verify `ArticleType` definition is byte-for-byte unchanged
+### [x] T-38: Verify `ArticleType` definition is byte-for-byte unchanged
 - Confirm via `git diff src/domain/enums/article_type.py` (or equivalent) that this slice made
   zero modifications to the file — member names (`CIENTIFICO`, `DIVULGACION`, `OPINION`, and
   `UNKNOWN` if present) and values are identical to their pre-slice state.
 - **Satisfies**: Requirement "ArticleType Member Names Stay Unchanged" (the one scenario).
 - **Parallel/Sequential**: Parallel with T-37, T-39, T-40.
 
-### T-39: Verify no raw confidence literals remain in the rule table
+### [x] T-39: Verify no raw confidence literals remain in the rule table
 - Grep `src/domain/classification/article_classifier.py` for the bare float literals `0.95`,
   `0.90`, `0.86`, `0.85`, `0.83`; assert none appear outside
   `src/domain/enums/classification_confidence.py` itself (i.e. the rule table and IMRyD override
@@ -630,7 +630,7 @@ methods on `ArticleClassifier`
   ("no raw literals remain" scenario).
 - **Parallel/Sequential**: Parallel with T-37, T-38, T-40.
 
-### T-40: Verify zero `print()` calls in all new files
+### [x] T-40: Verify zero `print()` calls in all new files
 - Grep every file introduced or modified by this slice (signal detector, text sampler, response
   parser, domain service, both enums, use case, wiring, the retrofitted
   `analyze_quality_use_case_wiring.py`, `text_resource_loader.py`) for `print(`; assert zero
@@ -640,7 +640,7 @@ methods on `ArticleClassifier`
 - **Satisfies**: Requirement "No print() Statements in New Code" (the one scenario).
 - **Parallel/Sequential**: Parallel with T-37, T-38, T-39.
 
-### T-41: Verify zero file I/O / infrastructure imports in `src/domain/classification/`
+### [x] T-41: Verify zero file I/O / infrastructure imports in `src/domain/classification/`
 - Grep `imryd_signal_detector.py`, `article_classification_text_sampler.py`,
   `article_classification_response_parser.py`, `article_classifier.py` for `open(`, `import os`,
   `from os`, `dotenv`, `from src.infrastructure`, `import ollama`; assert zero matches across all
@@ -650,7 +650,7 @@ methods on `ArticleClassifier`
   per-file check, across the whole `classification/` package).
 - **Parallel/Sequential**: Sequential after T-37, T-38, T-39, T-40.
 
-### T-42: ruff check on all new/modified files
+### [x] T-42: ruff check on all new/modified files
 - Run `ruff check` against every new/modified file in this slice: both enums
   (`classification_confidence.py`, `article_size.py`), the 4 classification domain files,
   `text_resource_loader.py`, the retrofitted `analyze_quality_use_case_wiring.py`,
@@ -661,7 +661,7 @@ methods on `ArticleClassifier`
 - **Satisfies**: general code-quality gate, not requirement-specific.
 - **Parallel/Sequential**: Sequential after T-41.
 
-### T-43: Full regression suite run (final gate)
+### [x] T-43: Full regression suite run (final gate)
 - Run `python -m pytest src/ -q` — confirm the pre-slice baseline (284 passed from Slice 5 PR-B)
   plus this slice's full new test count, zero regressions.
 - Run `python -m pytest tests/smoke/ -q` separately — confirm the new
