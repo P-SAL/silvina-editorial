@@ -6,6 +6,7 @@ from src.application.extract_content_use_case import ExtractContentUseCase
 from src.domain.document.character_count_port import CharacterCountPort
 from src.domain.dtos.character_count_dto import CharacterCountDTO
 from src.domain.dtos.document_content_dto import DocumentContentDTO
+from src.domain.exceptions.count_errors import CharacterCountUnavailable
 from src.domain.exceptions.document_errors import DocumentEmpty
 from src.domain.tests.document.fake_character_count_port import FakeCharacterCountPort
 from src.domain.tests.document.fake_content_extraction_port import FakeContentExtractionPort
@@ -69,6 +70,27 @@ class TestExtractContentUseCase(TestCase):
         result = use_case.execute(["para"], docx_path="doc.docx")
 
         self.assertEqual(result, _BASE_DTO)
+
+    def test_character_count_unavailable_falls_back_to_base_dto(self):
+        use_case = ExtractContentUseCase(
+            extraction_port=FakeContentExtractionPort(result=_BASE_DTO),
+            count_port=FakeCharacterCountPort(error=CharacterCountUnavailable()),
+        )
+
+        result = use_case.execute(["para"], docx_path="doc.docx")
+
+        self.assertEqual(result, _BASE_DTO)
+
+    def test_character_count_unavailable_does_not_propagate(self):
+        use_case = ExtractContentUseCase(
+            extraction_port=FakeContentExtractionPort(result=_BASE_DTO),
+            count_port=FakeCharacterCountPort(error=CharacterCountUnavailable()),
+        )
+
+        try:
+            use_case.execute(["para"], docx_path="doc.docx")
+        except CharacterCountUnavailable:
+            self.fail("CharacterCountUnavailable propagated to caller")
 
     def test_document_empty_propagates(self):
         use_case = ExtractContentUseCase(

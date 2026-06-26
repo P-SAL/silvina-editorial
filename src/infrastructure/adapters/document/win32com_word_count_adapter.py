@@ -14,6 +14,7 @@ except ImportError:
 
 from src.domain.document.character_count_port import CharacterCountPort
 from src.domain.dtos.character_count_dto import CharacterCountDTO
+from src.domain.exceptions.count_errors import CharacterCountUnavailable
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +36,7 @@ class Win32ComWordCountAdapter(CharacterCountPort):
             return self._measure(docx_path)
         except Exception as exc:
             logger.warning("Could not get accurate Word counts: %s", exc)
-            return None
+            raise CharacterCountUnavailable() from exc
 
     def _measure(self, path: str) -> CharacterCountDTO:
         with self._word_session(path) as doc:

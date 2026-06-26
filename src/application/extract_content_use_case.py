@@ -3,6 +3,7 @@ from dataclasses import replace
 from src.domain.document.character_count_port import CharacterCountPort
 from src.domain.document.content_extraction_port import ContentExtractionPort
 from src.domain.dtos.document_content_dto import DocumentContentDTO
+from src.domain.exceptions.count_errors import CharacterCountUnavailable
 from src.domain.exceptions.decorators.generic_error_handler import generic_error_handler
 
 
@@ -28,7 +29,10 @@ class ExtractContentUseCase:
         base = self._extraction_port.extract(paragraphs, docx_path)
         if docx_path is None:
             return base
-        counts = self._count_port.count(docx_path)
+        try:
+            counts = self._count_port.count(docx_path)
+        except CharacterCountUnavailable:
+            return base
         if counts is None:
             return base
         return replace(

@@ -1,6 +1,7 @@
 from unittest import TestCase
 from unittest.mock import patch
 
+from src.domain.exceptions.count_errors import CharacterCountUnavailable
 from src.infrastructure.adapters.document.win32com_word_count_adapter import (
     Win32ComWordCountAdapter,
 )
@@ -18,7 +19,7 @@ class TestWin32ComWordCountAdapter(TestCase):
             result = self.adapter.count("any/path.docx")
         self.assertIsNone(result)
 
-    def test_returns_none_and_logs_warning_on_com_exception(self):
+    def test_raises_character_count_unavailable_on_com_exception(self):
         with (
             patch(
                 "src.infrastructure.adapters.document.win32com_word_count_adapter.WIN32COM_AVAILABLE",
@@ -28,11 +29,7 @@ class TestWin32ComWordCountAdapter(TestCase):
                 "src.infrastructure.adapters.document.win32com_word_count_adapter.win32com"
             ) as mock_win32com,
             patch("os.path.exists", return_value=True),
-            self.assertLogs(
-                "src.infrastructure.adapters.document.win32com_word_count_adapter",
-                level="WARNING",
-            ),
         ):
             mock_win32com.client.DispatchEx.side_effect = Exception("COM failure")
-            result = self.adapter.count("any/path.docx")
-        self.assertIsNone(result)
+            with self.assertRaises(CharacterCountUnavailable):
+                self.adapter.count("any/path.docx")
