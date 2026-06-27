@@ -36,3 +36,5 @@ acme.json
 # AI and Local Tools
 .claude/
 .pi/
+
+.codegraph/
