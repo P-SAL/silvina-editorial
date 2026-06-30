@@ -54,6 +54,7 @@ class WordExporter:
             self._add_document_info(doc, analysis_results)
             self._add_classification(doc, analysis_results)
             self._add_quality_analysis(doc, analysis_results)
+            self._add_idoneidad_editorial(doc, analysis_results)
             self._add_grammar_analysis(doc, analysis_results)
             self._add_apa_validation(doc, analysis_results)
             self._add_structure_validation(doc, analysis_results)
@@ -333,6 +334,65 @@ class WordExporter:
 
                 if dim_data.get('feedback'):
                     doc.add_paragraph(dim_data['feedback'])
+
+    def _add_idoneidad_editorial(self, doc, results):
+        heading = doc.add_heading('🎯 IDONEIDAD EDITORIAL', 1)
+        for run in heading.runs:
+            run.font.color.rgb = RGBColor(0, 51, 102)
+
+        idoneidad = results['quality_analysis'].get('idoneidad_editorial', {})
+        if not idoneidad:
+            doc.add_paragraph('Evaluación de idoneidad no disponible.')
+            return
+
+        contrib = idoneidad.get('contribucion', {})
+        pertinencia = idoneidad.get('pertinencia', {})
+
+        # ── Contribución ──────────────────────────────────────────────────
+        doc.add_heading('Contribución', level=3)
+
+        veredicto_c = contrib.get('veredicto', 'No disponible')
+        p = doc.add_paragraph()
+        p.add_run('Veredicto: ').bold = True
+        vrun = p.add_run(veredicto_c)
+        vrun.bold = True
+        if 'NO SUSTENTADA' in veredicto_c.upper():
+            vrun.font.color.rgb = RGBColor(192, 0, 0)
+        elif 'PARCIAL' in veredicto_c.upper():
+            vrun.font.color.rgb = RGBColor(192, 100, 0)
+        else:
+            vrun.font.color.rgb = RGBColor(0, 128, 0)
+
+        observacion = contrib.get('observacion', '')
+        if observacion and observacion != 'No disponible':
+            doc.add_paragraph(observacion)
+
+        # ── Pertinencia ───────────────────────────────────────────────────
+        doc.add_heading('Pertinencia', level=3)
+
+        veredicto_p = pertinencia.get('veredicto', 'No disponible')
+        p = doc.add_paragraph()
+        p.add_run('Veredicto: ').bold = True
+        vrun = p.add_run(veredicto_p)
+        vrun.bold = True
+        if 'NO ALINEADO' in veredicto_p.upper():
+            vrun.font.color.rgb = RGBColor(192, 0, 0)
+        elif 'PARCIALMENTE' in veredicto_p.upper():
+            vrun.font.color.rgb = RGBColor(192, 100, 0)
+        else:
+            vrun.font.color.rgb = RGBColor(0, 128, 0)
+
+        lineas = pertinencia.get('lineas', '')
+        if lineas and lineas != 'No disponible':
+            p = doc.add_paragraph()
+            p.add_run('Líneas: ').bold = True
+            p.add_run(lineas)
+
+        justificacion = pertinencia.get('justificacion', '')
+        if justificacion and justificacion != 'No disponible':
+            doc.add_paragraph(justificacion)
+
+        doc.add_paragraph()
 
     def _add_grammar_analysis(self, doc, results):
         heading = doc.add_heading('📝 GRAMÁTICA Y ORTOGRAFÍA', 1)

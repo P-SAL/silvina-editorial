@@ -27,8 +27,6 @@ Silvina is an intelligent editorial assistant for **Revista Visión Conjunta** (
 ```
 main                    ← Production branch — stable, merged from dev
 silvina_editorial_v09   ← Active development branch ← ALL work goes here
-silvina_editorial_v08   ← Historical reference (read-only)
-silvina_editorial_v07   ← Historical reference (read-only)
 ```
 
 **Development workflow:**
@@ -75,14 +73,14 @@ presentation/     # Output formatting
 1. **📖 Document Reading** — Extracts paragraphs from .docx
 2. **🔍 Content Extraction** — Title, authors, sections, word count
 3. **📚 Citation & Reference Parsing** — In-text citations, bibliography, APA 7 validation
-4. **🏷️ Article Classification** — Hybrid signal system (S1–S5)
-5. **⭐ Quality Analysis** — 4 semantic dimensions via LLM
+4. **🏷️ Article Classification** — Hybrid signal system (S1–S6)
+5. **⭐ Quality Analysis** — Two independent layers: Calidad académica intrínseca (4 dimensions) + Idoneidad editorial (Contribución, Pertinencia)
 6. **📋 Structure Validation** — Required sections per article type
 7. **🔗 Citation Matching** — Links citations to references
 
 ---
 
-## 🎯 Classification System — Hybrid Signal Approach
+## 🎯 Classification System — Hybrid Signal Approach (S1–S6)
 
 ### Signal Architecture
 
@@ -92,8 +90,11 @@ presentation/     # Output formatting
 | S2a — Reference count | Deterministic | ≥ 12 references | Confidence modulator |
 | S2b — Reference recency | Deterministic | ≥ 50% within last 4 years | Confidence modulator |
 | S3 — Methodological vocab | Deterministic | ≥ 4 terms + ≥ 1 hard term | Mandatory gate for CIENTÍFICO |
-| S4 — Research intent | LLM (combined) | Explicit research intent detected | Mandatory gate for CIENTÍFICO |
-| S5 — Conclusive contribution | LLM (combined) | Evidence-based contribution detected | Mandatory gate for CIENTÍFICO |
+| S4 — Research intent | LLM (combined) | Explicit research intent detected | Primary gate for CIENTÍFICO |
+| S5 — Conclusive contribution | LLM (combined) | Evidence-based contribution detected | Primary gate for CIENTÍFICO |
+| S6 — Theoretical justification | LLM (combined) | Framework justification / knowledge gap identified | Confidence modulator |
+
+**S4, S5 and S6 are evaluated in a single combined LLM call** for efficiency and consistency.
 
 **S3 vocabulary covers:** quantitative methodology, qualitative/social science, experimental/simulation design, systematic review/meta-analysis, validation and results markers, metrics and measurement — in Spanish and English.
 
@@ -101,57 +102,119 @@ presentation/     # Output formatting
 
 **S5 detects:** findings from systematic process, frameworks/models/taxonomies proposed, evidence-based recommendations, knowledge gaps addressed, synthesis beyond description, quantitative experimental results, hypothesis confirmation.
 
-**S4 and S5 are evaluated in a single combined LLM call** for efficiency and consistency.
+**S6 detects:** references to state of the art or prior literature, identification of knowledge gaps, theoretical framework justification, anchoring in prior research.
 
-### Classification Rule
+### Classification Rule — 19-Case Table
 
-| Condition | Result | Confidence |
-|-----------|--------|------------|
-| S3 + S4 + S5 + S2a + S2b | CIENTÍFICO | 0.95 |
-| S3 + S4 + S5 + S2b | CIENTÍFICO | 0.88 |
-| S3 + S4 + S5 + S2a | CIENTÍFICO | 0.80 |
-| S3 + S4 + S5 (no S2) | CIENTÍFICO | 0.72 |
-| S3 + S5 (no S4) | CIENTÍFICO | 0.72 — reduced confidence, manual review recommended |
-| S3 + S4 (no S5) | CIENTÍFICO | 0.72 — reduced confidence, manual review recommended |
-| S3 + (S2a or S2b) (no S4/S5) | CIENTÍFICO | 0.70 — reduced confidence, manual review recommended |
-| S3 alone (no S2/S4/S5) | CIENTÍFICO | 0.60 — very reduced confidence, manual review required |
-| S4 + S5 (no S3) | DIVULGACIÓN | 0.75 |
-| S4 or S5 alone | DIVULGACIÓN | 0.65 |
-| No signals | OPINIÓN | 0.65 |
+**CIENTÍFICO threshold: confidence ≥ 0.83.** Below this threshold, evidence is insufficient and the article classifies as DIVULGACIÓN.
+
+| Case | Signals | Result | Confidence |
+|------|---------|--------|------------|
+| S1 | IMRyD override | CIENTÍFICO | 0.95 |
+| 2 | S3+S4+S5+S2a+S2b+S6 | CIENTÍFICO | 0.90 |
+| 3 | S3+S4+S5+S2b+S6 | CIENTÍFICO | 0.86 |
+| 4 | S3+S4+S5+S2a+S2b | CIENTÍFICO | 0.85 |
+| 5 | S3+S4+S5+S2a+S6 | CIENTÍFICO | 0.83 |
+| 6 | S3+S4+S5+S6 | DIVULGACIÓN ⚠ | — |
+| 7 | S3+S4+S5+S2b | DIVULGACIÓN ⚠ | — |
+| 8 | S3+S4+S5+S2a | DIVULGACIÓN ⚠ | — |
+| 9 | S3+S4+S5 | DIVULGACIÓN ⚠ | — |
+| 10 | S3+S4 | DIVULGACIÓN | — |
+| 11 | S3+S5 | DIVULGACIÓN | — |
+| 12 | S3+S2a+S2b | DIVULGACIÓN | — |
+| 13 | S3+S2a | DIVULGACIÓN | — |
+| 14 | S3+S2b | DIVULGACIÓN | — |
+| 15 | S3 alone | DIVULGACIÓN | — |
+| 16 | S4+S5 (no S3) | DIVULGACIÓN | — |
+| 17 | S4 alone | DIVULGACIÓN | — |
+| 18 | S5 alone | DIVULGACIÓN | — |
+| 19 | No signals | OPINIÓN | — |
+
+⚠ Cases 6–9: S3+S4+S5 qualitative core present but below threshold. Silvina emits a specific editorial recommendation identifying which signals are missing and what author corrections could bring the article to threshold.
+
+**Confidence levels apply exclusively to CIENTÍFICO.** DIVULGACIÓN and OPINIÓN carry no confidence value — they represent a determination that evidence for CIENTÍFICO is insufficient, not a degree of certainty about an alternative category.
 
 ### Design Principles
-- **S3 is the mandatory methodological gate** — its presence means the article is NOT OPINIÓN
-- **S4 and S5 are the primary scientific discriminators** — together with S3 they confirm CIENTÍFICO
-- **S2a/S2b modulate confidence** — references support but do not determine classification
-- **Reduced confidence classifications always include a manual review recommendation** — the editorial team makes the final call
-- **S4/S5 non-determinism on CPU is a known hardware limitation** — GPU inference (v1.0) will resolve this
+- **S1 owns the absolute ceiling at 0.95** — deterministic IMRyD override
+- **S2–S6 system ceiling is 0.90** — no LLM-dependent combination can equal S1 certainty
+- **S3 is the mandatory methodological gate** — without S3, CIENTÍFICO is impossible
+- **S4+S5 are the primary qualitative discriminators** — both required together with S3
+- **S6 modulates confidence** — raises CIENTÍFICO confidence but never gates classification
+- **S2a/S2b modulate confidence** — bibliographic support but do not determine category
+- **S4/S5/S6 non-determinism on CPU is a known hardware limitation** — GPU inference (v1.0) will resolve this
 
 ### Structure Validation by Classification Path
 - **S1 classified (IMRyD):** requires full IMRyD sections (Metodología, Resultados, Discusión)
-- **S2-S5 classified:** requires DIVULGACIÓN sections (Resumen, Introducción, Desarrollo, Conclusiones, Referencias)
+- **S2–S6 classified:** requires DIVULGACIÓN sections (Resumen, Introducción, Desarrollo, Conclusiones, Referencias)
+
+> **Note:** the S1–S6 signal system answers *"what type of article is this?"*. It is architecturally independent from the quality evaluation system below, which answers *"is it good, and does it belong in this journal?"*. See **Design Principle** note under Idoneidad Editorial for why the two systems can produce apparently conflicting — but not contradictory — results.
 
 ---
 
-## ⭐ Quality Analysis
+## ⭐ Quality Evaluation — Two Independent Layers
 
-**4 Semantic Dimensions:**
+Once classified, Silvina evaluates merit in two layers that answer different questions and are reported separately. They are never collapsed into a single number.
+
+### Capa 1 — Calidad Académica Intrínseca
+
+**4 Semantic Dimensions** (quantitative, 0–10 scale):
 - **Claridad** — Writing clarity and readability
 - **Coherencia** — Logical flow and consistency
 - **Argumentación** — Strength of arguments and evidence
 - **Conclusiones** — Quality and relevance of conclusions
 
-**Architecture:** Single combined LLM call per dimension pair (Call 1: Claridad + Coherencia / Call 2: Argumentación + Conclusiones). Score inference from narrative when LLM omits score format.
+**Architecture:** Single combined LLM call per dimension pair (Call 1: Claridad + Coherencia / Call 2: Argumentación + Conclusiones), temperature 0.2. Score inference from narrative when LLM omits score format.
 
 **Text sampling:** First 3500 chars (intro) + last 2500 chars (conclusions), bibliography excluded via paragraph-level header detection.
+
+**Threshold:** average ≥ 7.5 (nivel "Bueno") recommended minimum for publication.
+
+### Capa 2 — Idoneidad Editorial
+
+**2 Qualitative Dimensions** (structured verdicts, not scores):
+
+| Dimension | Question | Method | Veredictos |
+|-----------|----------|--------|------------|
+| **Contribución** | Does the article identify what it contributes and do its conclusions support it? | LLM, text-only (no external reference) | SUSTENTADA / PARCIAL / NO SUSTENTADA |
+| **Pertinencia** | Does the article align with the Facultad's líneas de investigación? | LLM, with the 7 líneas de investigación injected as reference | ALINEADO / PARCIALMENTE ALINEADO / NO ALINEADO |
+
+**Architecture:** Call 3 (temperature 0.1, num_predict 300), two sub-prompts evaluated independently. Custom regex parser extracts veredicto + supporting fields; truncates at word boundary to avoid mid-sentence cuts; enforces consistency between veredicto and observación regardless of LLM phrasing variance.
+
+**Contribución** evaluates whether the conclusion section contains verbs of production (propone, demuestra, desarrolla, valida, identifica) versus verbs of summary (describe, presenta, repasa) — it does **not** attempt to judge novelty against the global literature, which is outside LLM capability.
+
+**Pertinencia** compares the article against the 7 líneas de investigación of the Facultad Militar Conjunta (condensed reference text embedded in `quality_analyzer.py` as `_LINEAS_INVESTIGACION`).
+
+**Negative verdicts:**
+- Contribución NO SUSTENTADA → *"No se recomienda su publicación en revista científica."* (deliberately softer — does not block DIVULGACIÓN/OPINIÓN publication)
+- Pertinencia NO ALINEADO → *"No se recomienda la publicación. El artículo no se alinea con las líneas de investigación de la Facultad."* (institutional gate, not a quality judgment)
+
+> **Design principle — why S1–S6 and Capa 1/Capa 2 are independent:** a document can have S5=true (a contribution claim is *present*, as detected by the classification signal) and still receive Contribución=NO SUSTENTADA or PARCIAL in Capa 2 (the claim is present but not well *supported*). This is not a contradiction — S5 detects presence, Capa 2 evaluates quality. The same distinction real peer review makes between "does this paper claim a contribution" and "is that contribution well-argued."
 
 ---
 
 ## 📊 Multi-Format Reports
 
 **3 Output Files** saved to `C:\Users\[user]\Documents\Silvina\reports\`:
-1. **📘 Word Report** (`_analisis.docx`)
+1. **📘 Word Report** (`_analisis.docx`) — includes dedicated Idoneidad Editorial section, color-coded by verdict
 2. **📊 JSON Data** (`_analisis.json`)
 3. **💬 Feedback File** (`_feedback.json`) — via Gradio
+
+---
+
+## 🔒 Security Module
+
+`security.py` provides the following protections (integrated in v0.9, pending full wiring in v1.0):
+
+| Component | Protection |
+|-----------|------------|
+| `FileValidator` | Extension whitelist, magic bytes, size limit (10 MB), ZIP bomb, XXE entity detection |
+| `PathGuard` | Path traversal prevention — resolves and validates against allowed directories |
+| `RateLimiter` | In-memory sliding-window rate limiter (5 requests / 5 min per key) |
+| `PromptInjectionDetector` | Regex-based injection pattern scan + text truncation before LLM calls |
+| `auto_cleanup()` | Context manager — deletes temp files on exit regardless of outcome |
+| `defusedxml` | Patches stdlib XML parsers at import time |
+
+Install: `pip install defusedxml`
 
 ---
 
@@ -165,6 +228,7 @@ presentation/     # Output formatting
 | Word Automation | win32com (Windows COM) |
 | LLM Integration | Ollama (local inference) |
 | Grammar Checking | LanguageTool |
+| Security | defusedxml, custom security.py |
 | Architecture | Modular 4-layer design |
 
 ---
@@ -185,7 +249,7 @@ python -m venv ../venv312
 source ../venv312/Scripts/activate  # Windows Git Bash
 
 # 4. Install dependencies
-pip install python-docx ollama pywin32 gradio language-tool-python
+pip install python-docx ollama pywin32 gradio language-tool-python defusedxml
 
 # 5. Pull LLM model
 ollama pull llama3-gradient:8b-instruct-1048k-q4_K_M
@@ -212,6 +276,7 @@ python main.py
 silvina_editorial_v09/
 ├── main.py
 ├── gradio_app.py
+├── security.py
 ├── apa_validator.py
 ├── eumic_verifier.py
 ├── domain/
@@ -224,7 +289,7 @@ silvina_editorial_v09/
 │   └── reference_parser.py
 ├── business_logic/
 │   ├── article_classifier.py
-│   ├── quality_analyzer.py
+│   ├── quality_analyzer.py        # Calidad académica + Idoneidad editorial
 │   ├── gramatica_checker.py
 │   ├── structure_validator.py
 │   ├── citation_matcher.py
@@ -242,24 +307,39 @@ silvina_editorial_v09/
 
 ### v0.9 (Q2 2026) — Current
 
-**Classification System — Major Revision:**
-- ✨ **NEW:** S3 expanded vocabulary — now covers quantitative, qualitative/social science, experimental/simulation, systematic review, validation/results, metrics categories in Spanish and English
-- ✨ **NEW:** S4+S5 combined into single LLM call — reduces non-determinism, improves efficiency
-- ✨ **NEW:** Granular confidence calibration — 0.60/0.70/0.72/0.80/0.88/0.95 based on signal combination
-- ✨ **NEW:** Partial signal cases (S3+S4, S3+S5) → CIENTÍFICO 0.72 with manual review recommendation
-- ✨ **NEW:** S3 alone → CIENTÍFICO with reduced confidence rather than DIVULGACIÓN — methodological substance acknowledged
-- ✨ **NEW:** Structure validator path-aware — S2-S5 classified CIENTÍFICO uses DIVULGACIÓN structure requirements (not IMRyD)
-- 🔧 **FIXED:** APA validator false positives — institutional acronyms (PLANCAMIL, UNESCO), identifiers (arXiv:), date ranges no longer flagged as author surname errors
-- 🔧 **FIXED:** Citation matcher — non-author citations skipped in matching logic
-- 🔧 **FIXED:** Author extraction — multi-line author lists (semicolon-separated) now collected correctly across up to 3 continuation paragraphs
-- 🔧 **FIXED:** Title extraction — lines with semicolons correctly identified as author lists, not subtitles
-- 🔧 **FIXED:** Quality analyzer score inference — when LLM omits score format, score inferred from narrative sentiment
-- 🔧 **FIXED:** Grammar label — "ortografía" removed (spelling not currently checked)
-- 🔧 **FIXED:** `_apply_rule()` comment renamed from "SIGNAL 6" to "CLASSIFICATION RULE"
-- ✨ **NEW:** Unmatched citations listed by name in ANÁLISIS FINAL (not just count)
-- ✨ **NEW:** Branch-based development workflow established
+**Quality Evaluation — Capa 2 Idoneidad Editorial (May 2026):**
+- ✨ **NEW:** Contribución dimension — LLM evaluates whether the article's conclusions support its declared contribution (production verbs vs. summary verbs), independent of literature novelty judgments
+- ✨ **NEW:** Pertinencia dimension — LLM evaluates alignment against the 7 líneas de investigación of the Facultad Militar Conjunta, injected as reference material in the prompt
+- ✨ **NEW:** Call 3 added to `quality_analyzer.py` (temperature 0.1, num_predict 300) — structured qualitative verdicts, not numeric scores
+- ✨ **NEW:** `_parse_idoneidad_response()` — regex-based parser with word-boundary truncation and veredicto/observación consistency enforcement
+- ✨ **NEW:** `QualityAnalysisResult.idoneidad_editorial` field in `domain/models.py`
+- ✨ **NEW:** Idoneidad Editorial section in console output (`main.py`) and Word report (`word_exporter.py`), color-coded by verdict
+- ✨ **NEW:** Two-layer architecture explicitly separating Calidad académica intrínseca (quantitative, universal standards) from Idoneidad editorial (qualitative, institution-specific)
+- 🔧 **DESIGN:** Capa 1 and Capa 2 verdicts are independent and reported separately — never collapsed into one score
+- 🔧 **DESIGN:** S1–S6 classification signals and Capa 1/Capa 2 quality evaluation are architecturally separate systems answering different questions (see README design principle note)
+- ✅ Regression tested on 5 documents — zero crashes
 
-**Earlier v0.9 fixes:**
+**Classification System — S6 Revision (May 2026):**
+- ✨ **NEW:** S6 (Justificación teórica) — sixth signal detecting theoretical framework justification and knowledge gap identification, added to the combined S4/S5 LLM call (now S4/S5/S6, single call, zero extra latency)
+- ✨ **NEW:** CIENTÍFICO threshold raised to confidence ≥ 0.83 — below threshold classifies as DIVULGACIÓN
+- ✨ **NEW:** 19-case classification table replacing previous partial-signal CIENTÍFICO cases
+- ✨ **NEW:** Cases 6–9 (S3+S4+S5 near-miss) → DIVULGACIÓN with specific editorial recommendation per case
+- ✨ **NEW:** S1 ceiling 0.95 / S2–S6 system ceiling 0.90 — structural separation of deterministic vs LLM-dependent confidence
+- ✨ **NEW:** DIVULGACIÓN and OPINIÓN carry confidence=None — they are insufficient-evidence determinations, not alternative category scores
+- ✨ **NEW:** LLM response parser upgraded to regex — handles verbose model responses in any format
+- ✨ **NEW:** num_predict raised from 30 to 300 — ensures model completes all three signal answers
+- 🔧 **FIXED:** None confidence crashes in main.py, word_exporter.py — all confidence format strings guarded
+- ✨ **NEW:** security.py module — FileValidator, PathGuard, RateLimiter, PromptInjectionDetector, auto_cleanup()
+
+**Classification System — Earlier May 2026 revision:**
+- ✨ **NEW:** S3 expanded vocabulary — quantitative, qualitative/social science, experimental/simulation, systematic review, validation/results, metrics in Spanish and English
+- ✨ **NEW:** S4+S5 combined into single LLM call
+- ✨ **NEW:** Structure validator path-aware — S2–S5 classified CIENTÍFICO uses DIVULGACIÓN structure requirements
+- 🔧 **FIXED:** APA validator false positives — institutional acronyms (PLANCAMIL, UNESCO), identifiers (arXiv:), date ranges
+- 🔧 **FIXED:** Author extraction — multi-line author lists (semicolon-separated) across up to 3 continuation paragraphs
+- 🔧 **FIXED:** Title extraction — lines with semicolons correctly identified as author lists
+
+**Earlier v0.9:**
 - ✨ **NEW:** 5-signal hybrid classification engine
 - ✨ **NEW:** Bibliography-aware text sampling (3500+2500 chars)
 - ✨ **NEW:** `references` field added to `DocumentContent`
@@ -283,28 +363,29 @@ silvina_editorial_v09/
 ## 🗺️ Roadmap
 
 ### v0.9 (Q2 2026) — Active Development
-- ✅ Classification system major revision
+- ✅ Classification system S6 revision — 19-case table, 0.83 threshold
+- ✅ Capa 2 — Idoneidad editorial (Contribución + Pertinencia)
 - ✅ S3 vocabulary expansion
-- ✅ Confidence calibration
+- ✅ Confidence calibration (0.83/0.85/0.86/0.90/0.95)
 - ✅ Structure validator path-aware fix
 - ✅ APA validator false positive fix
 - ✅ Author extraction multi-line fix
-- ✅ Citation matcher improvements
-- ✅ Branch-based workflow established
-- ⬜ Security measures (file validation, authentication, rate limiting)
+- ✅ security.py module (FileValidator, PathGuard, RateLimiter, PromptInjectionDetector)
+- ⬜ FUERA_RANGO size threshold review (short legitimate documents currently bypass S1 size gate)
+- ⬜ Idoneidad editorial parser edge case — occasional "No disponible" on Pertinencia justificación when LLM formats response unusually
+- ⬜ Security integration into gradio_app.py, word_reader.py, article_classifier.py, main.py
+- ⬜ gradio_app.py alignment with v0.9 classification changes
 - ⬜ Web deployment preparation
 
 ### v0.9 → v1.0 (Security & Deployment)
-- 🔒 File validation, defusedxml, path traversal protection
-- 🔒 Authentication and rate limiting
-- 🔒 Prompt injection detection
-- 🌐 nginx + HTTPS deployment
+- 🔒 Full security module wiring across all entry points
+- 🔒 nginx + HTTPS deployment
 - 🌐 Supervised availability model (institutional server)
 
 ### v1.0 (Q3 2026)
 - 🏢 Production deployment at Universidad de la Defensa
 - 🖥️ Hardware upgrade: 64GB RAM + GPU (RTX 4060/4070)
-- 🤖 Model upgrade: llama3.1:70b q4_K_M — deterministic S4/S5 inference
+- 🤖 Model upgrade: llama3.1:70b q4_K_M — deterministic S4/S5/S6 inference
 - 📊 Editorial analytics dashboard
 
 ### v2.0 (Future)
@@ -318,7 +399,11 @@ silvina_editorial_v09/
 
 | Issue | Status | Notes |
 |-------|--------|-------|
-| S4/S5 non-determinism on CPU | Known hardware limitation | GPU inference (v1.0) resolves this |
+| S4/S5/S6 non-determinism on CPU | Known hardware limitation | GPU inference (v1.0) resolves this |
+| FUERA_RANGO documents may misclassify as OPINIÓN | Under review | Short documents (< 16,000 chars) bypass S1 size gate but LLM signals run anyway; CPU non-determinism more visible on short text |
+| Idoneidad editorial parser edge case | Minor | Pertinencia justificación occasionally returns "No disponible" when LLM splits response across unexpected line breaks — degrades gracefully, does not crash |
+| Security module not yet wired | In progress | security.py built; integration into entry points pending |
+| gradio_app.py not yet aligned with v0.9 | In progress | Pending session |
 | Misspelling not detected | Deferred | LanguageTool filter excludes misspellings to avoid false positives on proper nouns |
 | Pleonasm/wordiness not detected | Deferred | No free Spanish deterministic engine available |
 | Citation matching on institutional refs | Partial | NIST, MITRE, arXiv-style citations have low match rates by design |
@@ -343,6 +428,7 @@ MIT License
 
 ## 🙏 Acknowledgments
 
+- **Eng. Luis Briones** — Technical assistance and support during development
 - **Revista Visión Conjunta** — Editorial team for requirements and testing
 - **Facultad Militar Conjunta** — Universidad de la Defensa Nacional
 - **Ollama Team** — Local LLM infrastructure

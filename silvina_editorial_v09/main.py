@@ -273,6 +273,7 @@ class SilvinaEditorialAssistant:
                     'confidence': classification.confidence,
                     'reasoning': classification.reasoning
                 },
+                
                 'quality_analysis': {
                     'overall_score': quality_result.overall_score,
                     'quality_level': quality_result.quality_level,
@@ -281,8 +282,10 @@ class SilvinaEditorialAssistant:
                         'feedback': gramatica_feedback,
                         'errors': gramatica_errors
                     },
-                    'dimensions': quality_result.dimension_scores  # Tier 2 (LLM)
+                    'dimensions': quality_result.dimension_scores,  # Tier 2 (LLM)
+                    'idoneidad_editorial': quality_result.idoneidad_editorial  # Tier 2 (LLM)
                 },
+                                
                 'structure_validation': {
                     'is_valid': structure_result.is_valid,
                     'missing_sections': structure_result.missing_sections,
@@ -638,6 +641,17 @@ def main():
         for dim, data in results['quality_analysis']['dimensions'].items():
             print(f"        • {dim.capitalize()}: {data['score']:.1f}/10 - {data['feedback']}")
 
+        print(f"\n  🎯 IDONEIDAD EDITORIAL:")
+        idoneidad = results['quality_analysis'].get('idoneidad_editorial', {})
+        contrib = idoneidad.get('contribucion', {})
+        pertinencia = idoneidad.get('pertinencia', {})
+        print(f"     📌 Contribución:  {contrib.get('veredicto', 'No disponible')}")
+        print(f"        {contrib.get('observacion', '')}")
+        print(f"     🗺️  Pertinencia:   {pertinencia.get('veredicto', 'No disponible')}")
+        print(f"        Líneas: {pertinencia.get('lineas', 'No disponible')}")
+        print(f"        {pertinencia.get('justificacion', '')}")
+
+      
         print(f"\n  📋 ESTRUCTURA: {'✓ Válida' if results['structure_validation']['is_valid'] else '✗ Incompleta'}")
         if results['structure_validation']['missing_sections']:
             print("     Missing sections:")
