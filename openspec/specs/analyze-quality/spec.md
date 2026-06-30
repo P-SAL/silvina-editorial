@@ -31,7 +31,7 @@ MUST implement `LlmGeneratorPort`, wrapping a real call to `ollama.generate()`.
 It MUST be the only file in the slice that imports `ollama`. On success, it MUST
 extract and return `response.get('response', '').strip()` from Ollama's response
 dict — the domain layer MUST never see that raw dict shape. Its `generate` method
-MUST NOT be decorated with `@generic_error_handler`; error wrapping is handled at the use case layer.
+MUST be decorated with `@generic_error_handler`.
 
 #### Scenario: Successful generation returns the stripped response text
 

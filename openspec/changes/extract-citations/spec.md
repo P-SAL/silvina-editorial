@@ -80,7 +80,7 @@ Configurable return tuple for `extract_references` and optional error.
 
 `DocxCitationAdapter(CitationExtractionPort)` MUST exist at
 `src/infrastructure/adapters/document/docx_citation_adapter.py`.
-No `@generic_error_handler` on adapter methods; error wrapping is handled at the use case layer. Constructs `CitationDTO` (not legacy `Citation`).
+`@generic_error_handler` on `extract_citations`. Constructs `CitationDTO` (not legacy `Citation`).
 Raises `CitationParsingFailed` on failure. MUST NOT import from `data_access/`.
 
 **S7a — Valid file**: GIVEN `1. test_Científico.docx` | WHEN `extract_citations(docx_path)` called | THEN non-empty `list[CitationDTO]` returned without raising.
@@ -91,7 +91,7 @@ Raises `CitationParsingFailed` on failure. MUST NOT import from `data_access/`.
 
 `DocxReferenceAdapter(ReferenceExtractionPort)` MUST exist at
 `src/infrastructure/adapters/document/docx_reference_adapter.py`.
-No `@generic_error_handler` on adapter methods; error wrapping is handled at the use case layer.
+`@generic_error_handler` on `extract_references`.
 `section_type` MUST be one of `{"Bibliografía", "Referencias", "Fuentes bibliográficas"}`.
 Raises `ReferenceParsingFailed` on failure. MUST NOT import from `data_access/`.
 

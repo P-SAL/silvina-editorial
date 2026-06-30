@@ -91,7 +91,7 @@ Both MUST inherit from `BaseDTO` (or `object` if project convention allows). Fie
 - Sample first 20 paragraphs, truncated to 5000 chars total before passing to LanguageTool
 - Filter out matches where `rule_issue_type == 'misspelling'`
 - Return at most the first 10 errors as `list[GrammarErrorDTO]`
-- Do NOT decorate `check()` with `@generic_error_handler`; error wrapping is handled at the use case layer
+- Decorate `check()` with `@generic_error_handler`
 
 #### Scenario: Lazy init — no Java on import
 
@@ -115,7 +115,7 @@ Both MUST inherit from `BaseDTO` (or `object` if project convention allows). Fie
 
 - GIVEN `LanguageTool('es')` raises any exception during init or check
 - WHEN `check(paragraphs)` is called
-- THEN `GrammarCheckUnavailable` is raised (explicitly by the adapter, not via decorator)
+- THEN `GrammarCheckUnavailable` is raised (via `@generic_error_handler`)
 
 ### Requirement: CheckGrammarUseCaseWiring
 
