@@ -44,9 +44,9 @@ Chain strategy: stacked-to-main
 ## Phase 2: PR-2 — Infrastructure Adapters
 
 - [ ] 2.1 RED: Create `src/infrastructure/tests/adapters/document/test_docx_citation_adapter.py` — S7a (non-empty `list[CitationDTO]` from `1. test_Científico.docx`), S7b (all items are CitationDTO), S7c (all `citation_type == CitationType.AUTHOR_YEAR`)
-- [ ] 2.2 GREEN: Create `src/infrastructure/adapters/document/docx_citation_adapter.py` — `DocxCitationAdapter(CitationExtractionPort)`; zipfile + ElementTree parsing; three regex passes in order: parenthetical → multi-author narrative → single-author narrative; `@generic_error_handler`; raises `CitationParsingFailed` on failure; no `data_access` imports
+- [ ] 2.2 GREEN: Create `src/infrastructure/adapters/document/docx_citation_adapter.py` — `DocxCitationAdapter(CitationExtractionPort)`; zipfile + ElementTree parsing; three regex passes in order: parenthetical → multi-author narrative → single-author narrative; raises `CitationParsingFailed` on failure; no `data_access` imports; no `@generic_error_handler` (decorator goes on the use case)
 - [ ] 2.3 RED: Create `src/infrastructure/tests/adapters/document/test_docx_reference_adapter.py` — S8a (non-empty `(list[ReferenceDTO], str)` from fixture), S8b (all items are ReferenceDTO), S8c (`section_type` in `{"Bibliografía", "Referencias", "Fuentes bibliográficas"}`)
-- [ ] 2.4 GREEN: Create `src/infrastructure/adapters/document/docx_reference_adapter.py` — `DocxReferenceAdapter(ReferenceExtractionPort)`; zipfile + raw regex on XML string; year-end split for `_parse_references`; `@generic_error_handler`; raises `ReferenceParsingFailed` on failure; no `data_access` imports
+- [ ] 2.4 GREEN: Create `src/infrastructure/adapters/document/docx_reference_adapter.py` — `DocxReferenceAdapter(ReferenceExtractionPort)`; zipfile + raw regex on XML string; year-end split for `_parse_references`; raises `ReferenceParsingFailed` on failure; no `data_access` imports; no `@generic_error_handler` (decorator goes on the use case)
 
 ---
 
