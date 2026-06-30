@@ -75,13 +75,15 @@ class ClassificationResult:
             f"Confidence: {conf}"
         )
     
-
+       
 @dataclass
 class QualityAnalysisResult:
     overall_score: float
     quality_level: QualityLevel
     dimension_scores: Dict[str, Dict]
-       
+    idoneidad_editorial: Dict[str, Dict] = field(default_factory=dict)
+
+
 @dataclass
 class QualityResult:
     """Result of quality analysis."""

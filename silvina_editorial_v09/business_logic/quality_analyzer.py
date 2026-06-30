@@ -14,6 +14,37 @@ from domain.models import DocumentContent, QualityResult
 from domain.models import QualityAnalysisResult
 
 
+# ── Líneas de investigación FMC (reference material for Pertinencia) ─────────
+_LINEAS_INVESTIGACION = (
+    "1. Ámbitos de conflicto y su interacción — evolución de ámbitos de conflicto "
+    "tradicionales y emergentes; operaciones militares conjuntas y combinadas; geografía "
+    "militar, logística, doctrina, toma de decisiones, operaciones de paz, juegos de guerra, "
+    "capacidades militares, amenazas y espacios jurisdiccionales.\n"
+    "2. Estrategia, conflicto y política internacional — estrategias nacionales de defensa; "
+    "articulación con política exterior; escenarios geopolíticos globales y regionales; "
+    "fundamentos teóricos y dimensión aplicada del fenómeno estratégico.\n"
+    "3. Recursos humanos para la defensa — gestión del capital humano en organizaciones de "
+    "defensa; formación, liderazgo, factores humanos en IA, capacitación en tecnologías "
+    "emergentes; aspectos psicosociales del personal militar.\n"
+    "4. Dinámica de los conflictos en el ciberespacio — conflictos en el ciberespacio; "
+    "convergencia ciber-física, ciber-resiliencia, geopolítica tecnológica, IA, tecnologías "
+    "cuánticas, protección de infraestructuras críticas, guerra de información, marcos "
+    "jurídicos internacionales.\n"
+    "5. Conocimiento, gestión y protección de recursos estratégicos — identificación, "
+    "evaluación y protección de recursos críticos para la defensa; recursos naturales, "
+    "tecnológicos e industriales; Objetivos de Valor Estratégico (OVE); sustentabilidad "
+    "en operaciones militares.\n"
+    "6. Inteligencia en los diversos ámbitos de conflicto — producción de inteligencia en "
+    "niveles estratégico, operacional y táctico; ciclo de inteligencia, IA, capacidades "
+    "geoespaciales, fuentes abiertas digitales, estudios prospectivos, desinformación, "
+    "convergencia humano-artificial.\n"
+    "7. Ciencia, tecnología y producción en la defensa — desarrollo e implementación de "
+    "tecnologías para la defensa; base industrial nacional, autonomía tecnológica, "
+    "transferencia tecnológica, IA, computación cuántica, industria 4.0, sistemas autónomos, "
+    "soberanía tecnológica."
+)
+
+
 class QualityAnalyzer:
     """Analyzes academic document quality across semantic dimensions."""
 
@@ -24,6 +55,10 @@ class QualityAnalyzer:
         self.ollama = ollama
         self.base_url = base_url
         self.client = ollama.Client(host=self.base_url)
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # PUBLIC ENTRY POINT
+    # ══════════════════════════════════════════════════════════════════════════
 
     def analyze_quality(self, document_content, article_type) -> QualityAnalysisResult:
         print("      ⏳ Analizando con Ollama...")
@@ -63,7 +98,7 @@ class QualityAnalyzer:
             'timeout': 120
         }
 
-        # ── CALL 1: Claridad + Coherencia ────────────────────────────────
+        # ── CALL 1: Claridad + Coherencia ─────────────────────────────────
         prompt_1 = f"""Eres un revisor editorial académico experto. Analiza este fragmento en DOS dimensiones.
 
 TEXTO A ANALIZAR:
@@ -85,7 +120,7 @@ FORMATO DE RESPUESTA (OBLIGATORIO):
 CRITERIOS: 9-10 Excelente | 7-8 Bueno | 5-6 Aceptable | 3-4 Deficiente | 0-2 Inaceptable
 """
 
-        # ── CALL 2: Argumentación + Conclusiones ─────────────────────────
+        # ── CALL 2: Argumentación + Conclusiones ──────────────────────────
         prompt_2 = f"""Eres un revisor editorial académico experto. Analiza este fragmento en DOS dimensiones.
 
 TEXTO A ANALIZAR:
@@ -108,7 +143,7 @@ CRITERIOS: 9-10 Excelente | 7-8 Bueno | 5-6 Aceptable | 3-4 Deficiente | 0-2 Ina
 """
 
         try:
-            # First call
+            # Call 1
             response_1 = self.ollama.generate(
                 model=self.model_name,
                 prompt=prompt_1,
@@ -117,7 +152,7 @@ CRITERIOS: 9-10 Excelente | 7-8 Bueno | 5-6 Aceptable | 3-4 Deficiente | 0-2 Ina
             text_1 = response_1.get('response', '').strip()
             print(f"      ✓ Llamada 1 completada: {len(text_1.split())} palabras")
 
-            # Second call
+            # Call 2
             response_2 = self.ollama.generate(
                 model=self.model_name,
                 prompt=prompt_2,
@@ -129,7 +164,7 @@ CRITERIOS: 9-10 Excelente | 7-8 Bueno | 5-6 Aceptable | 3-4 Deficiente | 0-2 Ina
             # Parse both responses
             scores_1 = self._parse_llm_response(text_1)
             scores_2 = self._parse_llm_response(text_2)
-             
+
             # Merge: prefer whichever call returned real feedback for each dim
             scores = {}
             for dim in ["claridad", "coherencia", "argumentacion", "conclusiones"]:
@@ -140,12 +175,18 @@ CRITERIOS: 9-10 Excelente | 7-8 Bueno | 5-6 Aceptable | 3-4 Deficiente | 0-2 Ina
             overall = sum(d["score"] for d in scores.values()) / len(scores)
             quality_level = get_quality_level_from_score(overall)
 
+            # Call 3: Idoneidad editorial
+            print(f"      ⏳ Evaluando idoneidad editorial...")
+            idoneidad = self._analyze_idoneidad(text_sample)
+            print(f"      ✓ Llamada 3 completada")
+
             print(f"      ✓ Análisis generado: {overall:.1f}/10\n")
 
             return QualityAnalysisResult(
                 overall_score=overall,
                 quality_level=quality_level,
-                dimension_scores=scores
+                dimension_scores=scores,
+                idoneidad_editorial=idoneidad
             )
 
         except Exception as e:
@@ -154,7 +195,16 @@ CRITERIOS: 9-10 Excelente | 7-8 Bueno | 5-6 Aceptable | 3-4 Deficiente | 0-2 Ina
                 d: {"score": 7.0, "feedback": "Análisis no disponible"}
                 for d in ["claridad", "coherencia", "argumentacion", "conclusiones"]
             }
-            return QualityAnalysisResult(7.0, QualityLevel.ACCEPTABLE, default)
+            return QualityAnalysisResult(
+                overall_score=7.0,
+                quality_level=QualityLevel.ACCEPTABLE,
+                dimension_scores=default,
+                idoneidad_editorial={}
+            )
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # CALL 1 & 2 PARSER
+    # ══════════════════════════════════════════════════════════════════════════
 
     def _parse_llm_response(self, text: str) -> Dict[str, Dict[str, Any]]:
         """
@@ -162,7 +212,6 @@ CRITERIOS: 9-10 Excelente | 7-8 Bueno | 5-6 Aceptable | 3-4 Deficiente | 0-2 Ina
         Handles both numbered (**1. Dim) and unnumbered (**Dim) header formats
         to cope with LLM non-determinism.
         """
-
         result = {
             "claridad":      {"score": 7.0, "feedback": "No disponible"},
             "coherencia":    {"score": 7.0, "feedback": "No disponible"},
@@ -180,15 +229,12 @@ CRITERIOS: 9-10 Excelente | 7-8 Bueno | 5-6 Aceptable | 3-4 Deficiente | 0-2 Ina
             if not block.strip():
                 continue
 
-            first_line = block.split('\n')[0]
-
             # Search entire block for score
             score_match = re.search(
                 r'\[Puntuaci[oó]n:\s*(\d+(?:\.\d+)?)(?:/10)?\]|(\d+(?:\.\d+)?)\s*/\s*10',
                 block, re.IGNORECASE
             )
             if not score_match:
-                # Infer score from narrative when format missing
                 block_lower = block.lower()
                 if any(w in block_lower for w in ['excelente', 'sobresaliente', 'muy bueno']):
                     score = 8.5
@@ -206,7 +252,7 @@ CRITERIOS: 9-10 Excelente | 7-8 Bueno | 5-6 Aceptable | 3-4 Deficiente | 0-2 Ina
                     score = max(0.0, min(10.0, float(score_str)))
                 except Exception:
                     score = 7.0
-            
+
             # Extract feedback from remaining lines
             lines = block.strip().split('\n')
             feedback_lines = [l.strip() for l in lines[1:] if l.strip()]
@@ -223,8 +269,7 @@ CRITERIOS: 9-10 Excelente | 7-8 Bueno | 5-6 Aceptable | 3-4 Deficiente | 0-2 Ina
             if len(sentences) > 3:
                 feedback = '. '.join(sentences[:3]) + '.'
 
-            # Map to dimension — search first 200 chars of block
-            # Order matters: check argumentaci before claridad to avoid false match on "argumento"
+            # Map to dimension
             block_lower = block[:200].lower()
             if 'argumentaci' in block_lower:
                 result["argumentacion"] = {"score": score, "feedback": feedback}
@@ -237,8 +282,131 @@ CRITERIOS: 9-10 Excelente | 7-8 Bueno | 5-6 Aceptable | 3-4 Deficiente | 0-2 Ina
 
         return result
 
+    # ══════════════════════════════════════════════════════════════════════════
+    # CALL 3: IDONEIDAD EDITORIAL
+    # ══════════════════════════════════════════════════════════════════════════
 
-# Convenience function
+    def _analyze_idoneidad(self, text_sample: str) -> Dict[str, Dict]:
+        """
+        Call 3: evaluates Contribución and Pertinencia as qualitative verdicts.
+        Returns dict with 'contribucion' and 'pertinencia' keys.
+        """
+        prompt_contribucion = f"""Eres un revisor editorial académico. Analiza el siguiente fragmento de un artículo académico.
+
+TEXTO:
+{text_sample}
+
+TAREA: Evalúa si el artículo hace una reclamación explícita de contribución al conocimiento y si sus conclusiones la respaldan. Evalúa únicamente lo que está visible en el texto:
+- ¿El autor identifica explícitamente qué aporta este trabajo?
+- ¿Las conclusiones contienen verbos de producción (propone, demuestra, desarrolla, valida, identifica, construye) o solo verbos de resumen (describe, presenta, repasa)?
+- ¿Hay coherencia entre lo que el artículo promete en la introducción y lo que entrega en las conclusiones?
+
+Responde EXACTAMENTE en este formato (tres líneas, sin nada más):
+VEREDICTO: [SUSTENTADA / PARCIAL / NO SUSTENTADA]
+CONTRIBUCION: [Una frase muy breve que nombre el aporte, por ejemplo "Innovación en tecnología de drones" o "Sin contribución observada o declarada"]
+OBSERVACION: ["Sin contribución observada o declarada" / "Contribución declarada pero no suficientemente sustentada" / "Contribución sustentada — [frase muy breve del aporte]"]"""
+
+        prompt_pertinencia = f"""Eres un revisor editorial académico. Analiza el siguiente fragmento de un artículo académico.
+
+TEXTO:
+{text_sample}
+
+LÍNEAS DE INVESTIGACIÓN DE LA FACULTAD MILITAR CONJUNTA:
+{_LINEAS_INVESTIGACION}
+
+TAREA: Evalúa si el artículo se alinea con una o más de estas líneas de investigación.
+
+Responde EXACTAMENTE en este formato (tres líneas, sin nada más):
+VEREDICTO: [ALINEADO / PARCIALMENTE ALINEADO / NO ALINEADO]
+LINEAS: [Número/s de línea/s con las que se alinea y tema específico, por ejemplo "Línea 4 — avances en tecnología criptográfica" o "Ninguna"]
+JUSTIFICACION: [Frase muy breve que nombre la relación específica, por ejemplo "Avances en tecnología criptográfica" o "No se identificó alineación temática"]"""
+
+        options = {"temperature": 0.1, "num_predict": 300}
+
+        default_contribucion = {
+            "veredicto": "No disponible",
+            "contribucion": "No disponible",
+            "observacion": "No disponible"
+        }
+        default_pertinencia = {
+            "veredicto": "No disponible",
+            "lineas": "No disponible",
+            "justificacion": "No disponible"
+        }
+
+        try:
+            r1 = self.client.generate(
+                model=self.model_name, prompt=prompt_contribucion, options=options
+            )
+            contribucion = self._parse_idoneidad_response(r1["response"].strip(), "contribucion")
+        except Exception as e:
+            print(f"      ⚠️  Error en Contribución: {e}")
+            contribucion = default_contribucion
+
+        try:
+            r2 = self.client.generate(
+                model=self.model_name, prompt=prompt_pertinencia, options=options
+            )
+            pertinencia = self._parse_idoneidad_response(r2["response"].strip(), "pertinencia")
+        except Exception as e:
+            print(f"      ⚠️  Error en Pertinencia: {e}")
+            pertinencia = default_pertinencia
+
+        return {"contribucion": contribucion, "pertinencia": pertinencia}
+
+    def _parse_idoneidad_response(self, raw: str, dimension: str) -> Dict[str, str]:
+        """
+        Parse qualitative verdict response for Contribución or Pertinencia.
+        Extracts VEREDICTO and dimension-specific fields using regex.
+        """
+        result = {}
+
+        v_match = re.search(r'VEREDICTO\s*:\s*(.+)', raw, re.IGNORECASE)
+        result["veredicto"] = v_match.group(1).strip() if v_match else "No disponible"
+
+        def _trim(text: str, max_chars: int = 120) -> str:
+            """First sentence, truncated at word boundary."""
+            sentence = text.split('.')[0].strip()
+            if len(sentence) <= max_chars:
+                return sentence
+            trimmed = sentence[:max_chars]
+            last_space = trimmed.rfind(' ')
+            return trimmed[:last_space] + '…' if last_space > 0 else trimmed + '…'
+
+        def _observacion_from_veredicto(veredicto: str, raw_obs: str) -> str:
+            """Ensure observacion is consistent with veredicto."""
+            v = veredicto.upper()
+            if "NO SUSTENTADA" in v:
+                return "Sin contribución observada o declarada."
+            if "PARCIAL" in v:
+                return "Contribución declarada pero no suficientemente sustentada."
+            if "SUSTENTADA" in v:
+                # Extract the contribution phrase from raw observacion or contribucion field
+                obs = _trim(raw_obs)
+                if obs and "no disponible" not in obs.lower() and "sin contribución" not in obs.lower():
+                    return f"Contribución sustentada — {obs}"
+                return "Contribución sustentada."
+            return _trim(raw_obs)
+
+        if dimension == "contribucion":
+            c_match = re.search(r'CONTRIBUCION\s*:\s*(.+)', raw, re.IGNORECASE)
+            o_match = re.search(r'OBSERVACION\s*:\s*(.+)', raw, re.IGNORECASE)
+            contrib_text = _trim(c_match.group(1)) if c_match else "No disponible"
+            raw_obs = _trim(o_match.group(1)) if o_match else ""
+            result["contribucion"] = contrib_text
+            result["observacion"] = _observacion_from_veredicto(result["veredicto"], contrib_text)
+        else:
+            l_match = re.search(r'LINEAS?\s*:\s*(.+)', raw, re.IGNORECASE)
+            j_match = re.search(r'JUSTIFICACION\s*:\s*(.+)', raw, re.IGNORECASE)
+            result["lineas"] = _trim(l_match.group(1), 80) if l_match else "No disponible"
+            result["justificacion"] = _trim(j_match.group(1)) if j_match else "No disponible"
+        
+        
+        return result
+
+
+# ── Convenience function ──────────────────────────────────────────────────────
+
 def analyze_document_quality(document: DocumentContent,
                              category: ClassificationCategory,
                              model_name: str = "llama3-gradient:8b-instruct-1048k-q4_K_M") -> QualityResult:
