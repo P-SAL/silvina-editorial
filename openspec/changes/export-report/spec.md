@@ -71,7 +71,7 @@ Defines the port, DTO, exception, adapter, use case, wiring, and fake double tha
 
 ### Requirement: DocxReportAdapter Produces Functionally Equivalent DOCX
 
-`DocxReportAdapter.export()` MUST be decorated with `@generic_error_handler` and MUST produce a `.docx` containing the same 11 sections as `WordExporter`, in order: title page, executive summary, document info, classification, quality analysis, grammar, APA validation, structure validation, citations, recommendations, footer. All 13 private rendering methods MUST remain private.
+`DocxReportAdapter.export()` MUST produce a `.docx` containing the same 11 sections as `WordExporter`, in order: title page, executive summary, document info, classification, quality analysis, grammar, APA validation, structure validation, citations, recommendations, footer. All 13 private rendering methods MUST remain private. Error wrapping is handled by `@generic_error_handler` at the use case layer, not the adapter.
 
 #### Scenario: Successful export returns True
 
@@ -85,11 +85,11 @@ Defines the port, DTO, exception, adapter, use case, wiring, and fake double tha
 - WHEN `export()` completes
 - THEN the output `.docx` contains: title page, executive summary, document info, classification, quality analysis, grammar, APA validation, structure validation, citations, recommendations, footer
 
-#### Scenario: IO error raises SrcGenericError
+#### Scenario: IO error propagates to caller
 
 - GIVEN a path that cannot be written
 - WHEN `DocxReportAdapter.export(report_input, path)` is called
-- THEN `@generic_error_handler` wraps the error and raises `SrcGenericError`
+- THEN the underlying `OSError` propagates; `@generic_error_handler` on the use case wraps it as `SrcGenericError`
 
 ---
 
