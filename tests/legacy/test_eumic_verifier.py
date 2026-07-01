@@ -2,17 +2,20 @@
 Unit tests for eumic_verifier.py
 Uses mock python-docx Document objects to avoid file I/O.
 """
+
 import sys
 import os
 import unittest
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 # Defensive guard for COM mocks
-if 'win32com' not in sys.modules:
-    _wc = MagicMock(); _wcc = MagicMock(); _wc.client = _wcc
-    sys.modules.update({'win32com': _wc, 'win32com.client': _wcc, 'pythoncom': MagicMock()})
+if "win32com" not in sys.modules:
+    _wc = MagicMock()
+    _wcc = MagicMock()
+    _wc.client = _wcc
+    sys.modules.update({"win32com": _wc, "win32com.client": _wcc, "pythoncom": MagicMock()})
 
 from eumic_verifier import EumicVerifier, EumicViolation, EumicSeverity, verify_eumic_compliance
 
@@ -23,6 +26,7 @@ def _make_mock_doc(paragraphs_text=None, tables_count=0):
 
     # Sections — use 2.5 cm margins (compliant)
     from docx.shared import Cm
+
     section = MagicMock()
     section.top_margin.twips = Cm(2.5).twips
     section.bottom_margin.twips = Cm(2.5).twips
@@ -32,7 +36,7 @@ def _make_mock_doc(paragraphs_text=None, tables_count=0):
 
     # Paragraphs
     paras = []
-    for text in (paragraphs_text or []):
+    for text in paragraphs_text or []:
         para = MagicMock()
         para.text = text
         para.runs = []
@@ -64,9 +68,9 @@ class TestEumicVerifierCompliant(unittest.TestCase):
 
     def test_compliant_document_no_critical_violations(self):
         paras = [
-            'Resumen',
-            'Este es el resumen del artículo de investigación.',
-            'Palabras clave: investigación, académico, ciencia',
+            "Resumen",
+            "Este es el resumen del artículo de investigación.",
+            "Palabras clave: investigación, académico, ciencia",
         ]
         doc = _make_mock_doc(paras)
         content = _make_mock_content()
@@ -75,7 +79,7 @@ class TestEumicVerifierCompliant(unittest.TestCase):
         self.assertEqual(critical, [])
 
     def test_verify_document_returns_list(self):
-        doc = _make_mock_doc(['Resumen', 'Texto del resumen.', 'Palabras clave: a, b, c'])
+        doc = _make_mock_doc(["Resumen", "Texto del resumen.", "Palabras clave: a, b, c"])
         content = _make_mock_content()
         result = self.verifier.verify_document(doc, content)
         self.assertIsInstance(result, list)
@@ -88,22 +92,24 @@ class TestEumicVerifierMissingAbstract(unittest.TestCase):
         self.verifier = EumicVerifier()
 
     def test_missing_abstract_flagged_as_critical(self):
-        paras = ['Palabras clave: a, b, c', 'Introducción', 'Texto de introducción.']
+        paras = ["Palabras clave: a, b, c", "Introducción", "Texto de introducción."]
         doc = _make_mock_doc(paras)
         content = _make_mock_content(word_count=2000)
         violations = self.verifier.verify_document(doc, content)
         msgs = [v.message for v in violations if v.severity == EumicSeverity.CRITICAL]
-        self.assertTrue(any('Resumen' in m or 'Abstract' in m for m in msgs))
+        self.assertTrue(any("Resumen" in m or "Abstract" in m for m in msgs))
 
     def test_short_document_no_abstract_not_critical(self):
         """Short docs (< 1000 words) should not require abstract."""
-        paras = ['Palabras clave: a, b, c']
+        paras = ["Palabras clave: a, b, c"]
         doc = _make_mock_doc(paras)
         content = _make_mock_content(word_count=500)
         violations = self.verifier.verify_document(doc, content)
         critical = [v for v in violations if v.severity == EumicSeverity.CRITICAL]
         # Should not flag CRITICAL for short docs
-        abstract_critical = [v for v in critical if 'Resumen' in v.message or 'Abstract' in v.message]
+        abstract_critical = [
+            v for v in critical if "Resumen" in v.message or "Abstract" in v.message
+        ]
         self.assertEqual(abstract_critical, [])
 
 
@@ -114,12 +120,12 @@ class TestEumicVerifierMissingKeywords(unittest.TestCase):
         self.verifier = EumicVerifier()
 
     def test_missing_keywords_flagged_as_critical(self):
-        paras = ['Resumen', 'Texto del resumen del artículo académico.']
+        paras = ["Resumen", "Texto del resumen del artículo académico."]
         doc = _make_mock_doc(paras)
         content = _make_mock_content(word_count=2000)
         violations = self.verifier.verify_document(doc, content)
         msgs = [v.message for v in violations if v.severity == EumicSeverity.CRITICAL]
-        self.assertTrue(any('clave' in m.lower() or 'keyword' in m.lower() for m in msgs))
+        self.assertTrue(any("clave" in m.lower() or "keyword" in m.lower() for m in msgs))
 
 
 class TestEumicVerifierFormatReport(unittest.TestCase):
@@ -130,24 +136,24 @@ class TestEumicVerifierFormatReport(unittest.TestCase):
 
     def test_empty_report_for_no_violations(self):
         report = self.verifier.format_violations_report([])
-        self.assertEqual(report, '')
+        self.assertEqual(report, "")
 
     def test_report_contains_critical_section(self):
         violation = EumicViolation(
-            category='Test',
-            message='Test violation',
+            category="Test",
+            message="Test violation",
             severity=EumicSeverity.CRITICAL,
-            details='Details here'
+            details="Details here",
         )
         report = self.verifier.format_violations_report([violation])
-        self.assertIn('CRÍTICO', report)
+        self.assertIn("CRÍTICO", report)
 
     def test_convenience_function_returns_string(self):
-        doc = _make_mock_doc(['Resumen', 'Texto.', 'Palabras clave: a, b, c'])
+        doc = _make_mock_doc(["Resumen", "Texto.", "Palabras clave: a, b, c"])
         content = _make_mock_content()
         result = verify_eumic_compliance(doc, content)
         self.assertIsInstance(result, str)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

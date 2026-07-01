@@ -14,40 +14,53 @@ class TestOllamaGeneratorAdapter(TestCase):
             base_url="http://localhost:11434",
         )
 
-    @patch("src.infrastructure.adapters.llm_generator.ollama_generator_adapter.ollama.generate")
-    def test_generate_returns_stripped_response_text(self, mock_generate):
-        mock_generate.return_value = {"response": "  some text  "}
+    @patch("src.infrastructure.adapters.llm_generator.ollama_generator_adapter.ollama.Client")
+    def test_generate_returns_stripped_response_text(self, mock_client_class):
+        mock_client = mock_client_class.return_value
+        mock_client.generate.return_value = {"response": "  some text  "}
 
         result = self.adapter.generate("prompt")
 
         self.assertEqual(result, "some text")
 
-    @patch("src.infrastructure.adapters.llm_generator.ollama_generator_adapter.ollama.generate")
-    def test_generate_raises_language_model_unavailable_on_backend_failure(self, mock_generate):
-        mock_generate.side_effect = ConnectionError("backend unreachable")
+    @patch("src.infrastructure.adapters.llm_generator.ollama_generator_adapter.ollama.Client")
+    def test_generate_raises_language_model_unavailable_on_backend_failure(self, mock_client_class):
+        mock_client = mock_client_class.return_value
+        mock_client.generate.side_effect = ConnectionError("backend unreachable")
 
         with self.assertRaises(LanguageModelUnavailable):
             self.adapter.generate("prompt")
 
-    @patch("src.infrastructure.adapters.llm_generator.ollama_generator_adapter.ollama.generate")
-    def test_generate_forwards_options_dict_to_ollama_generate(self, mock_generate):
-        mock_generate.return_value = {"response": "some text"}
+    @patch("src.infrastructure.adapters.llm_generator.ollama_generator_adapter.ollama.Client")
+    def test_generate_instantiates_client_with_configured_base_url(self, mock_client_class):
+        mock_client = mock_client_class.return_value
+        mock_client.generate.return_value = {"response": "some text"}
+
+        self.adapter.generate("prompt")
+
+        mock_client_class.assert_called_once_with(host="http://localhost:11434")
+
+    @patch("src.infrastructure.adapters.llm_generator.ollama_generator_adapter.ollama.Client")
+    def test_generate_forwards_options_dict_to_ollama_generate(self, mock_client_class):
+        mock_client = mock_client_class.return_value
+        mock_client.generate.return_value = {"response": "some text"}
 
         self.adapter.generate("prompt", options={"temperature": 0.1, "num_predict": 300})
 
-        mock_generate.assert_called_once_with(
+        mock_client.generate.assert_called_once_with(
             model="llama3-gradient:8b-instruct-1048k-q4_K_M",
             prompt="prompt",
             options={"temperature": 0.1, "num_predict": 300},
         )
 
-    @patch("src.infrastructure.adapters.llm_generator.ollama_generator_adapter.ollama.generate")
-    def test_generate_without_options_argument_preserves_prior_behavior(self, mock_generate):
-        mock_generate.return_value = {"response": "some text"}
+    @patch("src.infrastructure.adapters.llm_generator.ollama_generator_adapter.ollama.Client")
+    def test_generate_without_options_argument_preserves_prior_behavior(self, mock_client_class):
+        mock_client = mock_client_class.return_value
+        mock_client.generate.return_value = {"response": "some text"}
 
         self.adapter.generate("prompt")
 
-        mock_generate.assert_called_once_with(
+        mock_client.generate.assert_called_once_with(
             model="llama3-gradient:8b-instruct-1048k-q4_K_M",
             prompt="prompt",
             options=None,

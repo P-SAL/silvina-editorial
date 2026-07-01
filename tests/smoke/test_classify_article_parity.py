@@ -56,7 +56,7 @@ class TestClassifyArticleParity(TestCase):
         ) as legacy_generate:
             legacy_result = self.legacy.classify_article(document_content)
         with patch(
-            "src.infrastructure.adapters.llm_generator.ollama_generator_adapter.ollama.generate",
+            "src.infrastructure.adapters.llm_generator.ollama_generator_adapter.ollama.Client.generate",
             return_value=_CANNED_RESPONSE,
         ) as new_generate:
             new_result = self.use_case.execute(document_content)
