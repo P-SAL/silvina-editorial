@@ -1,6 +1,11 @@
 """
 E2E test for main.py SilvinaEditorialAssistant orchestrator.
 Runs in-process with mocked external dependencies (Ollama, LanguageTool, COM).
+
+LEGACY SNAPSHOT: preserved from commit efd1c8a (pre Slice 14 CLI refactor).
+Points at main_legacy.py (the frozen legacy implementation) instead of main.py,
+since main.py was refactored to use the hexagonal use cases. Not part of the
+main test suite (see pytest.ini norecursedirs) — kept as historical reference.
 """
 
 import sys
@@ -8,7 +13,7 @@ import os
 import unittest
 from unittest.mock import MagicMock, patch
 
-# Path adjustment from tests/e2e/ → project root
+# Path adjustment from tests/legacy/ → project root
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 # Inject language_tool_python mock before any import that might trigger it
@@ -26,25 +31,16 @@ FIXTURE_PATH = os.path.join(
 FIXTURE_PATH = os.path.abspath(FIXTURE_PATH)
 
 
-def _make_ollama_client_mock(
-    response=(
-        "S4: SI\nS5: SI\nS6: SI\n\n"
-        "**Claridad** [Puntuación: 8/10]\nTexto claro y bien redactado.\n\n"
-        "**Coherencia** [Puntuación: 8/10]\nIdeas conectadas de forma coherente.\n\n"
-        "**Argumentación** [Puntuación: 8/10]\nArgumentos sólidos y bien fundamentados.\n\n"
-        "**Conclusiones** [Puntuación: 8/10]\nConclusiones claras y consistentes."
-    ),
-):
-    """Return a mock ollama.Client whose generate() satisfies both the
-    classification (S4/S5/S6) and quality (per-dimension) response parsers."""
+def _make_ollama_client_mock(response="S4: SI\nS5: SI\nS6: SI"):
+    """Return a mock ollama.Client whose generate() returns a fixed response."""
     mock_client = MagicMock()
     mock_client.generate.return_value = {"response": response}
     return mock_client
 
 
-class TestCLIE2E(unittest.TestCase):
+class TestCLIE2ELegacy(unittest.TestCase):
     """
-    In-process E2E test: constructs SilvinaEditorialAssistant, calls
+    In-process E2E test: constructs the legacy SilvinaEditorialAssistant, calls
     analyze_document() with a real .docx fixture, verifies the result dict.
     """
 
@@ -61,13 +57,8 @@ class TestCLIE2E(unittest.TestCase):
         with (
             patch("ollama.Client", return_value=mock_client),
             patch("data_access.word_counter.WIN32COM_AVAILABLE", False),
-            patch(
-                "src.infrastructure.adapters.document.win32com_word_count_adapter."
-                "WIN32COM_AVAILABLE",
-                False,
-            ),
         ):
-            from main import SilvinaEditorialAssistant
+            from main_legacy import SilvinaEditorialAssistant
 
             silvina = SilvinaEditorialAssistant()
             result = silvina.analyze_document(FIXTURE_PATH)
@@ -79,13 +70,8 @@ class TestCLIE2E(unittest.TestCase):
         with (
             patch("ollama.Client", return_value=mock_client),
             patch("data_access.word_counter.WIN32COM_AVAILABLE", False),
-            patch(
-                "src.infrastructure.adapters.document.win32com_word_count_adapter."
-                "WIN32COM_AVAILABLE",
-                False,
-            ),
         ):
-            from main import SilvinaEditorialAssistant
+            from main_legacy import SilvinaEditorialAssistant
 
             silvina = SilvinaEditorialAssistant()
             result = silvina.analyze_document(FIXTURE_PATH)
@@ -104,13 +90,8 @@ class TestCLIE2E(unittest.TestCase):
         with (
             patch("ollama.Client", return_value=mock_client),
             patch("data_access.word_counter.WIN32COM_AVAILABLE", False),
-            patch(
-                "src.infrastructure.adapters.document.win32com_word_count_adapter."
-                "WIN32COM_AVAILABLE",
-                False,
-            ),
         ):
-            from main import SilvinaEditorialAssistant
+            from main_legacy import SilvinaEditorialAssistant
 
             silvina = SilvinaEditorialAssistant()
             result = silvina.analyze_document(FIXTURE_PATH)
@@ -122,13 +103,8 @@ class TestCLIE2E(unittest.TestCase):
         with (
             patch("ollama.Client", return_value=mock_client),
             patch("data_access.word_counter.WIN32COM_AVAILABLE", False),
-            patch(
-                "src.infrastructure.adapters.document.win32com_word_count_adapter."
-                "WIN32COM_AVAILABLE",
-                False,
-            ),
         ):
-            from main import SilvinaEditorialAssistant
+            from main_legacy import SilvinaEditorialAssistant
 
             silvina = SilvinaEditorialAssistant()
             result = silvina.analyze_document(FIXTURE_PATH)

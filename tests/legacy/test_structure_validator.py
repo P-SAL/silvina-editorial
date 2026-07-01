@@ -1,17 +1,20 @@
 """
 Unit tests for business_logic/structure_validator.py
 """
+
 import unittest
 import sys
 import os
 from unittest.mock import MagicMock
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 # Defensive guard for COM mocks
-if 'win32com' not in sys.modules:
-    _wc = MagicMock(); _wcc = MagicMock(); _wc.client = _wcc
-    sys.modules.update({'win32com': _wc, 'win32com.client': _wcc, 'pythoncom': MagicMock()})
+if "win32com" not in sys.modules:
+    _wc = MagicMock()
+    _wcc = MagicMock()
+    _wc.client = _wcc
+    sys.modules.update({"win32com": _wc, "win32com.client": _wcc, "pythoncom": MagicMock()})
 
 from business_logic.structure_validator import StructureValidator
 from domain.models import DocumentContent
@@ -19,7 +22,6 @@ from domain.enums import ArticleType
 
 
 class TestStructureValidator(unittest.TestCase):
-
     def setUp(self):
         self.validator = StructureValidator()
 
@@ -35,8 +37,8 @@ class TestStructureValidator(unittest.TestCase):
                 "Resultados: Encontramos bugs.",
                 "Discusión: Esto significa que funciona.",
                 "Conclusiones: Fin.",
-                "Referencias: [1] Knuth, D."
-            ]
+                "Referencias: [1] Knuth, D.",
+            ],
         )
         result = self.validator.validate_structure(content, ArticleType.CIENTIFICO)
         self.assertTrue(result.is_valid)
@@ -45,7 +47,8 @@ class TestStructureValidator(unittest.TestCase):
     def test_scientific_article_complete_is_valid(self):
         """A complete scientific article with all sections validates successfully."""
         content = DocumentContent(
-            word_count=1000, char_count=5000,
+            word_count=1000,
+            char_count=5000,
             paragraphs=[
                 "Resumen: El resumen.",
                 "Introducción: Intro.",
@@ -54,7 +57,7 @@ class TestStructureValidator(unittest.TestCase):
                 "Discusión: Discusión.",
                 "Conclusiones: Conclusión.",
                 "Referencias: Refs.",
-            ]
+            ],
         )
         result = self.validator.validate_structure(content, ArticleType.CIENTIFICO)
         self.assertTrue(result.is_valid)
@@ -62,12 +65,13 @@ class TestStructureValidator(unittest.TestCase):
 
     def test_scientific_article_missing_resumen(self):
         content = DocumentContent(
-            word_count=1000, char_count=5000,
+            word_count=1000,
+            char_count=5000,
             paragraphs=[
                 "Introducción: Bienvenidos al paper.",
                 "Conclusiones: Fin.",
-                "Referencias: [1] Knuth, D."
-            ]
+                "Referencias: [1] Knuth, D.",
+            ],
         )
         result = self.validator.validate_structure(content, ArticleType.CIENTIFICO)
         self.assertFalse(result.is_valid)
@@ -76,14 +80,15 @@ class TestStructureValidator(unittest.TestCase):
     def test_divulgacion_article_compliant(self):
         """Divulgación only requires sections that ARE in section_map."""
         content = DocumentContent(
-            word_count=1000, char_count=5000,
+            word_count=1000,
+            char_count=5000,
             paragraphs=[
                 "Resumen: Resumen de divulgacion.",
                 "Introducción: Introduccion de divulgacion.",
                 "Desarrollo: Desarrollo de divulgacion.",
                 "Conclusiones: Conclusiones de divulgacion.",
-                "Referencias: Referencias."
-            ]
+                "Referencias: Referencias.",
+            ],
         )
         result = self.validator.validate_structure(content, ArticleType.DIVULGACION)
         self.assertTrue(result.is_valid)
@@ -91,13 +96,14 @@ class TestStructureValidator(unittest.TestCase):
 
     def test_divulgacion_missing_desarrollo(self):
         content = DocumentContent(
-            word_count=1000, char_count=5000,
+            word_count=1000,
+            char_count=5000,
             paragraphs=[
                 "Resumen: Resumen.",
                 "Introducción: Intro.",
                 "Conclusiones: Conclusión.",
                 "Referencias: Refs.",
-            ]
+            ],
         )
         result = self.validator.validate_structure(content, ArticleType.DIVULGACION)
         self.assertFalse(result.is_valid)
@@ -106,12 +112,13 @@ class TestStructureValidator(unittest.TestCase):
     def test_opinion_article_complete_is_valid(self):
         """A complete opinion article with all required sections validates successfully."""
         content = DocumentContent(
-            word_count=1000, char_count=5000,
+            word_count=1000,
+            char_count=5000,
             paragraphs=[
                 "Introducción: Introduccion de opinion.",
                 "Argumentación: Argumentos de opinion.",
-                "Conclusiones: Conclusiones de opinion."
-            ]
+                "Conclusiones: Conclusiones de opinion.",
+            ],
         )
         result = self.validator.validate_structure(content, ArticleType.OPINION)
         self.assertTrue(result.is_valid)
@@ -120,35 +127,37 @@ class TestStructureValidator(unittest.TestCase):
     def test_validate_structure_returns_result_object(self):
         content = DocumentContent(word_count=100, char_count=500, paragraphs=["Texto."])
         result = self.validator.validate_structure(content, ArticleType.DIVULGACION)
-        self.assertTrue(hasattr(result, 'is_valid'))
-        self.assertTrue(hasattr(result, 'missing_sections'))
+        self.assertTrue(hasattr(result, "is_valid"))
+        self.assertTrue(hasattr(result, "missing_sections"))
 
     def test_english_abstract_detected(self):
         """'abstract' keyword maps to 'resumen' section."""
         content = DocumentContent(
-            word_count=1000, char_count=5000,
-            paragraphs=["Abstract: This is the abstract.", "Introducción: Intro."]
+            word_count=1000,
+            char_count=5000,
+            paragraphs=["Abstract: This is the abstract.", "Introducción: Intro."],
         )
         present = self.validator._extract_present_sections(content)
         present_lower = [p.lower() for p in present]
-        self.assertIn('resumen', present_lower)
+        self.assertIn("resumen", present_lower)
 
     def test_section_aliases_detected(self):
         """Aliases in section_map are correctly detected."""
         content = DocumentContent(
-            word_count=1000, char_count=5000,
+            word_count=1000,
+            char_count=5000,
             paragraphs=[
                 "metodologia: Methods without accent.",
                 "methodology: English version of methods.",
                 "discussion: English version of discussion.",
                 "results: English results.",
-            ]
+            ],
         )
         present = self.validator._extract_present_sections(content)
         present_lower = [p.lower() for p in present]
-        self.assertIn('metodología', present_lower)
-        self.assertIn('discusión', present_lower)
-        self.assertIn('resultados', present_lower)
+        self.assertIn("metodología", present_lower)
+        self.assertIn("discusión", present_lower)
+        self.assertIn("resultados", present_lower)
 
     def test_long_body_text_not_detected_as_section(self):
         """Paragraphs >= 100 chars are not detected as section headers even if they contain keywords."""
