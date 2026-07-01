@@ -29,13 +29,32 @@ Defines the port, DTO, exception, adapter, use case, wiring, and fake double tha
 
 ### Requirement: ReportInputDTO Is Frozen
 
-`ReportInputDTO` MUST be a frozen dataclass in `src/domain/dtos/report_input_dto.py` with fields: `filename`, `document_content`, `classification`, `quality`, `grammar`, `structure`, `citations`, `apa_validation`, and `recommendations: list[dict]`. The `recommendations` field MUST carry the comment `# TODO Slice 13: replace with list[RecommendationDTO]`.
+`ReportInputDTO` MUST be a frozen dataclass in `src/domain/dtos/report_input_dto.py` with fields:
+- `filename: str`
+- `document_content: DocumentContentDTO`
+- `classification: ClassificationResultDTO`
+- `quality: QualityResultDTO`
+- `grammar: GrammarCheckResultDTO`
+- `structure: StructureValidationResultDTO`
+- `citations: CitationAnalysisResultDTO`
+- `apa_validation: ApaValidationResultDTO`
+- `recommendations: list[RecommendationDTO]`
+- `verdict: PublicationVerdictDTO`
+- `eumic_violations: list[EumicViolationDTO]`
+
+> Updated in Slice 13: `recommendations` is now `list[RecommendationDTO]` (was `list[dict]`). `verdict: PublicationVerdictDTO` and `eumic_violations: list[EumicViolationDTO]` were added.
 
 #### Scenario: DTO is immutable after construction
 
 - GIVEN a constructed `ReportInputDTO`
 - WHEN any field is reassigned
 - THEN Python raises `FrozenInstanceError`
+
+#### Scenario: DTO holds typed verdict and recommendation lists
+
+- GIVEN a valid instance of `ReportInputDTO`
+- WHEN `recommendations`, `verdict`, and `eumic_violations` are read
+- THEN `recommendations` is `list[RecommendationDTO]`, `verdict` is `PublicationVerdictDTO`, and `eumic_violations` is `list[EumicViolationDTO]`
 
 ---
 
@@ -72,6 +91,10 @@ Defines the port, DTO, exception, adapter, use case, wiring, and fake double tha
 ### Requirement: DocxReportAdapter Produces Functionally Equivalent DOCX
 
 `DocxReportAdapter.export()` MUST produce a `.docx` containing the same 11 sections as `WordExporter`, in order: title page, executive summary, document info, classification, quality analysis, grammar, APA validation, structure validation, citations, recommendations, footer. All 13 private rendering methods MUST remain private. Error wrapping is handled by `@generic_error_handler` at the use case layer, not the adapter.
+
+The `_add_recommendations` method MUST render the publication verdict from `report_input.verdict` (a `PublicationVerdictDTO`) before the specific recommendations list. Color mapping: `PublicationVerdict.CRITICAL` and `PublicationVerdict.WARNING` → `reject_color_rgb`; `PublicationVerdict.APPROVED` → `publishable_color_rgb`. Specific recommendations use `RecommendationPriority` icons (`HIGH` → 🔴, `MEDIUM` → 🟡, `LOW` → 🟢) and attribute access (`rec.priority`, `rec.message`).
+
+> Updated in Slice 13: `_add_recommendations` was refactored from dict-key access to attribute access. Verdict rendering was separated from the recommendations list (uses `report_input.verdict` directly, not a special entry in `recommendations`).
 
 #### Scenario: Successful export returns True
 
@@ -154,7 +177,7 @@ Defines the port, DTO, exception, adapter, use case, wiring, and fake double tha
 | Zero existing file modifications | 15 new files only; `presentation/word_exporter.py` stays untouched |
 | Coexistence invariant | No `src/` file imports from `presentation/`; both layers coexist until Slice 16 |
 | Callers out of scope | `main.py` and `gradio_app.py` continue using `WordExporter` until Slice 16 |
-| Recommendations placeholder | `list[dict]` with `# TODO Slice 13` comment; no runtime validation |
+| Recommendations | `list[RecommendationDTO]` — typed and validated (TODO resolved in Slice 13) |
 | Hard-fail at startup | `ReportExportUnavailable` raised in `__init__` — not deferred |
 | Domain isolation | Domain imports nothing from infrastructure or application |
 | One class per file | No multi-class modules |

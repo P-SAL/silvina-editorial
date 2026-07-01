@@ -29,6 +29,8 @@ def _make_report_input_dto(**overrides) -> ReportInputDTO:
         "citations": citations,
         "apa_validation": apa_validation,
         "recommendations": [],
+        "verdict": MagicMock(),
+        "eumic_violations": [],
     }
     defaults.update(overrides)
     return ReportInputDTO(**defaults)

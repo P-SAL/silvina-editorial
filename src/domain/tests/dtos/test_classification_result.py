@@ -63,6 +63,51 @@ class TestClassificationResultDTO(TestCase):
         with self.assertRaises(FrozenInstanceError):
             result.reasoning = "Modified"
 
+    def test_effective_structure_type_scientific_with_imryd(self):
+        result = ClassificationResultDTO(
+            article_type=ArticleType.CIENTIFICO,
+            article_size=ArticleSize.LARGO,
+            confidence=0.9,
+            reasoning="El documento sigue la estructura IMRyD.",
+        )
+        self.assertEqual(result.effective_structure_type, ArticleType.CIENTIFICO)
+
+    def test_effective_structure_type_scientific_without_imryd(self):
+        result = ClassificationResultDTO(
+            article_type=ArticleType.CIENTIFICO,
+            article_size=ArticleSize.LARGO,
+            confidence=0.9,
+            reasoning="Ensayo de opinión libre",
+        )
+        self.assertEqual(result.effective_structure_type, ArticleType.DIVULGACION)
+
+    def test_effective_structure_type_non_scientific_returned_as_is(self):
+        result = ClassificationResultDTO(
+            article_type=ArticleType.DIVULGACION,
+            article_size=ArticleSize.LARGO,
+            confidence=0.8,
+            reasoning="",
+        )
+        self.assertEqual(result.effective_structure_type, ArticleType.DIVULGACION)
+
+    def test_effective_structure_type_opinion_returned_as_is(self):
+        result = ClassificationResultDTO(
+            article_type=ArticleType.OPINION,
+            article_size=ArticleSize.CORTO,
+            confidence=0.7,
+            reasoning="",
+        )
+        self.assertEqual(result.effective_structure_type, ArticleType.OPINION)
+
+    def test_effective_structure_type_scientific_none_reasoning(self):
+        result = ClassificationResultDTO(
+            article_type=ArticleType.CIENTIFICO,
+            article_size=ArticleSize.LARGO,
+            confidence=0.9,
+            reasoning=None,
+        )
+        self.assertEqual(result.effective_structure_type, ArticleType.DIVULGACION)
+
     def test_str_contains_enum_values_and_confidence_percentage(self):
         result = ClassificationResultDTO(
             article_type=ArticleType.CIENTIFICO,

@@ -27,13 +27,15 @@ def _make_report_input_dto(**overrides) -> ReportInputDTO:
         "citations": citations,
         "apa_validation": apa_validation,
         "recommendations": [],
+        "verdict": MagicMock(),
+        "eumic_violations": [],
     }
     defaults.update(overrides)
     return ReportInputDTO(**defaults)
 
 
 class TestReportInputDTO(TestCase):
-    def test_constructs_with_all_nine_fields(self):
+    def test_constructs_with_all_ten_fields(self):
         dto = _make_report_input_dto()
         self.assertEqual(dto.filename, "test.docx")
 

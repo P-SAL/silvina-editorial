@@ -5,8 +5,11 @@ from src.domain.dtos.base_dto import BaseDTO
 from src.domain.dtos.citation_analysis_result_dto import CitationAnalysisResultDTO
 from src.domain.dtos.classification_result_dto import ClassificationResultDTO
 from src.domain.dtos.document_content_dto import DocumentContentDTO
+from src.domain.dtos.eumic_violation_dto import EumicViolationDTO
 from src.domain.dtos.grammar_check_result_dto import GrammarCheckResultDTO
+from src.domain.dtos.publication_verdict_dto import PublicationVerdictDTO
 from src.domain.dtos.quality_result_dto import QualityResultDTO
+from src.domain.dtos.recommendation_dto import RecommendationDTO
 from src.domain.dtos.structure_validation_result_dto import StructureValidationResultDTO
 
 _PUBLISH_THRESHOLD = 7.0
@@ -24,7 +27,9 @@ class ReportInputDTO(BaseDTO):
     structure: StructureValidationResultDTO
     citations: CitationAnalysisResultDTO
     apa_validation: ApaValidationResultDTO
-    recommendations: list  # TODO Slice 13: replace with list[RecommendationDTO]
+    recommendations: list[RecommendationDTO]
+    verdict: PublicationVerdictDTO
+    eumic_violations: list[EumicViolationDTO]
 
     @property
     def is_publishable(self) -> bool:
