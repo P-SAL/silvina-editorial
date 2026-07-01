@@ -9,6 +9,7 @@ from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
 
 from src.domain.dtos.report_input_dto import ReportInputDTO
+from src.domain.enums.publication_verdict import PublicationVerdict
 from src.domain.enums.recommendation_priority import RecommendationPriority
 from src.domain.report.report_export_port import ReportExportPort
 from src.infrastructure.adapters.report.docx_report_settings import DocxReportSettings
@@ -433,48 +434,33 @@ class DocxReportAdapter(ReportExportPort):
         table.rows[3].cells[1].text = self._format_match_rate(citations)
 
     def _add_recommendations(self, doc, report_input: ReportInputDTO) -> None:
-        if not report_input.recommendations:
-            return
-
         heading = doc.add_heading("💡 RECOMENDACIONES", 1)
         for run in heading.runs:
             run.font.color.rgb = RGBColor(*self._settings.heading_color_rgb)
 
-        recommendations = report_input.recommendations
-
-        # TODO Slice 13: "critica", "advertencia", "aprobado" are not yet in RecommendationPriority
-        final_recommendations = [
-            rec
-            for rec in recommendations
-            if rec.get("priority") in ["critica", "advertencia", "aprobado"]
-        ]
-        final_priority_colors = {
-            "critica": self._settings.reject_color_rgb,
-            "advertencia": self._settings.reject_color_rgb,
-            "aprobado": self._settings.publishable_color_rgb,
+        verdict = report_input.verdict
+        verdict_colors = {
+            PublicationVerdict.CRITICAL: self._settings.reject_color_rgb,
+            PublicationVerdict.WARNING: self._settings.reject_color_rgb,
+            PublicationVerdict.APPROVED: self._settings.publishable_color_rgb,
         }
-        if final_recommendations:
-            rec = final_recommendations[0]
-            paragraph = doc.add_paragraph()
-            paragraph.add_run(rec["message"]).bold = True
-            paragraph.runs[0].font.size = Pt(self._settings.recommendation_font_size_pt)
-            paragraph.runs[0].font.color.rgb = RGBColor(*final_priority_colors[rec["priority"]])
+        paragraph = doc.add_paragraph()
+        paragraph.add_run(verdict.message).bold = True
+        paragraph.runs[0].font.size = Pt(self._settings.recommendation_font_size_pt)
+        paragraph.runs[0].font.color.rgb = RGBColor(*verdict_colors[verdict.verdict])
+
+        if not report_input.recommendations:
+            return
 
         priority_icons = {
-            RecommendationPriority.HIGH.value: "🔴",
-            RecommendationPriority.MEDIUM.value: "🟡",
-            RecommendationPriority.LOW.value: "🟢",
+            RecommendationPriority.HIGH: "🔴",
+            RecommendationPriority.MEDIUM: "🟡",
+            RecommendationPriority.LOW: "🟢",
         }
-        other_recommendations = [
-            rec
-            for rec in recommendations
-            if rec.get("priority") not in ["critica", "advertencia", "aprobado"]
-        ]
-        if other_recommendations:
-            doc.add_paragraph("Recomendaciones específicas:").bold = True
-            for rec in other_recommendations:
-                icon = priority_icons.get(rec["priority"], "⚪")
-                doc.add_paragraph(f"{icon} {rec['message']}", style="List Bullet")
+        doc.add_paragraph("Recomendaciones específicas:").bold = True
+        for rec in report_input.recommendations:
+            icon = priority_icons.get(rec.priority, "⚪")
+            doc.add_paragraph(f"{icon} {rec.message}", style="List Bullet")
 
     def _add_footer(self, doc) -> None:
         doc.add_paragraph()

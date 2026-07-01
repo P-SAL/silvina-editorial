@@ -1,6 +1,8 @@
 from unittest.mock import MagicMock
 
+from src.domain.dtos.publication_verdict_dto import PublicationVerdictDTO
 from src.domain.dtos.report_input_dto import ReportInputDTO
+from src.domain.enums.publication_verdict import PublicationVerdict
 
 
 class ReportFixtures:
@@ -60,6 +62,17 @@ class ReportFixtures:
         return structure
 
     @staticmethod
+    def make_verdict_dto(
+        verdict: PublicationVerdict = PublicationVerdict.APPROVED,
+    ) -> PublicationVerdictDTO:
+        messages = {
+            PublicationVerdict.APPROVED: "✅ APTO PARA PUBLICACIÓN. El documento cumple con los estándares de calidad.",
+            PublicationVerdict.WARNING: "⚠️ REQUIERE REVISIÓN antes de publicación.",
+            PublicationVerdict.CRITICAL: "❌ NO APTO PARA PUBLICACIÓN.",
+        }
+        return PublicationVerdictDTO(verdict=verdict, message=messages[verdict])
+
+    @staticmethod
     def make_report_input_dto(**overrides) -> ReportInputDTO:
         defaults = {
             "filename": "test.docx",
@@ -71,6 +84,8 @@ class ReportFixtures:
             "citations": ReportFixtures.make_citations_mock(),
             "apa_validation": ReportFixtures.make_apa_validation_mock(),
             "recommendations": [],
+            "verdict": ReportFixtures.make_verdict_dto(),
+            "eumic_violations": [],
         }
         defaults.update(overrides)
         return ReportInputDTO(**defaults)
