@@ -137,6 +137,23 @@ Las conclusiones se desprenden claramente del contenido desarrollado.
             "La argumentacion presenta un argumento solido y bien fundamentado en el texto.",
         )
 
+    def test_markdown_list_markers_are_stripped_from_feedback(self):
+        response = """**1. Argumentación** [Puntuación: 8/10]
+* El autor identifica tres explicaciones mecanicistas del razonamiento emergente.
++ Es un buen resumen del trabajo de los autores en general.
+
+**2. Conclusiones** [Puntuación: 8/10]
+Las conclusiones se desprenden claramente del contenido desarrollado.
+"""
+        parser = QualityResponseParser()
+
+        result = parser.parse(response)
+
+        feedback = result.scores[QualityDimension.ARGUMENTATION].feedback
+        self.assertFalse(feedback.startswith("*"))
+        self.assertNotIn("+ Es un buen resumen", feedback)
+        self.assertIn("El autor identifica tres explicaciones mecanicistas", feedback)
+
     def test_one_missing_dimension_in_otherwise_valid_response_keeps_the_rest(self):
         response = """**1. Claridad** [Puntuación: 8/10]
 El argumento central es claro y facil de seguir en todo el texto.

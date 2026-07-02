@@ -13,6 +13,7 @@ _EXPLICIT_SCORE_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _RECOMMENDATION_TAIL_PATTERN = re.compile(r"\*\*RECOMENDACIÓN.*", re.DOTALL | re.IGNORECASE)
+_LIST_MARKER_PATTERN = re.compile(r"^[*+-]\s+")
 _NARRATIVE_SCORE_KEYWORDS = (
     (("excelente", "sobresaliente", "muy bueno"), 8.5),
     (("bueno", "adecuado", "correcto"), 7.5),
@@ -84,7 +85,9 @@ class QualityResponseParser:
 
     def _extract_feedback(self, block: str) -> str:
         lines = block.strip().split("\n")
-        feedback_lines = [line.strip() for line in lines[1:] if line.strip()]
+        feedback_lines = [
+            _LIST_MARKER_PATTERN.sub("", line.strip()) for line in lines[1:] if line.strip()
+        ]
         feedback = " ".join(feedback_lines)
         feedback = _RECOMMENDATION_TAIL_PATTERN.sub("", feedback).strip()
         feedback = " ".join(feedback.split())

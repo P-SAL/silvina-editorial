@@ -195,9 +195,13 @@ def create_results_display(report: ReportInputDTO) -> str:
                 📄 {document_content.title or "Sin título"}
             </h3>
             <p style="margin: 0; color: #666;">
-                <strong>Autor:</strong> {document_content.authors or "No especificado"} |
-                <strong>Palabras:</strong> {document_content.word_count:,} |
-                <strong>Tipo:</strong> {classification.article_type.value.upper()}
+                <strong style="color: #666;">Autor:</strong> {
+        document_content.authors or "No especificado"
+    } |
+                <strong style="color: #666;">Palabras:</strong> {document_content.word_count:,} |
+                <strong style="color: #666;">Tipo:</strong> {
+        classification.article_type.value.upper()
+    }
             </p>
         </div>
 
@@ -268,7 +272,7 @@ def create_results_display(report: ReportInputDTO) -> str:
                 f'''
             <div style="margin-bottom: 10px;">
                 <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-                    <span style="font-weight: 500;">{dim.capitalize()}</span>
+                    <span style="font-weight: 500; color: #333;">{dim.capitalize()}</span>
                     <span style="font-weight: bold; color: {EUMIC_COLORS["primary"]};">{data["score"]:.1f}/10</span>
                 </div>
                 <div style="background: #dee2e6; height: 8px; border-radius: 4px; overflow: hidden;">
@@ -302,10 +306,10 @@ def create_results_display(report: ReportInputDTO) -> str:
         EUMIC_COLORS["primary"]
     }; padding: 15px; border-radius: 4px;">
             <p style="margin: 0; color: #004085; line-height: 1.6;">
-                <strong>Próximos pasos:</strong><br>
-                1. Descargue el <strong>informe detallado en Word</strong> para revisar observaciones específicas<br>
-                2. Proporcione su <strong>evaluación experta</strong> a continuación<br>
-                3. Sus comentarios ayudarán a <strong>mejorar futuros análisis</strong>
+                <strong style="color: #004085;">Próximos pasos:</strong><br>
+                1. Descargue el <strong style="color: #004085;">informe detallado en Word</strong> para revisar observaciones específicas<br>
+                2. Proporcione su <strong style="color: #004085;">evaluación experta</strong> a continuación<br>
+                3. Sus comentarios ayudarán a <strong style="color: #004085;">mejorar futuros análisis</strong>
             </p>
         </div>
     </div>
@@ -625,7 +629,7 @@ def create_interface():
                     El servidor se cerrará en 3 segundos.
                 </p>
                 <p style="color: #721c24; margin: 0; font-weight: bold;">
-                    ✋ Por favor cierre esta ventana haciendo clic en la <strong>X</strong> de l pestaña de Chrome o (Ctrl+ W)
+                    ✋ Por favor cierre esta ventana haciendo clic en la <strong style="color: #721c24;">X</strong> de l pestaña de Chrome o (Ctrl+ W)
                 </p>
             </div>
             """
@@ -635,7 +639,7 @@ def create_interface():
         # Footer
         gr.Markdown("""
         <div style="text-align: center; color: #666; font-size: 12px; padding: 20px;">
-            <p><strong>Silvina Editorial Assistant v0.8</strong> | Desarrollado para EUMIC</p>
+            <p><strong style="color: #666;">Silvina Editorial Assistant v0.8</strong> | Desarrollado para EUMIC</p>
         </div>
         """)
 

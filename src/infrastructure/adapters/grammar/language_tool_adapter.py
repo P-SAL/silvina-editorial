@@ -25,7 +25,7 @@ class LanguageToolAdapter(GrammarCheckPort):
             raw_matches = self._tool.check(text)
         except Exception as exc:
             raise GrammarCheckUnavailable() from exc
-        grammar_matches = [match for match in raw_matches if match.ruleIssueType != "misspelling"]
+        grammar_matches = [match for match in raw_matches if match.rule_issue_type != "misspelling"]
         return [
             self._map_to_dto(number=index + 1, match=match)
             for index, match in enumerate(grammar_matches[:_MAX_ERRORS])
@@ -51,6 +51,6 @@ class LanguageToolAdapter(GrammarCheckPort):
             message=match.message,
             context=match.context,
             offset=match.offset,
-            length=match.errorLength,
+            length=match.error_length,
             replacements=match.replacements[:3],
         )

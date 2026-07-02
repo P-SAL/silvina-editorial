@@ -27,15 +27,15 @@ class TestLanguageToolAdapter(TestCase):
         mock_language_tool_python.LanguageTool.return_value = mock_tool
 
         grammar_match = MagicMock()
-        grammar_match.ruleIssueType = "grammar"
+        grammar_match.rule_issue_type = "grammar"
         grammar_match.message = "Grammar error"
         grammar_match.context = "some context"
         grammar_match.offset = 0
-        grammar_match.errorLength = 4
+        grammar_match.error_length = 4
         grammar_match.replacements = ["fix"]
 
         spelling_match = MagicMock()
-        spelling_match.ruleIssueType = "misspelling"
+        spelling_match.rule_issue_type = "misspelling"
 
         mock_tool.check.return_value = [grammar_match, spelling_match, grammar_match]
 
@@ -51,11 +51,11 @@ class TestLanguageToolAdapter(TestCase):
 
         def make_match(index: int) -> MagicMock:
             match = MagicMock()
-            match.ruleIssueType = "grammar"
+            match.rule_issue_type = "grammar"
             match.message = f"error {index}"
             match.context = "ctx"
             match.offset = 0
-            match.errorLength = 3
+            match.error_length = 3
             match.replacements = []
             return match
 

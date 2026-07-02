@@ -23,7 +23,7 @@ sys.path.insert(0, str(ROOT))
 from data_access.word_reader import WordReader
 from business_logic.structure_validator import StructureValidator as LegacyValidator
 from domain.enums import ArticleType as LegacyArticleType
-from src.domain.dtos.document_content_dto import DocumentContent
+from src.domain.dtos.document_content_dto import DocumentContentDTO
 from src.domain.enums.article_type import ArticleType
 from src.infrastructure.wirings.validate_structure_wiring import ValidateStructureWiring
 
@@ -36,8 +36,8 @@ _DOCUMENTS = [
 ]
 
 
-def _make_document_content(paragraphs: list[str]) -> DocumentContent:
-    return DocumentContent(
+def _make_document_content(paragraphs: list[str]) -> DocumentContentDTO:
+    return DocumentContentDTO(
         word_count=sum(len(p.split()) for p in paragraphs),
         char_count=sum(len(p) for p in paragraphs),
         paragraphs=paragraphs,

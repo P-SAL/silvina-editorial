@@ -1,3 +1,4 @@
+import re
 from collections import defaultdict
 from datetime import datetime
 
@@ -13,6 +14,8 @@ from src.domain.enums.publication_verdict import PublicationVerdict
 from src.domain.enums.recommendation_priority import RecommendationPriority
 from src.domain.report.report_export_port import ReportExportPort
 from src.infrastructure.adapters.report.docx_report_settings import DocxReportSettings
+
+_MARKDOWN_BOLD_PATTERN = re.compile(r"\*\*(.+?)\*\*")
 
 
 class DocxReportAdapter(ReportExportPort):
@@ -32,6 +35,18 @@ class DocxReportAdapter(ReportExportPort):
         if score >= self._settings.score_medium_threshold:
             return self._settings.warning_color_rgb
         return self._settings.reject_color_rgb
+
+    def _add_markdown_paragraph(self, doc, text: str) -> None:
+        """Add a paragraph rendering **bold** Markdown segments as bold runs."""
+        paragraph = doc.add_paragraph()
+        position = 0
+        for match in _MARKDOWN_BOLD_PATTERN.finditer(text):
+            if match.start() > position:
+                paragraph.add_run(text[position : match.start()])
+            paragraph.add_run(match.group(1)).bold = True
+            position = match.end()
+        if position < len(text):
+            paragraph.add_run(text[position:])
 
     def _format_match_rate(self, citations) -> str:
         if citations.total_citations == 0:
@@ -316,7 +331,7 @@ class DocxReportAdapter(ReportExportPort):
                 paragraph.add_run(f"{dim_data['score']:.1f}/10")
 
                 if dim_data.get("feedback"):
-                    doc.add_paragraph(dim_data["feedback"])
+                    self._add_markdown_paragraph(doc, dim_data["feedback"])
 
     def _add_grammar_analysis(self, doc, report_input: ReportInputDTO) -> None:
         heading = doc.add_heading("📝 GRAMÁTICA Y ORTOGRAFÍA", 1)

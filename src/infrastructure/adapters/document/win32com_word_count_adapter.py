@@ -5,10 +5,12 @@ from contextlib import contextmanager, suppress
 from typing import Any
 
 try:
+    import pythoncom
     import win32com.client
 
     WIN32COM_AVAILABLE = True
 except ImportError:
+    pythoncom = None  # type: ignore[assignment]
     win32com = None  # type: ignore[assignment]
     WIN32COM_AVAILABLE = False
 
@@ -49,6 +51,7 @@ class Win32ComWordCountAdapter(CharacterCountPort):
     @contextmanager
     def _word_session(self, path: str) -> Generator[Any, None, None]:
         """Open a Word document via COM and yield it; always closes the document and quits Word on exit."""
+        pythoncom.CoInitialize()
         word_app = win32com.client.DispatchEx("Word.Application")
         word_app.DisplayAlerts = 0
         with suppress(Exception):
@@ -66,6 +69,7 @@ class Win32ComWordCountAdapter(CharacterCountPort):
             if doc is not None:
                 doc.Close(False)
             word_app.Quit()
+            pythoncom.CoUninitialize()
 
     def _word_count(self, doc) -> int:
         total = doc.ComputeStatistics(0)
