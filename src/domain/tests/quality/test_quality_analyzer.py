@@ -6,7 +6,7 @@ from src.domain.exceptions.quality_errors import QualityAnalysisFailed
 from src.domain.quality.quality_analyzer import QualityAnalyzer
 from src.domain.quality.quality_response_parser import QualityResponseParser
 from src.domain.quality.quality_text_sampler import QualityTextSampler
-from src.domain.tests.quality.fake_llm_generator_port import FakeLlmGeneratorPort
+from src.domain.tests.quality.fake_llm_generator_adapter import FakeLlmGeneratorAdapter
 
 
 def build_document_content(
@@ -37,9 +37,9 @@ TEXTO A ANALIZAR:
 Evalúa Argumentación y Conclusiones."""
 
 
-def build_analyzer(fake_port: FakeLlmGeneratorPort) -> QualityAnalyzer:
+def build_analyzer(fake_adapter: FakeLlmGeneratorAdapter) -> QualityAnalyzer:
     return QualityAnalyzer(
-        llm_generator=fake_port,
+        llm_generator=fake_adapter,
         text_sampler=QualityTextSampler(),
         response_parser=QualityResponseParser(),
         clarity_coherence_prompt_template=CLARITY_COHERENCE_PROMPT_TEMPLATE,
@@ -67,12 +67,12 @@ class TestQualityAnalyzer(TestCase):
         self.document_content = build_document_content(["Parrafo uno.", "Parrafo dos."])
 
     def test_generate_is_called_exactly_twice_per_analysis(self):
-        fake_port = FakeLlmGeneratorPort([VALID_RESPONSE_ONE, VALID_RESPONSE_TWO])
-        analyzer = build_analyzer(fake_port)
+        fake_adapter = FakeLlmGeneratorAdapter([VALID_RESPONSE_ONE, VALID_RESPONSE_TWO])
+        analyzer = build_analyzer(fake_adapter)
 
         analyzer.analyze(self.document_content, article_type=None)
 
-        self.assertEqual(fake_port.call_count, 2)
+        self.assertEqual(fake_adapter.call_count, 2)
 
     def test_overall_score_is_mean_of_four_dimension_scores(self):
         response_one = """**1. Claridad** [Puntuación: 8/10]
@@ -87,8 +87,8 @@ Los argumentos presentados son razonables y estan fundamentados en el texto.
 **2. Conclusiones** [Puntuación: 9/10]
 Las conclusiones se desprenden claramente del contenido desarrollado en detalle.
 """
-        fake_port = FakeLlmGeneratorPort([response_one, response_two])
-        analyzer = build_analyzer(fake_port)
+        fake_adapter = FakeLlmGeneratorAdapter([response_one, response_two])
+        analyzer = build_analyzer(fake_adapter)
 
         result = analyzer.analyze(self.document_content, article_type=None)
 
@@ -107,8 +107,8 @@ Los argumentos presentados son razonables y estan fundamentados en el texto.
 **2. Conclusiones** [Puntuación: 7/10]
 Las conclusiones se desprenden claramente del contenido desarrollado en detalle.
 """
-        fake_port = FakeLlmGeneratorPort([response_one, response_two])
-        analyzer = build_analyzer(fake_port)
+        fake_adapter = FakeLlmGeneratorAdapter([response_one, response_two])
+        analyzer = build_analyzer(fake_adapter)
 
         result = analyzer.analyze(self.document_content, article_type=None)
 
@@ -133,10 +133,10 @@ Las conclusiones se desprenden claramente del contenido desarrollado.
 **Claridad** [Puntuación: 1/10]
 Este bloque de claridad nunca deberia usarse porque viene de la llamada dos.
 """
-        fake_port = FakeLlmGeneratorPort(
+        fake_adapter = FakeLlmGeneratorAdapter(
             [VALID_RESPONSE_ONE, response_two_with_claridad_like_header]
         )
-        analyzer = build_analyzer(fake_port)
+        analyzer = build_analyzer(fake_adapter)
 
         result = analyzer.analyze(self.document_content, article_type=None)
 
@@ -144,8 +144,8 @@ Este bloque de claridad nunca deberia usarse porque viene de la llamada dos.
         self.assertEqual(result.dimension_scores["coherencia"]["score"], 8.0)
 
     def test_argumentacion_and_conclusiones_always_come_from_call_two(self):
-        fake_port = FakeLlmGeneratorPort([VALID_RESPONSE_ONE, VALID_RESPONSE_TWO])
-        analyzer = build_analyzer(fake_port)
+        fake_adapter = FakeLlmGeneratorAdapter([VALID_RESPONSE_ONE, VALID_RESPONSE_TWO])
+        analyzer = build_analyzer(fake_adapter)
 
         result = analyzer.analyze(self.document_content, article_type=None)
 
@@ -156,21 +156,23 @@ Este bloque de claridad nunca deberia usarse porque viene de la llamada dos.
         response_one_without_headers = (
             "Este texto no contiene ningun encabezado de dimension reconocible."
         )
-        fake_port = FakeLlmGeneratorPort([response_one_without_headers, VALID_RESPONSE_TWO])
-        analyzer = build_analyzer(fake_port)
+        fake_adapter = FakeLlmGeneratorAdapter([response_one_without_headers, VALID_RESPONSE_TWO])
+        analyzer = build_analyzer(fake_adapter)
 
         with self.assertRaises(QualityAnalysisFailed):
             analyzer.analyze(self.document_content, article_type=None)
 
     def test_rendered_prompt_preserves_legacy_wording_with_sample_interpolated(self):
-        fake_port = FakeLlmGeneratorPort([VALID_RESPONSE_ONE, VALID_RESPONSE_TWO])
-        analyzer = build_analyzer(fake_port)
+        fake_adapter = FakeLlmGeneratorAdapter([VALID_RESPONSE_ONE, VALID_RESPONSE_TWO])
+        analyzer = build_analyzer(fake_adapter)
 
         analyzer.analyze(self.document_content, article_type=None)
 
         text_sample = QualityTextSampler().build_sample(self.document_content)
-        self.assertIn("Eres un revisor editorial académico experto.", fake_port.received_prompts[0])
-        self.assertIn(text_sample, fake_port.received_prompts[0])
+        self.assertIn(
+            "Eres un revisor editorial académico experto.", fake_adapter.received_prompts[0]
+        )
+        self.assertIn(text_sample, fake_adapter.received_prompts[0])
 
     def test_quality_analyzer_module_defines_exactly_one_class(self):
         import ast
