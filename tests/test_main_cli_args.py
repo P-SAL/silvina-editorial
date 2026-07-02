@@ -91,6 +91,31 @@ class TestMainExitCodes(unittest.TestCase):
                     main()
         self.assertEqual(context.exception.code, 1)
 
+    def test_exits_1_when_save_word_report_fails(self):
+        from main import main
+
+        fixture_document_path = os.path.join(
+            os.path.dirname(__file__),
+            "fixtures",
+            "capacidades_razonamiento_emergente_LLMs.docx",
+        )
+        with patch.object(sys, "argv", ["main.py", fixture_document_path]):
+            with patch("main.SilvinaEditorialAssistant") as mock_assistant_class:
+                mock_assistant_class.return_value.analyze_document.return_value = (
+                    _build_legacy_results(total_citations=7)
+                )
+                mock_assistant_class.return_value.save_word_report.return_value = False
+                captured_output = io.StringIO()
+                with redirect_stdout(captured_output):
+                    with self.assertRaises(SystemExit) as context:
+                        main()
+
+        self.assertEqual(context.exception.code, 1)
+        mock_assistant_class.return_value.save_json_report.assert_called_once()
+        self.assertIn(
+            "Error: No se pudo guardar el reporte de Word (DOCX).", captured_output.getvalue()
+        )
+
 
 def _build_legacy_results(total_citations: int) -> dict:
     return {
