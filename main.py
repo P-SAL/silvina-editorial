@@ -264,8 +264,12 @@ def main():
         print("=" * 80 + "\n")
 
         # silvina.save_text_report(results, str(text_report_path))
-        silvina.save_word_report(results, str(word_report_path))
+        word_report_saved = silvina.save_word_report(results, str(word_report_path))
         silvina.save_json_report(results, str(json_report_path))
+
+        if not word_report_saved:
+            print("Error: No se pudo guardar el reporte de Word (DOCX).")
+            sys.exit(1)
 
         # Print summary
         print("\n" + "=" * 80)
