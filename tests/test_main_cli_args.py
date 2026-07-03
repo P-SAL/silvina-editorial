@@ -2,25 +2,24 @@
 Unit tests for the CLI argument parser and main() entry point exit codes in main.py.
 """
 
-import io
-import os
-import sys
-import unittest
 from contextlib import redirect_stdout
+from io import StringIO
+from os.path import dirname, join
+from sys import path
+from unittest import TestCase, main
 from unittest.mock import patch
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+path.insert(0, join(dirname(__file__), ".."))
 
+from main import main as run_main, _build_argument_parser
 from src.domain.enums.article_size import ArticleSize
 from src.domain.enums.article_type import ArticleType
 from src.domain.enums.recommendation_priority import RecommendationPriority
 from src.domain.exceptions.language_model_errors import LanguageModelUnavailable
 
 
-class TestBuildArgumentParser(unittest.TestCase):
+class TestBuildArgumentParser(TestCase):
     def setUp(self):
-        from main import _build_argument_parser
-
         self.parser = _build_argument_parser()
 
     def test_document_path_defaults_to_none(self):
@@ -57,58 +56,50 @@ class TestBuildArgumentParser(unittest.TestCase):
         self.assertEqual(arguments.json_report_path, "/tmp/salida/reporte.json")
 
 
-class TestMainExitCodes(unittest.TestCase):
+class TestMainExitCodes(TestCase):
     def test_exits_2_when_file_does_not_exist(self):
-        from main import main
-
-        with patch.object(sys, "argv", ["main.py", "nonexistent_document_xyz.docx"]):
+        with patch("sys.argv", ["main.py", "nonexistent_document_xyz.docx"]):
             with self.assertRaises(SystemExit) as context:
-                main()
+                run_main()
         self.assertEqual(context.exception.code, 2)
 
     def test_exits_2_when_extension_is_not_docx(self):
-        from main import main
-
-        with patch.object(sys, "argv", ["main.py", __file__]):
+        with patch("sys.argv", ["main.py", __file__]):
             with self.assertRaises(SystemExit) as context:
-                main()
+                run_main()
         self.assertEqual(context.exception.code, 2)
 
     def test_exits_1_when_analyze_document_raises_base_src_error(self):
-        from main import main
-
-        fixture_document_path = os.path.join(
-            os.path.dirname(__file__),
+        fixture_document_path = join(
+            dirname(__file__),
             "fixtures",
             "capacidades_razonamiento_emergente_LLMs.docx",
         )
-        with patch.object(sys, "argv", ["main.py", fixture_document_path]):
+        with patch("sys.argv", ["main.py", fixture_document_path]):
             with patch("main.SilvinaEditorialAssistant") as mock_assistant_class:
                 mock_assistant_class.return_value.analyze_document.side_effect = (
                     LanguageModelUnavailable()
                 )
                 with self.assertRaises(SystemExit) as context:
-                    main()
+                    run_main()
         self.assertEqual(context.exception.code, 1)
 
     def test_exits_1_when_save_word_report_fails(self):
-        from main import main
-
-        fixture_document_path = os.path.join(
-            os.path.dirname(__file__),
+        fixture_document_path = join(
+            dirname(__file__),
             "fixtures",
             "capacidades_razonamiento_emergente_LLMs.docx",
         )
-        with patch.object(sys, "argv", ["main.py", fixture_document_path]):
+        with patch("sys.argv", ["main.py", fixture_document_path]):
             with patch("main.SilvinaEditorialAssistant") as mock_assistant_class:
                 mock_assistant_class.return_value.analyze_document.return_value = (
                     _build_legacy_results(total_citations=7)
                 )
                 mock_assistant_class.return_value.save_word_report.return_value = False
-                captured_output = io.StringIO()
+                captured_output = StringIO()
                 with redirect_stdout(captured_output):
                     with self.assertRaises(SystemExit) as context:
-                        main()
+                        run_main()
 
         self.assertEqual(context.exception.code, 1)
         mock_assistant_class.return_value.save_json_report.assert_called_once()
@@ -161,27 +152,25 @@ def _build_legacy_results(total_citations: int) -> dict:
     }
 
 
-class TestMainConsoleSummaryCitationsCount(unittest.TestCase):
+class TestMainConsoleSummaryCitationsCount(TestCase):
     def test_prints_actual_citation_count_from_citations_analysis(self):
-        from main import main
-
-        fixture_document_path = os.path.join(
-            os.path.dirname(__file__),
+        fixture_document_path = join(
+            dirname(__file__),
             "fixtures",
             "capacidades_razonamiento_emergente_LLMs.docx",
         )
-        with patch.object(sys, "argv", ["main.py", fixture_document_path]):
+        with patch("sys.argv", ["main.py", fixture_document_path]):
             with patch("main.SilvinaEditorialAssistant") as mock_assistant_class:
                 mock_assistant_class.return_value.analyze_document.return_value = (
                     _build_legacy_results(total_citations=7)
                 )
-                captured_output = io.StringIO()
+                captured_output = StringIO()
                 with redirect_stdout(captured_output):
-                    main()
+                    run_main()
 
         self.assertIn("CITAS: 7 detectadas", captured_output.getvalue())
         self.assertNotIn("CITAS: 0 detectadas", captured_output.getvalue())
 
 
 if __name__ == "__main__":
-    unittest.main()
+    main()

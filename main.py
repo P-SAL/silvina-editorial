@@ -7,24 +7,24 @@ Orchestrates the complete document analysis workflow.
 # ruff: noqa: E402 — sys.path must be extended with the project root before
 # the src.* imports below can resolve.
 
-import argparse
-import re
-import sys
-import os
-import traceback
+from argparse import ArgumentParser
 from enum import Enum
+from json import dump
+from os.path import exists, join
 from pathlib import Path
+from re import sub
+from sys import exit, path, stderr, stdout
+from traceback import print_exc
+from typing import Any, Dict
 
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-if hasattr(sys.stderr, "reconfigure"):
-    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
-from typing import Dict, Any
-import json
+if hasattr(stdout, "reconfigure"):
+    stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(stderr, "reconfigure"):
+    stderr.reconfigure(encoding="utf-8", errors="replace")
 
 # Add project root to path
 project_root = Path(__file__).parent
-sys.path.insert(0, str(project_root))
+path.insert(0, str(project_root))
 
 from src.domain.dtos.base_dto import BaseDTO
 from src.domain.dtos.report_input_dto import ReportInputDTO
@@ -170,7 +170,7 @@ class SilvinaEditorialAssistant:
         json_data = self._prepare_for_json(analysis_results)
 
         with open(output_path, "w", encoding="utf-8") as f:
-            json.dump(json_data, f, ensure_ascii=False, indent=2)
+            dump(json_data, f, ensure_ascii=False, indent=2)
 
         print("   ✅ Datos JSON guardados exitosamente")
 
@@ -188,11 +188,9 @@ class SilvinaEditorialAssistant:
             return data
 
 
-def _build_argument_parser() -> argparse.ArgumentParser:
+def _build_argument_parser() -> ArgumentParser:
     """Build the CLI argument parser for the Silvina Editorial Assistant."""
-    parser = argparse.ArgumentParser(
-        description="Silvina Editorial Assistant - Academic document analysis"
-    )
+    parser = ArgumentParser(description="Silvina Editorial Assistant - Academic document analysis")
     parser.add_argument(
         "document_path",
         nargs="?",
@@ -232,22 +230,22 @@ def main():
         document_path = input("Ingrese la ruta del documento (.docx): ").strip().strip('"')
 
     # Verify file exists
-    if not os.path.exists(document_path):
+    if not exists(document_path):
         print(f"❌ Error: El archivo no existe: {document_path}")
-        sys.exit(2)
+        exit(2)
 
     # Verify it's a .docx file
     if not document_path.lower().endswith(".docx"):
         print("❌ Error: El archivo debe ser un documento Word (.docx)")
-        sys.exit(2)
+        exit(2)
 
     base_name = Path(document_path).stem
-    safe_base_name = re.sub(r'[<>:"/\\|?*]', "_", base_name)
+    safe_base_name = sub(r'[<>:"/\\|?*]', "_", base_name)
     output_dir = arguments.output_dir or str(Path(document_path).parent)
-    word_report_path = arguments.word_report_path or os.path.join(
+    word_report_path = arguments.word_report_path or join(
         output_dir, f"{safe_base_name}_analisis.docx"
     )
-    json_report_path = arguments.json_report_path or os.path.join(
+    json_report_path = arguments.json_report_path or join(
         output_dir, f"{safe_base_name}_analisis.json"
     )
 
@@ -269,7 +267,7 @@ def main():
 
         if not word_report_saved:
             print("Error: No se pudo guardar el reporte de Word (DOCX).")
-            sys.exit(1)
+            exit(1)
 
         # Print summary
         print("\n" + "=" * 80)
@@ -326,15 +324,15 @@ def main():
 
     except KeyboardInterrupt:
         print("\n\n⚠ Análisis interrumpido por el usuario")
-        sys.exit(0)
+        exit(0)
     except BaseSrcError as exc:
         message = exc.dict().get("error", "Unknown domain error")
         print(f"\n\n❌ Error fatal: {message}")
-        sys.exit(1)
+        exit(1)
     except Exception as e:
         print(f"\n\n❌ Error fatal: {e}")
-        traceback.print_exc()
-        sys.exit(1)
+        print_exc()
+        exit(1)
 
 
 if __name__ == "__main__":
