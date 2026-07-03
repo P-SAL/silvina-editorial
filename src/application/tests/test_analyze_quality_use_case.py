@@ -25,8 +25,8 @@ class TestAnalyzeQualityUseCase(TestCase):
         )
 
     def test_execute_matches_domain_service_result(self):
-        expected = self.analyzer.analyze(self.document_content, article_type=None)
-        result = self.use_case.execute(self.document_content, article_type=None)
+        expected = self.analyzer.analyze(document_content=self.document_content, article_type=None)
+        result = self.use_case.execute(document_content=self.document_content, article_type=None)
 
         self.assertEqual(result.overall_score, expected.overall_score)
         self.assertEqual(result.quality_level, expected.quality_level)

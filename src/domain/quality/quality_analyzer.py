@@ -30,31 +30,31 @@ class QualityAnalyzer:
 
     def analyze(self, document_content: DocumentContentDTO, article_type) -> QualityResultDTO:
         """Score document quality across Claridad, Coherencia, Argumentación and Conclusiones."""
-        text_sample = self._text_sampler.build_sample(document_content)
+        text_sample = self._text_sampler.build_sample(document_content=document_content)
 
         clarity_coherence_prompt = self._render_prompt(
-            self._clarity_coherence_prompt_template, text_sample
+            template=self._clarity_coherence_prompt_template, text_sample=text_sample
         )
         argumentation_conclusions_prompt = self._render_prompt(
-            self._argumentation_conclusions_prompt_template, text_sample
+            template=self._argumentation_conclusions_prompt_template, text_sample=text_sample
         )
 
-        clarity_coherence_response = self._llm_generator.generate(clarity_coherence_prompt)
+        clarity_coherence_response = self._llm_generator.generate(prompt=clarity_coherence_prompt)
         argumentation_conclusions_response = self._llm_generator.generate(
-            argumentation_conclusions_prompt
+            prompt=argumentation_conclusions_prompt
         )
 
-        clarity_coherence_parsed = self._response_parser.parse(clarity_coherence_response)
+        clarity_coherence_parsed = self._response_parser.parse(text=clarity_coherence_response)
         self._ensure_call_produced_usable_content(
-            clarity_coherence_parsed,
+            parsed_response=clarity_coherence_parsed,
             relevant_dimensions=(QualityDimension.CLARITY, QualityDimension.COHERENCE),
         )
 
         argumentation_conclusions_parsed = self._response_parser.parse(
-            argumentation_conclusions_response
+            text=argumentation_conclusions_response
         )
         self._ensure_call_produced_usable_content(
-            argumentation_conclusions_parsed,
+            parsed_response=argumentation_conclusions_parsed,
             relevant_dimensions=(QualityDimension.ARGUMENTATION, QualityDimension.CONCLUSIONS),
         )
 
@@ -70,7 +70,7 @@ class QualityAnalyzer:
         }
 
         overall_score = sum(d.score for d in dimension_scores.values()) / len(dimension_scores)
-        quality_level = self._resolver.resolve(overall_score)
+        quality_level = self._resolver.resolve(score=overall_score)
 
         return QualityResultDTO(
             overall_score=overall_score,

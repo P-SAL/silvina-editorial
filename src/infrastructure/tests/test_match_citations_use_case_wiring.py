@@ -16,5 +16,5 @@ class TestMatchCitationsUseCaseWiring(TestCase):
 
     def test_s33_use_case_execute_returns_citation_analysis_result(self):
         use_case = self.wiring.create_use_case()
-        result = use_case.execute([], [], SectionName.REFERENCES)
+        result = use_case.execute(citations=[], references=[], section_type=SectionName.REFERENCES)
         self.assertIsInstance(result, CitationAnalysisResultDTO)

@@ -64,19 +64,19 @@ class DocxReportAdapter(ReportExportPort):
         style.paragraph_format.space_after = Pt(0)
         style.paragraph_format.space_before = Pt(0)
 
-        self._add_header_logo(doc)
-        self._add_page_numbers(doc)
-        self._add_title_page(doc, report_input)
-        self._add_executive_summary(doc, report_input)
-        self._add_document_info(doc, report_input)
-        self._add_classification(doc, report_input)
-        self._add_quality_analysis(doc, report_input)
-        self._add_grammar_analysis(doc, report_input)
-        self._add_apa_validation(doc, report_input)
-        self._add_structure_validation(doc, report_input)
-        self._add_citations_analysis(doc, report_input)
-        self._add_recommendations(doc, report_input)
-        self._add_footer(doc)
+        self._add_header_logo(doc=doc)
+        self._add_page_numbers(doc=doc)
+        self._add_title_page(doc=doc, report_input=report_input)
+        self._add_executive_summary(doc=doc, report_input=report_input)
+        self._add_document_info(doc=doc, report_input=report_input)
+        self._add_classification(doc=doc, report_input=report_input)
+        self._add_quality_analysis(doc=doc, report_input=report_input)
+        self._add_grammar_analysis(doc=doc, report_input=report_input)
+        self._add_apa_validation(doc=doc, report_input=report_input)
+        self._add_structure_validation(doc=doc, report_input=report_input)
+        self._add_citations_analysis(doc=doc, report_input=report_input)
+        self._add_recommendations(doc=doc, report_input=report_input)
+        self._add_footer(doc=doc)
 
         doc.save(output_path)
         return True
@@ -253,7 +253,7 @@ class DocxReportAdapter(ReportExportPort):
         table.rows[4].cells[1].text = f"{apa_count} detectados" if apa_count > 0 else "Sin errores"
 
         table.rows[5].cells[0].text = "Tasa de Coincidencia"
-        table.rows[5].cells[1].text = self._format_match_rate(report_input.citations)
+        table.rows[5].cells[1].text = self._format_match_rate(citations=report_input.citations)
 
         doc.add_paragraph()
 
@@ -320,7 +320,7 @@ class DocxReportAdapter(ReportExportPort):
         score_run = paragraph.add_run(f"{quality.overall_score:.1f}/10")
         score_run.bold = True
         score_run.font.size = Pt(self._settings.score_font_size_pt)
-        score_run.font.color.rgb = RGBColor(*self._color_for_score(quality.overall_score))
+        score_run.font.color.rgb = RGBColor(*self._color_for_score(score=quality.overall_score))
 
         if quality.dimension_scores:
             for dim_name, dim_data in quality.dimension_scores.items():
@@ -331,7 +331,7 @@ class DocxReportAdapter(ReportExportPort):
                 paragraph.add_run(f"{dim_data['score']:.1f}/10")
 
                 if dim_data.get("feedback"):
-                    self._add_markdown_paragraph(doc, dim_data["feedback"])
+                    self._add_markdown_paragraph(doc=doc, text=dim_data["feedback"])
 
     def _add_grammar_analysis(self, doc, report_input: ReportInputDTO) -> None:
         heading = doc.add_heading("📝 GRAMÁTICA Y ORTOGRAFÍA", 1)
@@ -446,7 +446,7 @@ class DocxReportAdapter(ReportExportPort):
         table.rows[2].cells[1].text = str(citations.matched_count)
 
         table.rows[3].cells[0].text = "Tasa de coincidencia"
-        table.rows[3].cells[1].text = self._format_match_rate(citations)
+        table.rows[3].cells[1].text = self._format_match_rate(citations=citations)
 
     def _add_recommendations(self, doc, report_input: ReportInputDTO) -> None:
         heading = doc.add_heading("💡 RECOMENDACIONES", 1)

@@ -28,10 +28,10 @@ class AnalyzeQualityUseCaseWiring:
             text_sampler=self._get_text_sampler(),
             response_parser=QualityResponseParser(),
             clarity_coherence_prompt_template=read_text_resource(
-                PROMPTS_DIR, "clarity_coherence_prompt.txt"
+                directory=PROMPTS_DIR, filename="clarity_coherence_prompt.txt"
             ),
             argumentation_conclusions_prompt_template=read_text_resource(
-                PROMPTS_DIR, "argumentation_conclusions_prompt.txt"
+                directory=PROMPTS_DIR, filename="argumentation_conclusions_prompt.txt"
             ),
             resolver=QualityLevelResolver(),
         )

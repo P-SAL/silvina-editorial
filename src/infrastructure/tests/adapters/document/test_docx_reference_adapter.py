@@ -17,8 +17,10 @@ _ALLOWED_SECTION_NAMES = {"Bibliografía", "Referencias", "Fuentes bibliográfic
 
 class TestDocxReferenceAdapter(TestCase):
     def setUp(self):
-        self.adapter = DocxReferenceAdapter(DocxTextAdapter())
-        self.references, self.section_type = self.adapter.extract_references(str(SAMPLE_DOCUMENT))
+        self.adapter = DocxReferenceAdapter(document_text_port=DocxTextAdapter())
+        self.references, self.section_type = self.adapter.extract_references(
+            docx_path=str(SAMPLE_DOCUMENT)
+        )
 
     def test_s8a_returns_non_empty_list_and_non_empty_string(self):
         self.assertIsInstance(self.references, list)

@@ -26,11 +26,11 @@ class ExtractContentUseCase:
         When docx_path is provided and the count port succeeds, merges accurate counts
         into the result via dataclasses.replace; falls back to text-based counts otherwise.
         """
-        base = self._extraction_port.extract(paragraphs, docx_path)
+        base = self._extraction_port.extract(paragraphs=paragraphs, docx_path=docx_path)
         if docx_path is None:
             return base
         try:
-            counts = self._count_port.count(docx_path)
+            counts = self._count_port.count(docx_path=docx_path)
         except CharacterCountUnavailable:
             return base
         if counts is None:

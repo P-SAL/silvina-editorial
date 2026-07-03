@@ -30,12 +30,12 @@ class DocxReferenceAdapter(ReferenceExtractionPort):
 
     @generic_error_handler
     def extract_references(self, docx_path: str) -> tuple[list[ReferenceDTO], str]:
-        full_text = "".join(self._document_text_port.read_paragraphs(docx_path))
+        full_text = "".join(self._document_text_port.read_paragraphs(path=docx_path))
         bib_match = _BIB_SECTION_PATTERN.search(full_text)
         if not bib_match:
             return [], _DEFAULT_SECTION_TYPE
-        section_type = self._resolve_section_type(bib_match.group(1).lower())
-        return self._parse_references(bib_match.group(2)), section_type
+        section_type = self._resolve_section_type(label=bib_match.group(1).lower())
+        return self._parse_references(bib_text=bib_match.group(2)), section_type
 
     def _resolve_section_type(self, label: str) -> str:
         for key, value in _SECTION_TYPE_MAP.items():
@@ -51,12 +51,12 @@ class DocxReferenceAdapter(ReferenceExtractionPort):
             current_ref += part
             if not _YEAR_END_PATTERN.fullmatch(part):
                 continue
-            ref = self._clean_reference(current_ref)
+            ref = self._clean_reference(text=current_ref)
             current_ref = ""
             if not ref:
                 continue
             references.append(ReferenceDTO(text=ref))
-        ref = self._clean_reference(current_ref)
+        ref = self._clean_reference(text=current_ref)
         if ref:
             references.append(ReferenceDTO(text=ref))
         return references

@@ -21,7 +21,7 @@ class TestValidateStructureUseCase(TestCase):
     def test_empty_paragraphs_raises_document_empty(self):
         doc = _make_document([])
         with self.assertRaises(DocumentEmpty):
-            self.use_case.execute(doc, ArticleType.CIENTIFICO)
+            self.use_case.execute(document_content=doc, article_type=ArticleType.CIENTIFICO)
         self.mock_validator.validate.assert_not_called()
 
     def test_missing_referencias_preserved_when_has_references_false(self):
@@ -30,7 +30,9 @@ class TestValidateStructureUseCase(TestCase):
             [SectionName.INTRODUCTION],
             [SectionName.REFERENCES],
         )
-        result = self.use_case.execute(doc, ArticleType.OPINION, has_references=False)
+        result = self.use_case.execute(
+            document_content=doc, article_type=ArticleType.OPINION, has_references=False
+        )
         self.assertIn(SectionName.REFERENCES, result.missing_sections)
         self.assertFalse(result.is_valid)
 
@@ -40,7 +42,9 @@ class TestValidateStructureUseCase(TestCase):
             [SectionName.INTRODUCTION, SectionName.CONCLUSIONS],
             [SectionName.REFERENCES],
         )
-        result = self.use_case.execute(doc, ArticleType.CIENTIFICO, has_references=True)
+        result = self.use_case.execute(
+            document_content=doc, article_type=ArticleType.CIENTIFICO, has_references=True
+        )
         self.assertNotIn(SectionName.REFERENCES, result.missing_sections)
         self.assertTrue(result.is_valid)
 
@@ -50,7 +54,7 @@ class TestValidateStructureUseCase(TestCase):
             [SectionName.INTRODUCTION, SectionName.CONCLUSIONS],
             [SectionName.DEVELOPMENT],
         )
-        result = self.use_case.execute(doc, ArticleType.DIVULGACION)
+        result = self.use_case.execute(document_content=doc, article_type=ArticleType.DIVULGACION)
         self.assertNotIn(SectionName.DEVELOPMENT, result.missing_sections)
         self.assertTrue(result.is_valid)
 
@@ -60,7 +64,9 @@ class TestValidateStructureUseCase(TestCase):
             [SectionName.INTRODUCTION, SectionName.CONCLUSIONS],
             [SectionName.REFERENCES, SectionName.DEVELOPMENT],
         )
-        result = self.use_case.execute(doc, ArticleType.DIVULGACION, has_references=True)
+        result = self.use_case.execute(
+            document_content=doc, article_type=ArticleType.DIVULGACION, has_references=True
+        )
         self.assertEqual(result.missing_sections, [])
         self.assertTrue(result.is_valid)
 
@@ -70,7 +76,7 @@ class TestValidateStructureUseCase(TestCase):
             [SectionName.INTRODUCTION],
             [],
         )
-        result = self.use_case.execute(doc, ArticleType.OPINION)
+        result = self.use_case.execute(document_content=doc, article_type=ArticleType.OPINION)
         with self.assertRaises((FrozenInstanceError, AttributeError)):
             result.is_valid = False  # type: ignore[misc] — intentional: assigning to frozen dataclass to assert immutability
 
@@ -80,6 +86,6 @@ class TestValidateStructureUseCase(TestCase):
             [SectionName.SUMMARY],
             [SectionName.INTRODUCTION, SectionName.REFERENCES],
         )
-        result = self.use_case.execute(doc, ArticleType.CIENTIFICO)
+        result = self.use_case.execute(document_content=doc, article_type=ArticleType.CIENTIFICO)
         self.assertIn(SectionName.REFERENCES, result.missing_sections)
         self.assertIn(SectionName.INTRODUCTION, result.missing_sections)

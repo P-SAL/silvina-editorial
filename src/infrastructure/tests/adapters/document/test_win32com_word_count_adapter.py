@@ -16,7 +16,7 @@ class TestWin32ComWordCountAdapter(TestCase):
             "src.infrastructure.adapters.document.win32com_word_count_adapter.WIN32COM_AVAILABLE",
             False,
         ):
-            result = self.adapter.count("any/path.docx")
+            result = self.adapter.count(docx_path="any/path.docx")
         self.assertIsNone(result)
 
     def test_raises_character_count_unavailable_on_com_exception(self):
@@ -32,4 +32,4 @@ class TestWin32ComWordCountAdapter(TestCase):
         ):
             mock_win32com.client.DispatchEx.side_effect = Exception("COM failure")
             with self.assertRaises(CharacterCountUnavailable):
-                self.adapter.count("any/path.docx")
+                self.adapter.count(docx_path="any/path.docx")

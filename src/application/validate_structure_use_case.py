@@ -21,7 +21,9 @@ class ValidateStructureUseCase:
         if not document_content.paragraphs:
             raise DocumentEmpty
 
-        _, missing = self._validator.validate(document_content, article_type)
+        _, missing = self._validator.validate(
+            document_content=document_content, article_type=article_type
+        )
 
         missing = [s for s in missing if s != SectionName.DEVELOPMENT]
         if has_references:

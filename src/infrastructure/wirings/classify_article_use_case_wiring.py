@@ -38,7 +38,9 @@ class ClassifyArticleUseCaseWiring:
             article_size_classifier=ArticleSizeClassifier(),
             text_sampler=ArticleClassificationTextSampler(),
             response_parser=ArticleClassificationResponseParser(),
-            signal_prompt_template=read_text_resource(PROMPTS_DIR, "s4_s5_s6_signal_prompt.txt"),
+            signal_prompt_template=read_text_resource(
+                directory=PROMPTS_DIR, filename="s4_s5_s6_signal_prompt.txt"
+            ),
             temperature=float(getenv("ARTICLE_CLASSIFIER_TEMPERATURE", "0.1")),
             num_predict=int(getenv("ARTICLE_CLASSIFIER_NUM_PREDICT", "300")),
             methodological_vocabulary_detector=MethodologicalVocabularyDetector(),

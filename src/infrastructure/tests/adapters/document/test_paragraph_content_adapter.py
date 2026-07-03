@@ -21,18 +21,18 @@ class TestParagraphContentAdapter(TestCase):
 
     def test_empty_list_raises_document_empty(self):
         with self.assertRaises(DocumentEmpty):
-            self.adapter.extract([])
+            self.adapter.extract(paragraphs=[])
 
     def test_whitespace_only_paragraphs_raises_document_empty(self):
         with self.assertRaises(DocumentEmpty):
-            self.adapter.extract(["   ", "\t", ""])
+            self.adapter.extract(paragraphs=["   ", "\t", ""])
 
     def test_valid_paragraphs_returns_empty_references(self):
-        dto = self.adapter.extract(VALID_PARAGRAPHS)
+        dto = self.adapter.extract(paragraphs=VALID_PARAGRAPHS)
         self.assertEqual(dto.references, [])
 
     def test_valid_paragraphs_populates_text_counts(self):
-        dto = self.adapter.extract(VALID_PARAGRAPHS)
+        dto = self.adapter.extract(paragraphs=VALID_PARAGRAPHS)
         self.assertGreater(dto.word_count, 0)
         self.assertGreater(dto.char_count, 0)
         self.assertGreater(dto.paragraph_count, 0)
@@ -41,11 +41,11 @@ class TestParagraphContentAdapter(TestCase):
         with patch.object(
             self.adapter, "_extract_sections", wraps=self.adapter._extract_sections
         ) as mock_sections:
-            self.adapter.extract(VALID_PARAGRAPHS)
+            self.adapter.extract(paragraphs=VALID_PARAGRAPHS)
             mock_sections.assert_called_once()
 
     def test_valid_paragraphs_populates_structured_fields(self):
-        dto = self.adapter.extract(VALID_PARAGRAPHS)
+        dto = self.adapter.extract(paragraphs=VALID_PARAGRAPHS)
         self.assertIsNotNone(dto.title)
         self.assertIsNotNone(dto.abstract)
         self.assertGreater(len(dto.keywords), 0)

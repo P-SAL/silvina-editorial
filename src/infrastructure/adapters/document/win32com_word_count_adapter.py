@@ -35,16 +35,16 @@ class Win32ComWordCountAdapter(CharacterCountPort):
         if not os.path.exists(docx_path):
             return None
         try:
-            return self._measure(docx_path)
+            return self._measure(path=docx_path)
         except Exception as exc:
             logger.warning("Could not get accurate Word counts: %s", exc)
             raise CharacterCountUnavailable() from exc
 
     def _measure(self, path: str) -> CharacterCountDTO:
-        with self._word_session(path) as doc:
+        with self._word_session(path=path) as doc:
             return CharacterCountDTO(
-                word_count=self._word_count(doc),
-                char_count=self._char_count(doc),
+                word_count=self._word_count(doc=doc),
+                char_count=self._char_count(doc=doc),
                 paragraph_count=doc.ComputeStatistics(4),
             )
 

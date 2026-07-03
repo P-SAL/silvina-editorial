@@ -16,8 +16,8 @@ SAMPLE_DOCUMENT = (
 
 class TestDocxCitationAdapter(TestCase):
     def setUp(self):
-        self.adapter = DocxCitationAdapter(DocxTextAdapter())
-        self.result = self.adapter.extract_citations(str(SAMPLE_DOCUMENT))
+        self.adapter = DocxCitationAdapter(document_text_port=DocxTextAdapter())
+        self.result = self.adapter.extract_citations(docx_path=str(SAMPLE_DOCUMENT))
 
     def test_s7a_returns_non_empty_list(self):
         self.assertIsInstance(self.result, list)

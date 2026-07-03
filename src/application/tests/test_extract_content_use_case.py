@@ -22,7 +22,7 @@ class TestExtractContentUseCase(TestCase):
             count_port=MagicMock(spec=CharacterCountPort),
         )
 
-        result = use_case.execute(["para"])
+        result = use_case.execute(paragraphs=["para"])
 
         self.assertEqual(result, _BASE_DTO)
 
@@ -33,7 +33,7 @@ class TestExtractContentUseCase(TestCase):
             count_port=count_port,
         )
 
-        use_case.execute(["para"])
+        use_case.execute(paragraphs=["para"])
 
         count_port.count.assert_not_called()
 
@@ -43,7 +43,7 @@ class TestExtractContentUseCase(TestCase):
             count_port=FakeCharacterCountPort(result=_ACCURATE),
         )
 
-        result = use_case.execute(["para"], docx_path="doc.docx")
+        result = use_case.execute(paragraphs=["para"], docx_path="doc.docx")
 
         self.assertEqual(result.word_count, _ACCURATE.word_count)
         self.assertEqual(result.char_count, _ACCURATE.char_count)
@@ -56,7 +56,7 @@ class TestExtractContentUseCase(TestCase):
             count_port=FakeCharacterCountPort(result=_ACCURATE),
         )
 
-        result = use_case.execute(["para"], docx_path="doc.docx")
+        result = use_case.execute(paragraphs=["para"], docx_path="doc.docx")
 
         self.assertEqual(result.title, "My Title")
         self.assertEqual(result.abstract, "My Abstract")
@@ -67,7 +67,7 @@ class TestExtractContentUseCase(TestCase):
             count_port=FakeCharacterCountPort(result=None),
         )
 
-        result = use_case.execute(["para"], docx_path="doc.docx")
+        result = use_case.execute(paragraphs=["para"], docx_path="doc.docx")
 
         self.assertEqual(result, _BASE_DTO)
 
@@ -77,7 +77,7 @@ class TestExtractContentUseCase(TestCase):
             count_port=FakeCharacterCountPort(error=CharacterCountUnavailable()),
         )
 
-        result = use_case.execute(["para"], docx_path="doc.docx")
+        result = use_case.execute(paragraphs=["para"], docx_path="doc.docx")
 
         self.assertEqual(result, _BASE_DTO)
 
@@ -88,7 +88,7 @@ class TestExtractContentUseCase(TestCase):
         )
 
         try:
-            use_case.execute(["para"], docx_path="doc.docx")
+            use_case.execute(paragraphs=["para"], docx_path="doc.docx")
         except CharacterCountUnavailable:
             self.fail("CharacterCountUnavailable propagated to caller")
 
@@ -99,4 +99,4 @@ class TestExtractContentUseCase(TestCase):
         )
 
         with self.assertRaises(DocumentEmpty):
-            use_case.execute([])
+            use_case.execute(paragraphs=[])
