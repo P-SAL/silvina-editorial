@@ -4,6 +4,7 @@ from os import getenv
 from src.application.analyze_quality_use_case import AnalyzeQualityUseCase
 from src.domain.ports.llm_generator_port import LlmGeneratorPort
 from src.domain.quality.quality_analyzer import QualityAnalyzer
+from src.domain.quality.quality_level_resolver import QualityLevelResolver
 from src.domain.quality.quality_response_parser import QualityResponseParser
 from src.domain.quality.quality_text_sampler import QualityTextSampler
 from src.infrastructure.adapters.llm_generator.ollama_generator_adapter import (
@@ -32,6 +33,7 @@ class AnalyzeQualityUseCaseWiring:
             argumentation_conclusions_prompt_template=read_text_resource(
                 PROMPTS_DIR, "argumentation_conclusions_prompt.txt"
             ),
+            resolver=QualityLevelResolver(),
         )
 
     def _get_llm_generator(self) -> LlmGeneratorPort:

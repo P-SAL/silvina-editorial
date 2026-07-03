@@ -4,23 +4,22 @@ from src.domain.dtos.document_content_dto import DocumentContentDTO
 from src.domain.quality.quality_text_sampler import QualityTextSampler
 
 
-def build_document_content(
-    paragraphs: list[str], title: str | None = "Title"
-) -> DocumentContentDTO:
-    full_text = " ".join(paragraphs)
-    return DocumentContentDTO(
-        word_count=len(full_text.split()),
-        char_count=len(full_text),
-        paragraph_count=len(paragraphs),
-        title=title,
-        paragraphs=paragraphs,
-    )
-
-
 class TestQualityTextSampler(TestCase):
+    def _build_document_content(
+        self, paragraphs: list[str], title: str | None = "Title"
+    ) -> DocumentContentDTO:
+        full_text = " ".join(paragraphs)
+        return DocumentContentDTO(
+            word_count=len(full_text.split()),
+            char_count=len(full_text),
+            paragraph_count=len(paragraphs),
+            title=title,
+            paragraphs=paragraphs,
+        )
+
     def test_short_document_uses_full_text_fallback_instead_of_sample(self):
         paragraphs = ["Intro corta."] * 3 + ["Parrafo de relleno."] * 2 + ["Conclusion breve."]
-        document_content = build_document_content(paragraphs)
+        document_content = self._build_document_content(paragraphs)
         sampler = QualityTextSampler()
 
         sample = sampler.build_sample(document_content)
@@ -44,7 +43,7 @@ class TestQualityTextSampler(TestCase):
             + ["Relleno extra tres " + "palabra " * 100]
             + ["Conclusion final " + "palabra " * 100]
         )
-        document_content = build_document_content(paragraphs)
+        document_content = self._build_document_content(paragraphs)
         sampler = QualityTextSampler()
 
         sample = sampler.build_sample(document_content)
@@ -62,7 +61,7 @@ class TestQualityTextSampler(TestCase):
             + ["https://doi.org/10.1234 referencia bibliografica excluida " + "palabra " * 100]
             + ["Conclusion final reafirmada " + "palabra " * 100]
         )
-        document_content = build_document_content(paragraphs)
+        document_content = self._build_document_content(paragraphs)
         sampler = QualityTextSampler()
 
         sample = sampler.build_sample(document_content)
@@ -71,7 +70,7 @@ class TestQualityTextSampler(TestCase):
 
     def test_constructor_parameters_override_legacy_defaults(self):
         paragraphs = ["Palabra " * 20] * 10
-        document_content = build_document_content(paragraphs)
+        document_content = self._build_document_content(paragraphs)
         sampler = QualityTextSampler(min_sample_word_count=10, text_sample_character_limit=500)
 
         sample = sampler.build_sample(document_content)
@@ -80,7 +79,7 @@ class TestQualityTextSampler(TestCase):
 
     def test_defaults_match_legacy_hardcoded_constants(self):
         paragraphs = ["Intro corta."] * 3 + ["Parrafo de relleno."] * 2 + ["Conclusion breve."]
-        document_content = build_document_content(paragraphs)
+        document_content = self._build_document_content(paragraphs)
         sampler = QualityTextSampler()
 
         sample = sampler.build_sample(document_content)

@@ -2,9 +2,9 @@ from src.domain.dtos.document_content_dto import DocumentContentDTO
 from src.domain.dtos.parsed_response_dto import ParsedResponseDTO
 from src.domain.dtos.quality_result_dto import QualityResultDTO
 from src.domain.enums.quality_dimension import QualityDimension
-from src.domain.enums.quality_level import get_quality_level_from_score
 from src.domain.exceptions.quality_errors import QualityAnalysisFailed
 from src.domain.ports.llm_generator_port import LlmGeneratorPort
+from src.domain.quality.quality_level_resolver import QualityLevelResolver
 from src.domain.quality.quality_response_parser import QualityResponseParser
 from src.domain.quality.quality_text_sampler import QualityTextSampler
 
@@ -19,12 +19,14 @@ class QualityAnalyzer:
         response_parser: QualityResponseParser,
         clarity_coherence_prompt_template: str,
         argumentation_conclusions_prompt_template: str,
+        resolver: QualityLevelResolver | None = None,
     ) -> None:
         self._llm_generator = llm_generator
         self._text_sampler = text_sampler
         self._response_parser = response_parser
         self._clarity_coherence_prompt_template = clarity_coherence_prompt_template
         self._argumentation_conclusions_prompt_template = argumentation_conclusions_prompt_template
+        self._resolver = resolver or QualityLevelResolver()
 
     def analyze(self, document_content: DocumentContentDTO, article_type) -> QualityResultDTO:
         """Score document quality across Claridad, Coherencia, Argumentación and Conclusiones."""
@@ -68,7 +70,7 @@ class QualityAnalyzer:
         }
 
         overall_score = sum(d.score for d in dimension_scores.values()) / len(dimension_scores)
-        quality_level = get_quality_level_from_score(overall_score)
+        quality_level = self._resolver.resolve(overall_score)
 
         return QualityResultDTO(
             overall_score=overall_score,

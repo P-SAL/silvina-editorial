@@ -3,11 +3,11 @@ import re
 from src.domain.dtos.document_content_dto import DocumentContentDTO
 from src.domain.enums.reference_line_marker import ReferenceLineMarker
 
-_CONCLUSION_HEADER_PATTERN = re.compile(r"conclusi", re.IGNORECASE)
-
 
 class QualityTextSampler:
     """Builds a strategic text excerpt for LLM-based quality analysis."""
+
+    _CONCLUSION_HEADER_PATTERN = re.compile(r"conclusi", re.IGNORECASE)
 
     def __init__(
         self,
@@ -46,7 +46,7 @@ class QualityTextSampler:
         conclusion_paragraphs = []
         in_conclusion = False
         for paragraph in paragraphs:
-            if _CONCLUSION_HEADER_PATTERN.search(paragraph):
+            if self._CONCLUSION_HEADER_PATTERN.search(paragraph):
                 in_conclusion = True
             if in_conclusion and not self._is_reference_like(paragraph):
                 conclusion_paragraphs.append(paragraph)
