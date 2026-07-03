@@ -11,4 +11,4 @@ class ReadDocumentUseCase:
     @generic_error_handler
     def execute(self, path: str) -> list[str]:
         """Return the document's paragraphs, delegating to the port unchanged."""
-        return self._port.read_paragraphs(path)
+        return self._port.read_paragraphs(path=path)

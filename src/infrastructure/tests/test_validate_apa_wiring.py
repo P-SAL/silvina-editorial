@@ -15,5 +15,5 @@ class TestValidateApaWiring(TestCase):
 
     def test_s15b_use_case_execute_returns_apa_validation_result(self):
         use_case = self.wiring.create_use_case()
-        result = use_case.execute([])
+        result = use_case.execute(citations=[])
         self.assertIsInstance(result, ApaValidationResultDTO)

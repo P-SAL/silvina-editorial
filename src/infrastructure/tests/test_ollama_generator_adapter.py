@@ -19,7 +19,7 @@ class TestOllamaGeneratorAdapter(TestCase):
         mock_client = mock_client_class.return_value
         mock_client.generate.return_value = {"response": "  some text  "}
 
-        result = self.adapter.generate("prompt")
+        result = self.adapter.generate(prompt="prompt")
 
         self.assertEqual(result, "some text")
 
@@ -29,14 +29,14 @@ class TestOllamaGeneratorAdapter(TestCase):
         mock_client.generate.side_effect = ConnectionError("backend unreachable")
 
         with self.assertRaises(LanguageModelUnavailable):
-            self.adapter.generate("prompt")
+            self.adapter.generate(prompt="prompt")
 
     @patch("src.infrastructure.adapters.llm_generator.ollama_generator_adapter.ollama.Client")
     def test_generate_instantiates_client_with_configured_base_url(self, mock_client_class):
         mock_client = mock_client_class.return_value
         mock_client.generate.return_value = {"response": "some text"}
 
-        self.adapter.generate("prompt")
+        self.adapter.generate(prompt="prompt")
 
         mock_client_class.assert_called_once_with(host="http://localhost:11434")
 
@@ -45,7 +45,7 @@ class TestOllamaGeneratorAdapter(TestCase):
         mock_client = mock_client_class.return_value
         mock_client.generate.return_value = {"response": "some text"}
 
-        self.adapter.generate("prompt", options={"temperature": 0.1, "num_predict": 300})
+        self.adapter.generate(prompt="prompt", options={"temperature": 0.1, "num_predict": 300})
 
         mock_client.generate.assert_called_once_with(
             model="llama3-gradient:8b-instruct-1048k-q4_K_M",
@@ -58,7 +58,7 @@ class TestOllamaGeneratorAdapter(TestCase):
         mock_client = mock_client_class.return_value
         mock_client.generate.return_value = {"response": "some text"}
 
-        self.adapter.generate("prompt")
+        self.adapter.generate(prompt="prompt")
 
         mock_client.generate.assert_called_once_with(
             model="llama3-gradient:8b-instruct-1048k-q4_K_M",

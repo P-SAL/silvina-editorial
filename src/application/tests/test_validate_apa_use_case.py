@@ -10,7 +10,7 @@ class TestValidateApaUseCase(TestCase):
         self.use_case = ValidateApaUseCase(validator=ApaValidator())
 
     def test_s12_empty_list_returns_valid_result(self):
-        result = self.use_case.execute([])
+        result = self.use_case.execute(citations=[])
         self.assertIsInstance(result, ApaValidationResultDTO)
         self.assertTrue(result.is_valid)
         self.assertEqual(result.violation_count, 0)
@@ -18,7 +18,7 @@ class TestValidateApaUseCase(TestCase):
 
     def test_s13_list_with_violation_returns_invalid_result(self):
         citations = [("(García & Pérez, 2020)", 1, "")]
-        result = self.use_case.execute(citations)
+        result = self.use_case.execute(citations=citations)
         self.assertFalse(result.is_valid)
         self.assertEqual(result.violation_count, 1)
         self.assertEqual(len(result.violations), 1)

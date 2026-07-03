@@ -24,9 +24,11 @@ class TestMatchCitationsUseCase(TestCase):
         references = [reference]
 
         expected = CitationMatcher().match_citations_to_references(
-            citations, references, section_type=SectionName.REFERENCES
+            citations=citations, references=references, section_type=SectionName.REFERENCES
         )
-        result = self.use_case.execute(citations, references, section_type=SectionName.REFERENCES)
+        result = self.use_case.execute(
+            citations=citations, references=references, section_type=SectionName.REFERENCES
+        )
 
         self.assertEqual(result.total_citations, expected.total_citations)
         self.assertEqual(result.matched_count, expected.matched_count)

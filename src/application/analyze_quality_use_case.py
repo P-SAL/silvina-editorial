@@ -8,4 +8,4 @@ class AnalyzeQualityUseCase:
         self._analyzer = analyzer
 
     def execute(self, document_content: DocumentContentDTO, article_type) -> QualityResultDTO:
-        return self._analyzer.analyze(document_content, article_type)
+        return self._analyzer.analyze(document_content=document_content, article_type=article_type)

@@ -49,7 +49,7 @@ class AnalyzeDocumentUseCase:
         """Run the complete document analysis pipeline and return aggregated results."""
         paragraphs = self._read_document_use_case.execute(path=document_path)
         document_content = self._extract_content_use_case.execute(
-            paragraphs, docx_path=document_path
+            paragraphs=paragraphs, docx_path=document_path
         )
         citation_extraction = self._extract_citations_use_case.execute(docx_path=document_path)
 
@@ -58,18 +58,18 @@ class AnalyzeDocumentUseCase:
             for c in citation_extraction.citations
             if c.citation_type == CitationType.AUTHOR_YEAR
         ]
-        apa_validation = self._validate_apa_use_case.execute(author_year_citations)
+        apa_validation = self._validate_apa_use_case.execute(citations=author_year_citations)
 
-        grammar = self._check_grammar_use_case.execute(paragraphs)
-        classification = self._classify_article_use_case.execute(document_content)
+        grammar = self._check_grammar_use_case.execute(paragraphs=paragraphs)
+        classification = self._classify_article_use_case.execute(document_content=document_content)
         quality = self._analyze_quality_use_case.execute(
-            document_content, classification.article_type
+            document_content=document_content, article_type=classification.article_type
         )
 
         effective_type = classification.effective_structure_type
         has_references = len(citation_extraction.references) > 0
         structure = self._validate_structure_use_case.execute(
-            document_content,
+            document_content=document_content,
             article_type=effective_type,
             has_references=has_references,
         )
@@ -80,8 +80,8 @@ class AnalyzeDocumentUseCase:
             section_name = SectionName.REFERENCES
 
         matched_citations = self._match_citations_use_case.execute(
-            citation_extraction.citations,
-            citation_extraction.references,
+            citations=citation_extraction.citations,
+            references=citation_extraction.references,
             section_type=section_name,
         )
 

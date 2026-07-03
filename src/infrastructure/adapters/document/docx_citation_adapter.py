@@ -27,18 +27,32 @@ class DocxCitationAdapter(CitationExtractionPort):
 
     @generic_error_handler
     def extract_citations(self, docx_path: str) -> list[CitationDTO]:
-        paragraphs = self._document_text_port.read_paragraphs(docx_path)
-        return self._extract_citations(" ".join(paragraphs))
+        paragraphs = self._document_text_port.read_paragraphs(path=docx_path)
+        return self._extract_citations(full_text=" ".join(paragraphs))
 
     def _extract_citations(self, full_text: str) -> list[CitationDTO]:
         citations: list[CitationDTO] = []
         seen: set[str] = set()
         multi_author_names: dict[str, set[str]] = {}
         first_authors_by_year: dict[str, set[str]] = {}
-        self._collect_parenthetical(full_text, citations, seen, first_authors_by_year)
-        self._collect_multi_author(full_text, citations, seen, multi_author_names)
+        self._collect_parenthetical(
+            full_text=full_text,
+            citations=citations,
+            seen=seen,
+            first_authors_by_year=first_authors_by_year,
+        )
+        self._collect_multi_author(
+            full_text=full_text,
+            citations=citations,
+            seen=seen,
+            multi_author_names=multi_author_names,
+        )
         self._collect_single_author(
-            full_text, citations, seen, first_authors_by_year, multi_author_names
+            full_text=full_text,
+            citations=citations,
+            seen=seen,
+            first_authors_by_year=first_authors_by_year,
+            multi_author_names=multi_author_names,
         )
         return citations
 

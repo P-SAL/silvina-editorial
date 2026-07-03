@@ -38,31 +38,37 @@ class DocxEumicAdapter(DocumentFormatInspectionPort):
     def inspect(self, docx_path: str, word_count: int) -> list[EumicViolationDTO]:
         document = Document(docx_path)
         violations: list[EumicViolationDTO] = []
-        violations.extend(self._verify_format(document))
-        violations.extend(self._verify_figures(document))
-        violations.extend(self._verify_tables(document))
-        violations.extend(self._verify_formulas(document))
-        violations.extend(self._verify_abstract_keywords(document, word_count))
+        violations.extend(self._verify_format(document=document))
+        violations.extend(self._verify_figures(document=document))
+        violations.extend(self._verify_tables(document=document))
+        violations.extend(self._verify_formulas(document=document))
+        violations.extend(self._verify_abstract_keywords(document=document, word_count=word_count))
         return violations
 
     def _verify_format(self, document) -> list[EumicViolationDTO]:
         violations: list[EumicViolationDTO] = []
-        violations.extend(self._check_margins(document))
-        violations.extend(self._check_fonts(document))
-        violations.extend(self._check_text_alignment(document))
+        violations.extend(self._check_margins(document=document))
+        violations.extend(self._check_fonts(document=document))
+        violations.extend(self._check_text_alignment(document=document))
         return violations
 
     def _verify_figures(self, document) -> list[EumicViolationDTO]:
-        image_count = self._count_image_relationships(document)
+        image_count = self._count_image_relationships(document=document)
         if image_count == 0:
             return []
-        figure_captions = self._collect_paragraphs_starting_with(document, FIGURE_CAPTION_PREFIXES)
+        figure_captions = self._collect_paragraphs_starting_with(
+            document=document, prefixes=FIGURE_CAPTION_PREFIXES
+        )
         violations: list[EumicViolationDTO] = []
-        violations.extend(self._check_figure_caption_count(image_count, len(figure_captions)))
+        violations.extend(
+            self._check_figure_caption_count(
+                image_count=image_count, caption_count=len(figure_captions)
+            )
+        )
         has_numbering_violations = len(
             figure_captions
         ) > 1 and self._has_sequential_numbering_violations(
-            figure_captions, FIGURE_NUMBERING_PATTERN
+            captions=figure_captions, pattern=FIGURE_NUMBERING_PATTERN
         )
         if has_numbering_violations:
             violations.append(EumicViolationFactory.figures_inconsistent_numbering())
@@ -72,30 +78,40 @@ class DocxEumicAdapter(DocumentFormatInspectionPort):
         tables = document.tables
         if not tables:
             return []
-        table_titles = self._collect_paragraphs_starting_with(document, TABLE_CAPTION_PREFIXES)
+        table_titles = self._collect_paragraphs_starting_with(
+            document=document, prefixes=TABLE_CAPTION_PREFIXES
+        )
         violations: list[EumicViolationDTO] = []
-        violations.extend(self._check_table_title_count(len(tables), len(table_titles)))
+        violations.extend(
+            self._check_table_title_count(table_count=len(tables), title_count=len(table_titles))
+        )
         has_numbering_violations = len(
             table_titles
-        ) > 1 and self._has_sequential_numbering_violations(table_titles, TABLE_NUMBERING_PATTERN)
+        ) > 1 and self._has_sequential_numbering_violations(
+            captions=table_titles, pattern=TABLE_NUMBERING_PATTERN
+        )
         if has_numbering_violations:
             violations.append(EumicViolationFactory.tables_inconsistent_numbering())
         return violations
 
     def _verify_formulas(self, document) -> list[EumicViolationDTO]:
-        formula_paragraphs = self._collect_formula_paragraphs(document)
+        formula_paragraphs = self._collect_formula_paragraphs(document=document)
         if not formula_paragraphs:
             return []
-        return self._check_formula_alignment(formula_paragraphs)
+        return self._check_formula_alignment(formula_paragraphs=formula_paragraphs)
 
     def _verify_abstract_keywords(self, document, word_count: int) -> list[EumicViolationDTO]:
         if word_count < MIN_WORDS_FOR_ABSTRACT_CHECK:
             return []
         violations: list[EumicViolationDTO] = []
-        has_abstract, abstract_word_count = self._find_abstract_word_count(document)
-        violations.extend(self._check_abstract(has_abstract, abstract_word_count))
-        has_keywords, keyword_count = self._find_keyword_count(document)
-        violations.extend(self._check_keywords(has_keywords, keyword_count))
+        has_abstract, abstract_word_count = self._find_abstract_word_count(document=document)
+        violations.extend(
+            self._check_abstract(has_abstract=has_abstract, abstract_word_count=abstract_word_count)
+        )
+        has_keywords, keyword_count = self._find_keyword_count(document=document)
+        violations.extend(
+            self._check_keywords(has_keywords=has_keywords, keyword_count=keyword_count)
+        )
         return violations
 
     def _check_margins(self, document) -> list[EumicViolationDTO]:
@@ -113,7 +129,9 @@ class DocxEumicAdapter(DocumentFormatInspectionPort):
         ]
         return [
             EumicViolationFactory.margin_non_compliant(
-                margin_name, margin_value.cm, REQUIRED_MARGIN_CM
+                margin_name=margin_name,
+                actual_cm=margin_value.cm,
+                required_cm=REQUIRED_MARGIN_CM,
             )
             for margin_name, margin_value in margins
             if abs(margin_value.twips - required_twips) > tolerance_twips
@@ -126,14 +144,18 @@ class DocxEumicAdapter(DocumentFormatInspectionPort):
         violations: list[EumicViolationDTO] = []
         non_standard_fonts = fonts_used - set(AllowedFont)
         if non_standard_fonts:
-            violations.append(EumicViolationFactory.non_standard_fonts(non_standard_fonts))
+            violations.append(
+                EumicViolationFactory.non_standard_fonts(detected_fonts=non_standard_fonts)
+            )
         non_standard_sizes = [
             size
             for size in sizes_used
             if abs(size.pt - REQUIRED_FONT_SIZE_PT) > FONT_SIZE_TOLERANCE_PT
         ]
         if non_standard_sizes:
-            violations.append(EumicViolationFactory.variable_font_sizes(non_standard_sizes))
+            violations.append(
+                EumicViolationFactory.variable_font_sizes(non_standard_sizes=non_standard_sizes)
+            )
         return violations
 
     def _check_text_alignment(self, document) -> list[EumicViolationDTO]:
@@ -149,7 +171,11 @@ class DocxEumicAdapter(DocumentFormatInspectionPort):
             total_paragraphs > 0
             and non_justified / total_paragraphs > MAX_UNJUSTIFIED_PARAGRAPH_RATIO
         ):
-            return [EumicViolationFactory.text_not_justified(non_justified, total_paragraphs)]
+            return [
+                EumicViolationFactory.text_not_justified(
+                    non_justified=non_justified, total=total_paragraphs
+                )
+            ]
         return []
 
     def _count_image_relationships(self, document) -> int:
@@ -174,7 +200,7 @@ class DocxEumicAdapter(DocumentFormatInspectionPort):
     ) -> list[EumicViolationDTO]:
         if caption_count >= image_count:
             return []
-        return [EumicViolationFactory.figures_no_title(image_count)]
+        return [EumicViolationFactory.figures_no_title(image_count=image_count)]
 
     def _has_sequential_numbering_violations(self, captions: list[str], pattern: str) -> bool:
         expected_number = 1
@@ -192,17 +218,19 @@ class DocxEumicAdapter(DocumentFormatInspectionPort):
     ) -> list[EumicViolationDTO]:
         if title_count >= table_count:
             return []
-        return [EumicViolationFactory.tables_no_title(table_count, title_count)]
+        return [
+            EumicViolationFactory.tables_no_title(table_count=table_count, title_count=title_count)
+        ]
 
     def _collect_formula_paragraphs(self, document) -> list:
         return [
             paragraph
             for paragraph in document.paragraphs
-            if self._paragraph_contains_formula(paragraph)
+            if self._paragraph_contains_formula(paragraph=paragraph)
         ]
 
     def _paragraph_contains_formula(self, paragraph) -> bool:
-        return any(self._run_contains_omath(run) for run in paragraph.runs)
+        return any(self._run_contains_omath(run=run) for run in paragraph.runs)
 
     def _run_contains_omath(self, run) -> bool:
         try:
@@ -222,7 +250,7 @@ class DocxEumicAdapter(DocumentFormatInspectionPort):
         )
         if unaligned_count == 0:
             return []
-        return [EumicViolationFactory.formulas_not_centered(unaligned_count, total)]
+        return [EumicViolationFactory.formulas_not_centered(unaligned=unaligned_count, total=total)]
 
     def _find_abstract_word_count(self, document) -> tuple[bool, int]:
         paragraphs = document.paragraphs
@@ -248,7 +276,9 @@ class DocxEumicAdapter(DocumentFormatInspectionPort):
         ):
             return [
                 EumicViolationFactory.abstract_length_out_of_range(
-                    abstract_word_count, ABSTRACT_MIN_WORD_COUNT, ABSTRACT_MAX_WORD_COUNT
+                    word_count=abstract_word_count,
+                    min_words=ABSTRACT_MIN_WORD_COUNT,
+                    max_words=ABSTRACT_MAX_WORD_COUNT,
                 )
             ]
         return []
@@ -269,7 +299,9 @@ class DocxEumicAdapter(DocumentFormatInspectionPort):
         if keyword_count < MIN_KEYWORD_COUNT or keyword_count > MAX_KEYWORD_COUNT:
             return [
                 EumicViolationFactory.incorrect_keyword_count(
-                    keyword_count, MIN_KEYWORD_COUNT, MAX_KEYWORD_COUNT
+                    count=keyword_count,
+                    min_count=MIN_KEYWORD_COUNT,
+                    max_count=MAX_KEYWORD_COUNT,
                 )
             ]
         return []

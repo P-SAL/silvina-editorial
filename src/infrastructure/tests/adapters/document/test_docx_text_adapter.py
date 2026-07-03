@@ -20,7 +20,7 @@ class TestDocxTextAdapter(TestCase):
         self.adapter = DocxTextAdapter()
 
     def test_strips_and_filters_empty_paragraphs(self):
-        paragraphs = self.adapter.read_paragraphs(str(SAMPLE_DOCUMENT))
+        paragraphs = self.adapter.read_paragraphs(path=str(SAMPLE_DOCUMENT))
         self.assertTrue(all(paragraph == paragraph.strip() for paragraph in paragraphs))
         self.assertTrue(all(paragraph != "" for paragraph in paragraphs))
 
@@ -33,7 +33,7 @@ class TestDocxTextAdapter(TestCase):
             document.add_paragraph("Third")
             document.save(str(document_path))
 
-            paragraphs = self.adapter.read_paragraphs(str(document_path))
+            paragraphs = self.adapter.read_paragraphs(path=str(document_path))
 
             self.assertEqual(paragraphs, ["First", "Second", "Third"])
 
@@ -45,13 +45,13 @@ class TestDocxTextAdapter(TestCase):
             document.add_paragraph("")
             document.save(str(document_path))
 
-            paragraphs = self.adapter.read_paragraphs(str(document_path))
+            paragraphs = self.adapter.read_paragraphs(path=str(document_path))
 
             self.assertEqual(paragraphs, [])
 
     def test_missing_file_raises_document_not_found(self):
         with self.assertRaises(DocumentNotFound):
-            self.adapter.read_paragraphs("nonexistent-file.docx")
+            self.adapter.read_paragraphs(path="nonexistent-file.docx")
 
     def test_corrupt_file_raises_document_unreadable(self):
         with TemporaryDirectory() as temporary_directory:
@@ -59,7 +59,7 @@ class TestDocxTextAdapter(TestCase):
             document_path.write_bytes(b"not a valid docx package")
 
             with self.assertRaises(DocumentUnreadable):
-                self.adapter.read_paragraphs(str(document_path))
+                self.adapter.read_paragraphs(path=str(document_path))
 
     def test_valid_file_raises_no_exception(self):
-        self.adapter.read_paragraphs(str(SAMPLE_DOCUMENT))
+        self.adapter.read_paragraphs(path=str(SAMPLE_DOCUMENT))

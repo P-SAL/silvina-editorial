@@ -83,12 +83,12 @@ class TestAnalyzeDocumentUseCase(TestCase):
 
     def test_execute_returns_report_input_dto(self):
         use_case, _ = self._make_use_case()
-        result = use_case.execute("test.docx")
+        result = use_case.execute(document_path="test.docx")
         self.assertIsInstance(result, ReportInputDTO)
 
     def test_execute_calls_all_sub_use_cases_once(self):
         use_case, mocks = self._make_use_case()
-        use_case.execute("test.docx")
+        use_case.execute(document_path="test.docx")
 
         mocks["read_document_use_case"].execute.assert_called_once_with(path="test.docx")
         mocks["extract_content_use_case"].execute.assert_called_once()
@@ -114,10 +114,10 @@ class TestAnalyzeDocumentUseCase(TestCase):
         )
 
         use_case, mocks = self._make_use_case(extract_citations_use_case=extract_citations)
-        use_case.execute("test.docx")
+        use_case.execute(document_path="test.docx")
 
         validate_apa_call_args = mocks["validate_apa_use_case"].execute.call_args
-        sent_citations = validate_apa_call_args[0][0]
+        sent_citations = validate_apa_call_args.kwargs["citations"]
         self.assertEqual(len(sent_citations), 1)
         self.assertEqual(sent_citations[0][0], "(Smith, 2020)")
 
@@ -136,9 +136,9 @@ class TestAnalyzeDocumentUseCase(TestCase):
             read_document_use_case=read_doc,
             extract_citations_use_case=extract_citations,
         )
-        use_case.execute("test.docx")
+        use_case.execute(document_path="test.docx")
 
-        sent_citations = mocks["validate_apa_use_case"].execute.call_args[0][0]
+        sent_citations = mocks["validate_apa_use_case"].execute.call_args.kwargs["citations"]
         self.assertEqual(sent_citations[0], ("(Jones, 2019)", 2, "Para 2"))
 
     def test_structure_validated_with_effective_structure_type(self):
@@ -151,12 +151,10 @@ class TestAnalyzeDocumentUseCase(TestCase):
         classify_article.execute.return_value = classification
 
         use_case, mocks = self._make_use_case(classify_article_use_case=classify_article)
-        use_case.execute("test.docx")
+        use_case.execute(document_path="test.docx")
 
         validate_structure_call = mocks["validate_structure_use_case"].execute.call_args
-        passed_type = (
-            validate_structure_call[1].get("article_type") or validate_structure_call[0][1]
-        )
+        passed_type = validate_structure_call.kwargs["article_type"]
         self.assertEqual(passed_type, ArticleType.DIVULGACION)
 
     def test_eumic_violations_included_in_report_input_dto(self):
@@ -165,7 +163,7 @@ class TestAnalyzeDocumentUseCase(TestCase):
         verify_eumic.execute.return_value = [violation]
 
         use_case, _ = self._make_use_case(verify_eumic_use_case=verify_eumic)
-        result = use_case.execute("test.docx")
+        result = use_case.execute(document_path="test.docx")
 
         self.assertEqual(len(result.eumic_violations), 1)
         self.assertIs(result.eumic_violations[0], violation)
@@ -176,14 +174,14 @@ class TestAnalyzeDocumentUseCase(TestCase):
         verify_eumic.execute.return_value = [violation]
 
         use_case, mocks = self._make_use_case(verify_eumic_use_case=verify_eumic)
-        result = use_case.execute("test.docx")
+        result = use_case.execute(document_path="test.docx")
 
         self.assertIsInstance(result, ReportInputDTO)
         mocks["recommendation_builder"].build.assert_called_once()
 
     def test_report_contains_recommendations_from_builder(self):
         use_case, _ = self._make_use_case()
-        result = use_case.execute("test.docx")
+        result = use_case.execute(document_path="test.docx")
         self.assertEqual(result.recommendations, [])
 
     def test_has_references_is_true_when_references_present(self):
@@ -192,10 +190,10 @@ class TestAnalyzeDocumentUseCase(TestCase):
         extract_citations.execute.return_value = _make_extraction_result(references=references)
 
         use_case, mocks = self._make_use_case(extract_citations_use_case=extract_citations)
-        use_case.execute("test.docx")
+        use_case.execute(document_path="test.docx")
 
         validate_structure_call = mocks["validate_structure_use_case"].execute.call_args
-        has_ref = validate_structure_call[1].get("has_references") or validate_structure_call[0][2]
+        has_ref = validate_structure_call.kwargs["has_references"]
         self.assertTrue(has_ref)
 
     def test_has_references_is_false_when_no_references(self):
@@ -203,15 +201,10 @@ class TestAnalyzeDocumentUseCase(TestCase):
         extract_citations.execute.return_value = _make_extraction_result(references=[])
 
         use_case, mocks = self._make_use_case(extract_citations_use_case=extract_citations)
-        use_case.execute("test.docx")
+        use_case.execute(document_path="test.docx")
 
         validate_structure_call = mocks["validate_structure_use_case"].execute.call_args
-        kwargs = validate_structure_call[1]
-        has_ref = (
-            kwargs["has_references"]
-            if "has_references" in kwargs
-            else validate_structure_call[0][2]
-        )
+        has_ref = validate_structure_call.kwargs["has_references"]
         self.assertFalse(has_ref)
 
     def test_section_type_defaults_to_references_when_invalid(self):
@@ -221,10 +214,10 @@ class TestAnalyzeDocumentUseCase(TestCase):
         )
 
         use_case, mocks = self._make_use_case(extract_citations_use_case=extract_citations)
-        use_case.execute("test.docx")
+        use_case.execute(document_path="test.docx")
 
         match_call = mocks["match_citations_use_case"].execute.call_args
         from src.domain.enums.section_name import SectionName
 
-        section_arg = match_call[1].get("section_type") or match_call[0][2]
+        section_arg = match_call.kwargs["section_type"]
         self.assertEqual(section_arg, SectionName.REFERENCES)

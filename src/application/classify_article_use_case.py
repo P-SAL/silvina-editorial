@@ -8,4 +8,4 @@ class ClassifyArticleUseCase:
         self._classifier = classifier
 
     def execute(self, document_content: DocumentContentDTO) -> ClassificationResultDTO:
-        return self._classifier.classify(document_content)
+        return self._classifier.classify(document_content=document_content)

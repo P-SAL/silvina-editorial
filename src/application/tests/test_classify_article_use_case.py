@@ -44,8 +44,8 @@ class TestClassifyArticleUseCase(TestCase):
         )
 
     def test_execute_returns_domain_service_result_unchanged(self):
-        expected = self.classifier.classify(self.document_content)
-        result = self.use_case.execute(self.document_content)
+        expected = self.classifier.classify(document_content=self.document_content)
+        result = self.use_case.execute(document_content=self.document_content)
 
         self.assertEqual(result.article_type, expected.article_type)
         self.assertEqual(result.article_size, expected.article_size)

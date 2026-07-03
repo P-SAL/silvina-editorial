@@ -55,9 +55,11 @@ class ArticleClassifier:
         if not document_content.paragraphs:
             raise ClassificationFailed()
 
-        article_size = self._article_size_classifier.classify(document_content.char_count)
+        article_size = self._article_size_classifier.classify(
+            char_count=document_content.char_count
+        )
 
-        imryd_signals = self._signal_detector.detect(document_content)
+        imryd_signals = self._signal_detector.detect(document_content=document_content)
         if imryd_signals["imryd_complete"] and article_size != ArticleSize.FUERA_RANGO:
             return ClassificationResultDTO.create(
                 article_type=ArticleType.CIENTIFICO,
@@ -66,32 +68,34 @@ class ArticleClassifier:
                 reasoning="Estructura IMRyD completa detectada (override determinístico).",
             )
 
-        text_sample = self._text_sampler.build_sample(document_content)
+        text_sample = self._text_sampler.build_sample(document_content=document_content)
         has_research_intent, has_evidence_based_contribution, has_theoretical_justification = (
-            self._detect_research_intent_signals(text_sample, document_content.title)
+            self._detect_research_intent_signals(
+                text_sample=text_sample, title=document_content.title
+            )
         )
         signals = ClassificationSignalsDTO(
             has_sufficient_reference_count=self._reference_signal_detector.has_sufficient_count(
-                document_content
+                document_content=document_content
             ),
             has_recent_references=self._reference_signal_detector.has_recent_majority(
-                document_content
+                document_content=document_content
             ),
             has_methodological_vocabulary=self._methodological_vocabulary_detector.detect(
-                document_content
+                document_content=document_content
             ),
             has_research_intent=has_research_intent,
             has_evidence_based_contribution=has_evidence_based_contribution,
             has_theoretical_justification=has_theoretical_justification,
         )
 
-        return self._apply_rule(signals, article_size)
+        return self._apply_rule(signals=signals, article_size=article_size)
 
     def _apply_rule(
         self, signals: ClassificationSignalsDTO, article_size: ArticleSize
     ) -> ClassificationResultDTO:
-        signal_summary = self._describe_signals(signals)
-        matched_rule = self._rule_table.evaluate(signals)
+        signal_summary = self._describe_signals(signals=signals)
+        matched_rule = self._rule_table.evaluate(signals=signals)
         return ClassificationResultDTO.create(
             article_type=matched_rule.article_type,
             article_size=article_size,
@@ -123,6 +127,7 @@ class ArticleClassifier:
     ) -> tuple[bool, bool, bool]:
         prompt = self._signal_prompt_template.format(title=title, text_sample=text_sample)
         response = self._llm_generator.generate(
-            prompt, options={"temperature": self._temperature, "num_predict": self._num_predict}
+            prompt=prompt,
+            options={"temperature": self._temperature, "num_predict": self._num_predict},
         )
-        return self._response_parser.parse(response)
+        return self._response_parser.parse(response_text=response)

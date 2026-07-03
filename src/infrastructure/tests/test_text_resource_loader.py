@@ -12,6 +12,6 @@ class TestTextResourceLoader(TestCase):
             encoding="utf-8"
         )
 
-        result = read_text_resource(PROMPTS_DIR, "clarity_coherence_prompt.txt")
+        result = read_text_resource(directory=PROMPTS_DIR, filename="clarity_coherence_prompt.txt")
 
         self.assertEqual(result, expected_content)

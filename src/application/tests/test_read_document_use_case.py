@@ -12,7 +12,7 @@ class TestReadDocumentUseCase(TestCase):
         port = FakeDocumentTextPort(paragraphs=["A", "B"])
         use_case = ReadDocumentUseCase(port=port)
 
-        result = use_case.execute("some/path.docx")
+        result = use_case.execute(path="some/path.docx")
 
         self.assertEqual(result, ["A", "B"])
 
@@ -21,7 +21,7 @@ class TestReadDocumentUseCase(TestCase):
         use_case = ReadDocumentUseCase(port=port)
 
         with self.assertRaises(DocumentNotFound):
-            use_case.execute("missing.docx")
+            use_case.execute(path="missing.docx")
 
     def test_module_does_not_import_document_content_dto(self):
         module_source = getsource(modules[ReadDocumentUseCase.__module__])

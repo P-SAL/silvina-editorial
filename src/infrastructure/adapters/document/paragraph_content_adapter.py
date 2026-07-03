@@ -24,7 +24,7 @@ class ParagraphContentAdapter(ContentExtractionPort):
         clean = [s for p in paragraphs if (s := str(p).strip())]
         if not clean:
             raise DocumentEmpty()
-        title = self._extract_title(clean)
+        title = self._extract_title(paragraphs=clean)
         title_lines = (2 if title and " — " in title else 1) + bool(
             INSTITUTION_PATTERN.match(clean[0])
         )
@@ -33,16 +33,18 @@ class ParagraphContentAdapter(ContentExtractionPort):
             char_count=sum(len(p) for p in clean),
             paragraph_count=len(clean),
             title=title,
-            authors=self._extract_authors(clean, title_lines),
-            abstract=self._extract_abstract(clean),
-            keywords=self._extract_keywords(clean),
+            authors=self._extract_authors(paragraphs=clean, title_lines=title_lines),
+            abstract=self._extract_abstract(paragraphs=clean),
+            keywords=self._extract_keywords(paragraphs=clean),
             references=[],
             paragraphs=clean,
-            sections=self._extract_sections(clean),
+            sections=self._extract_sections(paragraphs=clean),
         )
 
     def _extract_title(self, paragraphs: list[str]) -> str | None:
-        return self._try_explicit_title_marker(paragraphs) or self._try_inferred_title(paragraphs)
+        return self._try_explicit_title_marker(paragraphs=paragraphs) or self._try_inferred_title(
+            paragraphs=paragraphs
+        )
 
     def _try_explicit_title_marker(self, paragraphs: list[str]) -> str | None:
         for para in paragraphs[:5]:
@@ -51,13 +53,13 @@ class ParagraphContentAdapter(ContentExtractionPort):
         return None
 
     def _try_inferred_title(self, paragraphs: list[str]) -> str | None:
-        candidates = self._collect_title_candidates(paragraphs)
+        candidates = self._collect_title_candidates(paragraphs=paragraphs)
         if not candidates:
             return None
         if len(candidates) == 1:
             return candidates[0]
         first, second = candidates[0], candidates[1]
-        return first if self._looks_like_author(second) else f"{first.rstrip(':')} — {second}"
+        return first if self._looks_like_author(text=second) else f"{first.rstrip(':')} — {second}"
 
     def _collect_title_candidates(self, paragraphs: list[str]) -> list[str]:
         candidates: list[str] = []
@@ -84,12 +86,12 @@ class ParagraphContentAdapter(ContentExtractionPort):
 
     def _extract_authors(self, paragraphs: list[str], title_lines: int = 1) -> str | None:
         for i, para in enumerate(paragraphs[title_lines:15], start=title_lines):
-            if self._is_blacklisted(para):
+            if self._is_blacklisted(text=para):
                 continue
             if result := (
-                self._try_explicit_author_label(para, i, paragraphs)
-                or self._try_parenthetical_author(para)
-                or self._try_name_pattern(para, i, paragraphs)
+                self._try_explicit_author_label(para=para, i=i, paragraphs=paragraphs)
+                or self._try_parenthetical_author(para=para)
+                or self._try_name_pattern(para=para, i=i, paragraphs=paragraphs)
             ):
                 return result
         return None
@@ -102,14 +104,14 @@ class ParagraphContentAdapter(ContentExtractionPort):
         if not m:
             return None
         inline = m.group(1).strip()
-        if inline and not self._is_blacklisted(inline):
+        if inline and not self._is_blacklisted(text=inline):
             return inline
         lines: list[str] = []
         for next_para in paragraphs[i + 1 : i + 6]:
             stripped = next_para.strip()
             if not re.match(r"^[A-ZÁÉÍÓÚÑ]", stripped) or len(stripped.split()) > 10:
                 break
-            if self._is_blacklisted(stripped):
+            if self._is_blacklisted(text=stripped):
                 break
             lines.append(stripped)
         return ", ".join(lines) if lines else None
@@ -130,12 +132,12 @@ class ParagraphContentAdapter(ContentExtractionPort):
             return None
         if para.endswith(":") or not re.search(r"^[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+", para):
             return None
-        if self._is_blacklisted(para):
+        if self._is_blacklisted(text=para):
             return None
         author_text = para.strip()
         for next_para in paragraphs[i + 1 : i + 4]:
             stripped = next_para.strip()
-            if not self._is_continuation_author(stripped):
+            if not self._is_continuation_author(text=stripped):
                 break
             author_text = author_text.rstrip(",;") + "; " + stripped.rstrip(",;")
         return author_text
@@ -148,7 +150,7 @@ class ParagraphContentAdapter(ContentExtractionPort):
             and not text.isupper()
             and not text.endswith(":")
             and ";" in text
-            and not self._is_blacklisted(text)
+            and not self._is_blacklisted(text=text)
         )
 
     def _extract_abstract(self, paragraphs: list[str]) -> str | None:
