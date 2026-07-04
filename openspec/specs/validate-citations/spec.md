@@ -158,32 +158,26 @@ hardcoded `"Referencias"` default.
 - WHEN `match_citations_to_references` is called
 - THEN the call succeeds with no string-literal comparison involved
 
-### Requirement: MatchCitationsUseCase Pass-Through
+### Requirement: CitationMatcher Is Consumed Directly by the Orchestrator
 
-`MatchCitationsUseCase.execute(citations: list[CitationDTO], references:
-list[ReferenceDTO], section_type: SectionName) -> CitationAnalysisResultDTO` MUST
-delegate to `CitationMatcher.match_citations_to_references` without adding business
-logic of its own.
+> **Superseded (2026-07-04, `refactor_analyze_document_wiring`)**: `MatchCitationsUseCase`
+> and `MatchCitationsUseCaseWiring` were eliminated as redundant pass-through layers.
+> `AnalyzeDocumentUseCase` now depends on `CitationMatcher` directly and calls
+> `.match_citations_to_references(citations=..., references=..., section_type=...)`
+> from its `execute()` method — see `openspec/specs/analyze-document/spec.md`.
+> `AnalyzeDocumentUseCaseWiring._get_citation_matcher()` constructs the domain service
+> directly (no intermediate sub-wiring).
 
-#### Scenario: Use case returns the domain service's result unchanged
+`AnalyzeDocumentUseCase` MUST call `self._citation_matcher.match_citations_to_references(
+citations=citations, references=references, section_type=section_name)` without adding
+business logic of its own.
+
+#### Scenario: Orchestrator uses the domain service's result unchanged
 
 - GIVEN a citations list, a references list, and a section type
-- WHEN `MatchCitationsUseCase.execute` is called
+- WHEN `AnalyzeDocumentUseCase.execute()` calls `self._citation_matcher.match_citations_to_references(...)`
 - THEN the returned `CitationAnalysisResultDTO` matches what
   `CitationMatcher.match_citations_to_references` would produce for the same inputs
-
-### Requirement: MatchCitationsUseCaseWiring Assembly
-
-`MatchCitationsUseCaseWiring` MUST expose `create_use_case() ->
-MatchCitationsUseCase` as its single public method, assembling dependencies via
-private `_get_*` accessor methods, following the Slice 3 instance-based wiring
-pattern. The wiring MUST NOT contain business logic.
-
-#### Scenario: Wiring produces a usable use case instance
-
-- GIVEN a `MatchCitationsUseCaseWiring` instance
-- WHEN `create_use_case()` is called
-- THEN it returns a `MatchCitationsUseCase` ready to call `.execute(...)`
 
 ## Out of Scope
 

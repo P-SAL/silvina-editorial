@@ -48,9 +48,15 @@ Both MUST inherit from `BaseDTO` (or `object` if project convention allows). Fie
 - WHEN `issubclass` checks execute
 - THEN `GrammarError` is a `BaseSrcError` AND `GrammarCheckUnavailable` is a `SrcBaseWarning` AND `GrammarCheckUnavailable.MESSAGE` equals `"The grammar check service is unavailable."`
 
-### Requirement: CheckGrammarUseCase Scoring
+### Requirement: Grammar Check Scoring
 
-`CheckGrammarUseCase.__init__` MUST accept `grammar_port: GrammarCheckPort`. `execute(paragraphs: list[str]) -> GrammarCheckResultDTO` MUST delegate error detection to the port and compute score/feedback by error count:
+> **Superseded (2026-07-04, `refactor_analyze_document_wiring`)**: `CheckGrammarUseCase`
+> and `CheckGrammarUseCaseWiring` were eliminated as redundant pass-through layers. This
+> scoring logic now lives in `AnalyzeDocumentUseCase._check_grammar()` — see
+> `openspec/specs/analyze-document/spec.md`. `AnalyzeDocumentUseCaseWiring._get_grammar_check_port()`
+> returns a `LanguageToolAdapter` directly (no intermediate sub-wiring).
+
+`AnalyzeDocumentUseCase._check_grammar(self, paragraphs: list[str]) -> GrammarCheckResultDTO` MUST delegate error detection to `self._grammar_check_port` and compute score/feedback by error count:
 
 | Error count | Score | Feedback |
 |-------------|-------|----------|
@@ -61,26 +67,26 @@ Both MUST inherit from `BaseDTO` (or `object` if project convention allows). Fie
 
 #### Scenario: Zero errors — perfect score
 
-- GIVEN `FakeGrammarCheckPort` returning `[]`
-- WHEN `execute(paragraphs)` is called
+- GIVEN `AnalyzeDocumentUseCase` constructed with `FakeGrammarCheckPort` returning `[]`
+- WHEN `_check_grammar(paragraphs)` is called
 - THEN result is `GrammarCheckResultDTO(score=10.0, feedback="Sin errores gramaticales", errors=[])`
 
 #### Scenario: Five errors — boundary 8.5
 
-- GIVEN `FakeGrammarCheckPort` returning 5 `GrammarErrorDTO` instances
-- WHEN `execute(paragraphs)` is called
+- GIVEN `AnalyzeDocumentUseCase` constructed with `FakeGrammarCheckPort` returning 5 `GrammarErrorDTO` instances
+- WHEN `_check_grammar(paragraphs)` is called
 - THEN `result.score == 8.5` AND `result.feedback == "Pocos errores gramaticales"`
 
 #### Scenario: Fifteen errors — boundary 7.0
 
-- GIVEN `FakeGrammarCheckPort` returning 15 `GrammarErrorDTO` instances
-- WHEN `execute(paragraphs)` is called
+- GIVEN `AnalyzeDocumentUseCase` constructed with `FakeGrammarCheckPort` returning 15 `GrammarErrorDTO` instances
+- WHEN `_check_grammar(paragraphs)` is called
 - THEN `result.score == 7.0` AND `result.feedback == "Errores gramaticales moderados"`
 
 #### Scenario: Sixteen errors — threshold 5.0
 
-- GIVEN `FakeGrammarCheckPort` returning 16 `GrammarErrorDTO` instances
-- WHEN `execute(paragraphs)` is called
+- GIVEN `AnalyzeDocumentUseCase` constructed with `FakeGrammarCheckPort` returning 16 `GrammarErrorDTO` instances
+- WHEN `_check_grammar(paragraphs)` is called
 - THEN `result.score == 5.0` AND `result.feedback == "Muchos errores gramaticales"`
 
 ### Requirement: LanguageToolAdapter
@@ -117,15 +123,15 @@ Both MUST inherit from `BaseDTO` (or `object` if project convention allows). Fie
 - WHEN `check(paragraphs)` is called
 - THEN `GrammarCheckUnavailable` is raised (via `@generic_error_handler`)
 
-### Requirement: CheckGrammarUseCaseWiring
+### Requirement: AnalyzeDocumentUseCaseWiring Wires the Grammar Port Directly
 
-`CheckGrammarUseCaseWiring` MUST expose `create_use_case() -> CheckGrammarUseCase` and a private `_get_grammar_check_port() -> GrammarCheckPort` returning a `LanguageToolAdapter`. No business logic in the wiring class.
+`AnalyzeDocumentUseCaseWiring` MUST expose a private `_get_grammar_check_port() -> GrammarCheckPort` returning a `LanguageToolAdapter`. No business logic in the wiring class.
 
 #### Scenario: Wiring produces correctly typed instance
 
-- GIVEN `CheckGrammarUseCaseWiring()` is instantiated
+- GIVEN `AnalyzeDocumentUseCaseWiring()` is instantiated
 - WHEN `create_use_case()` is called
-- THEN `isinstance(result, CheckGrammarUseCase)` is `True` AND `result._grammar_port` is a `LanguageToolAdapter`
+- THEN the resulting `AnalyzeDocumentUseCase`'s `_grammar_check_port` is a `LanguageToolAdapter`
 
 ## File Inventory
 
@@ -143,12 +149,10 @@ Both MUST inherit from `BaseDTO` (or `object` if project convention allows). Fie
 | `src/domain/tests/dtos/test_grammar_check_result_dto.py` | DTO tests |
 | `src/domain/tests/exceptions/test_grammar_error.py` | exception tests |
 | `src/domain/tests/exceptions/test_grammar_check_unavailable.py` | exception tests |
-| `src/application/check_grammar_use_case.py` | `CheckGrammarUseCase` |
-| `src/application/tests/test_check_grammar_use_case.py` | use case unit tests |
 | `src/infrastructure/adapters/grammar/__init__.py` | package |
 | `src/infrastructure/adapters/grammar/language_tool_adapter.py` | `LanguageToolAdapter` |
-| `src/infrastructure/wirings/check_grammar_use_case_wiring.py` | `CheckGrammarUseCaseWiring` |
-| `src/infrastructure/tests/test_check_grammar_use_case_wiring.py` | wiring integration test |
+| `src/application/analyze_document_use_case.py` | `AnalyzeDocumentUseCase._check_grammar()` (orchestration) |
+| `src/infrastructure/wirings/analyze_document_use_case_wiring.py` | `AnalyzeDocumentUseCaseWiring._get_grammar_check_port()` (wiring) |
 
 ## Invariants
 

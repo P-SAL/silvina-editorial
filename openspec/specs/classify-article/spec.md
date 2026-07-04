@@ -465,40 +465,43 @@ ported verbatim: `36000 <= char_count <= 40000` → `LARGO`;
 - THEN it defines both the `ArticleSize` enum and the
   `classify_article_size()` function in the same file
 
-### Requirement: ClassifyArticleUseCase Thin Pass-Through
+### Requirement: ArticleClassifier Is Consumed Directly by the Orchestrator
 
-`ClassifyArticleUseCase` (`src/application/classify_article_use_case.py`)
-MUST expose `execute(document_content: DocumentContentDTO) ->
-ClassificationResultDTO`, delegating to the `ArticleClassifier` domain
-service without adding business logic, mirroring `AnalyzeQualityUseCase`'s
-shape from Slice 5.
+> **Superseded (2026-07-04, `refactor_analyze_document_wiring`)**: `ClassifyArticleUseCase`
+> and `ClassifyArticleUseCaseWiring` were eliminated as redundant pass-through layers.
+> `AnalyzeDocumentUseCase` now depends on `ArticleClassifier` directly and calls
+> `.classify(document_content=...)` from its `execute()` method — see
+> `openspec/specs/analyze-document/spec.md`. `AnalyzeDocumentUseCaseWiring._get_article_classifier()`
+> constructs the domain service directly (no intermediate sub-wiring), and shares one
+> `_get_llm_generator()` instance with `QualityAnalyzer` (see analyze-quality spec).
 
-#### Scenario: Use case returns the domain service's result unchanged
+`AnalyzeDocumentUseCase` MUST depend on `ArticleClassifier` directly and call
+`classify(document_content=document_content)` without adding business logic.
+
+#### Scenario: Orchestrator uses the domain service's result unchanged
 
 - GIVEN a `DocumentContentDTO`
-- WHEN `ClassifyArticleUseCase.execute(document_content)` is called
+- WHEN `AnalyzeDocumentUseCase.execute()` calls `self._article_classifier.classify(document_content=document_content)`
 - THEN the returned `ClassificationResultDTO` matches what the domain
   service's classification method would produce for the same input
 
-### Requirement: ClassifyArticleUseCaseWiring Owns Tunable Defaults
+### Requirement: AnalyzeDocumentUseCaseWiring Owns Tunable Defaults
 
-`ClassifyArticleUseCaseWiring` (`src/infrastructure/wirings/classify_article_use_case_wiring.py`)
-MUST expose a `create_use_case() -> ClassifyArticleUseCase` method following
-the instance-based `_get_*` accessor pattern established in prior slices. It
-MUST reuse the existing `OllamaGeneratorAdapter` (no new adapter introduced)
-and MUST be the sole place where `ARTICLE_CLASSIFIER_TEMPERATURE` and
+`AnalyzeDocumentUseCaseWiring._get_article_classifier()` MUST construct `ArticleClassifier`
+directly. It MUST reuse the shared `OllamaGeneratorAdapter` instance from `_get_llm_generator()`
+(no new adapter introduced) and MUST be the sole place where `ARTICLE_CLASSIFIER_TEMPERATURE` and
 `ARTICLE_CLASSIFIER_NUM_PREDICT` are read from the environment (via
 `python-dotenv`) and supplied as `temperature`/`num_predict` to
 `ArticleClassifier`'s constructor — neither the domain service nor the
 adapter MUST contain a default value for either parameter.
 
-#### Scenario: Wiring produces a usable use case instance
+#### Scenario: Wiring produces a usable ArticleClassifier instance
 
-- GIVEN a `ClassifyArticleUseCaseWiring` instance with the required env vars
+- GIVEN an `AnalyzeDocumentUseCaseWiring` instance with the required env vars
   set
 - WHEN `create_use_case()` is called
-- THEN it returns a `ClassifyArticleUseCase` ready to call `.execute(...)`,
-  backed by a real `OllamaGeneratorAdapter` and an `ArticleClassifier`
+- THEN the resulting `AnalyzeDocumentUseCase._article_classifier` is a real
+  `ArticleClassifier` backed by a real `OllamaGeneratorAdapter` and
   constructed with the env-sourced `temperature`/`num_predict` values
 
 #### Scenario: Domain service constructor has no temperature/num_predict defaults

@@ -88,67 +88,46 @@ existing file. Neither failure MUST propagate as a bare built-in exception
 - WHEN `read_paragraphs(path)` is called
 - THEN no exception is raised and a `list[str]` is returned
 
-### Requirement: ReadDocumentUseCase Thin Pass-Through
+### Requirement: DocumentTextPort Is Consumed Directly by the Orchestrator
 
-`ReadDocumentUseCase` (`src/application/read_document_use_case.py`) MUST
-expose `execute(path: str) -> list[str]`, depending only on
-`DocumentTextPort` and delegating to it without constructing
-`DocumentContentDTO` or adding business logic. No domain service is
-introduced for this slice.
+> **Superseded (2026-07-04, `refactor_analyze_document_wiring`)**: `ReadDocumentUseCase`
+> and `ReadDocumentUseCaseWiring` were eliminated as redundant pass-through layers.
+> `AnalyzeDocumentUseCase` now depends on `DocumentTextPort` directly and calls
+> `read_paragraphs(path=document_path)` from its `execute()` method — see
+> `openspec/specs/analyze-document/spec.md`, "Requirement: AnalyzeDocumentUseCase
+> Orchestrator". `AnalyzeDocumentUseCaseWiring._get_document_text_port()` constructs
+> the adapter directly (no intermediate sub-wiring).
 
-#### Scenario: Use case returns the port's result unchanged
+`AnalyzeDocumentUseCase` MUST depend only on `DocumentTextPort` for reading paragraphs,
+never constructing `DocumentContentDTO` from this step or adding business logic beyond
+calling `read_paragraphs(path)` and using its result unchanged.
+
+#### Scenario: Orchestrator uses the port's result unchanged
 
 - GIVEN a `DocumentTextPort` test double returning `["A", "B"]` for a given path
-- WHEN `ReadDocumentUseCase.execute(path)` is called with that path
-- THEN the returned value is `["A", "B"]`
+- WHEN `AnalyzeDocumentUseCase.execute(path)` reads paragraphs via that port
+- THEN the paragraphs used downstream are exactly `["A", "B"]`
 
-#### Scenario: Use case propagates port exceptions unchanged
+#### Scenario: Port exceptions propagate unmodified through the orchestrator
 
 - GIVEN a `DocumentTextPort` test double that raises `DocumentNotFound` for a
   given path
-- WHEN `ReadDocumentUseCase.execute(path)` is called with that path
-- THEN `DocumentNotFound` propagates out of `execute()` unmodified
-
-#### Scenario: Use case does not construct DocumentContentDTO
-
-- GIVEN the `ReadDocumentUseCase` source
-- WHEN its imports and return type are inspected
-- THEN it does not import or construct `DocumentContentDTO`
-
-### Requirement: Wiring Follows the Instance-Based Factory Pattern
-
-`ReadDocumentUseCaseWiring`
-(`src/infrastructure/wirings/read_document_use_case_wiring.py`) MUST expose an
-instance method `create_use_case() -> ReadDocumentUseCase`, constructing its
-`DocumentTextPort` dependency via a private `_get_*()` method, matching the
-pattern established by `validate_structure_wiring.py` and
-`classify_article_use_case_wiring.py`.
-
-#### Scenario: Wiring produces a usable use case instance
-
-- GIVEN a `ReadDocumentUseCaseWiring` instance
-- WHEN `create_use_case()` is called
-- THEN it returns a `ReadDocumentUseCase` backed by a real adapter
-  implementing `DocumentTextPort`, ready to call `.execute(path)`
-
-#### Scenario: Wiring has no direct python-docx usage outside its adapter accessor
-
-- GIVEN the `ReadDocumentUseCaseWiring` source
-- WHEN its method bodies are inspected
-- THEN `docx`-specific logic appears only inside the private `_get_*()`
-  method that constructs the adapter, not inline in `create_use_case()`
+- WHEN `AnalyzeDocumentUseCase.execute(path)` is called with that path
+- THEN `DocumentNotFound` propagates out of `execute()` unmodified (via the
+  orchestrator's `@generic_error_handler`)
 
 ### Requirement: Behavioral Parity with Legacy WordReader
 
-For any sample `.docx` document readable by both implementations,
-`ReadDocumentUseCase.execute(path)` MUST return a list equal to legacy
-`WordReader.read_word_document(path)`'s return value.
+For any sample `.docx` document readable by both implementations, the
+`DocumentTextPort` adapter's `read_paragraphs(path)` MUST return a list equal to
+legacy `WordReader.read_word_document(path)`'s return value.
 
 #### Scenario: Parity smoke test passes against a real sample document
 
 - GIVEN a real sample `.docx` file used elsewhere in the test suite
 - WHEN both legacy `WordReader.read_word_document(path)` and
-  `ReadDocumentUseCase.execute(path)` are called with that file
+  `AnalyzeDocumentUseCaseWiring()._get_document_text_port().read_paragraphs(path=path)`
+  are called with that file
 - THEN the two returned lists are equal element-for-element
 
 ## Out of Scope

@@ -119,40 +119,41 @@ When no accurate counts are available, `ParagraphContentAdapter` MUST compute `w
 
 ---
 
-### Requirement: ExtractContentUseCase Orchestration
+### Requirement: Content Extraction and Count Refinement Orchestration
 
-`ExtractContentUseCase.execute(paragraphs: list[str], path: str | None = None) -> DocumentContentDTO` MUST call the extraction port first. If `path` is provided, it MUST call the count port and merge the accurate counts when the port returns a non-`None` result. If the count port returns `None`, the use case MUST keep the text-based counts from the extraction port. The final `DocumentContentDTO` MUST be constructed in a single frozen constructor call.
+> **Superseded (2026-07-04, `refactor_analyze_document_wiring`)**: `ExtractContentUseCase`
+> and `ExtractContentUseCaseWiring` were eliminated as redundant pass-through layers.
+> This orchestration now lives in `AnalyzeDocumentUseCase._extract_content()` — see
+> `openspec/specs/analyze-document/spec.md`. `AnalyzeDocumentUseCaseWiring` builds
+> `ContentExtractionPort` and `CharacterCountPort` directly via `_get_content_extraction_port()`
+> and `_get_character_count_port()` (no intermediate sub-wiring).
 
-#### Scenario: Execute without path returns text-based counts
+`AnalyzeDocumentUseCase._extract_content(paragraphs, docx_path)` MUST call the extraction
+port first. It MUST call the count port and merge the accurate counts when the port returns
+a non-`None` result and does not raise `CharacterCountUnavailable`. If the count port raises
+`CharacterCountUnavailable` or returns `None`, the base (text-based) `DocumentContentDTO`
+from the extraction port MUST be kept unchanged.
 
-- GIVEN a valid paragraph list and no `path`
-- WHEN `execute(paragraphs)` is called
-- THEN a `DocumentContentDTO` with text-based `word_count`, `char_count`, `paragraph_count` MUST be returned
-
-#### Scenario: Execute with path returns accurate counts
+#### Scenario: Accurate counts merged when the count port succeeds
 
 - GIVEN a valid paragraph list, a `.docx` path, and `WIN32COM_AVAILABLE` is `True`
-- WHEN `execute(paragraphs, path)` is called and COM succeeds
+- WHEN `_extract_content(paragraphs, docx_path)` is called and COM succeeds
 - THEN the returned DTO MUST carry the win32com-accurate counts
 
-#### Scenario: Count port returns None — use case falls back to text-based counts
+#### Scenario: Count port raises CharacterCountUnavailable — falls back to text-based counts
 
-- GIVEN a valid paragraph list and a `.docx` path, but `count(path)` returns `None`
-- WHEN `execute(paragraphs, path)` is called
+- GIVEN a valid paragraph list and a `.docx` path, but `count(docx_path)` raises
+  `CharacterCountUnavailable`
+- WHEN `_extract_content(paragraphs, docx_path)` is called
 - THEN no exception MUST propagate to the caller
 - AND the returned DTO MUST contain text-based counts
 
----
+#### Scenario: Count port returns None — falls back to text-based counts
 
-### Requirement: ExtractContentUseCaseWiring
-
-`ExtractContentUseCaseWiring` MUST follow the `ReadDocumentUseCaseWiring` instance-based factory pattern: a public `create_use_case()` method and private `_get_*()` helper methods for each dependency.
-
-#### Scenario: Wiring produces a fully configured use case
-
-- GIVEN `ExtractContentUseCaseWiring()` is instantiated
-- WHEN `create_use_case()` is called
-- THEN an `ExtractContentUseCase` with all ports injected MUST be returned
+- GIVEN a valid paragraph list and a `.docx` path, but `count(docx_path)` returns `None`
+- WHEN `_extract_content(paragraphs, docx_path)` is called
+- THEN no exception MUST propagate to the caller
+- AND the returned DTO MUST contain text-based counts
 
 ---
 
@@ -176,10 +177,11 @@ When no accurate counts are available, `ParagraphContentAdapter` MUST compute `w
 
 ### Requirement: Behavioral Parity with Legacy ContentExtractor
 
-A smoke parity test MUST verify that `ExtractContentUseCase.execute()` output matches legacy `ContentExtractor` output for `title`, `abstract`, `keywords`, and `sections` on real sample `.docx` files.
+A smoke parity test MUST verify that `ContentExtractionPort.extract()` output matches legacy `ContentExtractor` output for `title`, `abstract`, `keywords`, and `sections` on real sample `.docx` files.
 
 #### Scenario: Parity test passes on real samples
 
-- GIVEN the same sample `.docx` file processed by both legacy `ContentExtractor` and new `ExtractContentUseCase`
+- GIVEN the same sample `.docx` file processed by both legacy `ContentExtractor` and
+  `AnalyzeDocumentUseCaseWiring()._get_content_extraction_port().extract(paragraphs=...)`
 - WHEN both produce their respective outputs
 - THEN `title`, `abstract`, `keywords`, and `sections` MUST be equal between the two outputs

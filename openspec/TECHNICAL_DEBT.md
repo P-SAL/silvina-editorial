@@ -3,28 +3,9 @@
 Consolidated inventory of technical debt accumulated during the hexagonal migration (Slices 0-15). Sourced from Engram decisions and `openspec/archive/*` artifacts, cross-checked against current code on `refactor/hexagonal-migration` (2026-07-02).
 
 Each item lists status as verified against the current codebase, not just the state at the time it was logged.
-
 ## Confirmed still present
 
-### 1. Explicit keyword arguments not audited across the full codebase
-Convention: every method call must use explicit keyword arguments, even for a single parameter. Applied going forward from Slice 7 (extract-citations) onward, but never audited retroactively across earlier slices.
-- **Scope**: `src/application/`, `src/infrastructure/wirings/`, `src/infrastructure/adapters/`.
-- **Source**: Engram #673 (topic `tech-debt/explicit-keyword-arguments`).
-
-### 2. Method-ordering convention not audited across existing classes
-Convention (defined during classify-article PR-1 review): public methods before private, no interleaving, alphabetical within each group, dunders/`__init__` exempt. Never applied retroactively to classes written before the rule existed (Slice 0, 5, 6).
-- **Candidates**: `src/domain/quality/quality_analyzer.py`, `quality_text_sampler.py`, `quality_response_parser.py`; `src/domain/classification/article_classification_response_parser.py`, `article_classification_text_sampler.py`, `imryd_signal_detector.py`, `article_size_classifier.py`; `src/infrastructure/adapters/llm_generator/ollama_generator_adapter.py`; `src/infrastructure/wirings/*.py`.
-- **Source**: Engram #629.
-
-### 3. Slice 5 OOP/encapsulation violations (deferred, not yet fixed)
-Flagged during classify-article PR-1 review; explicitly left untouched to avoid scope creep into already-merged Slice 5 code:
-- `src/domain/enums/quality_level.py` — `get_quality_level_from_score()` should become `QualityLevelResolver.resolve()`.
-- `src/domain/quality/quality_text_sampler.py` — module-level `_CONCLUSION_HEADER_PATTERN` should move inside `QualityTextSampler` as a class attribute.
-- `src/domain/tests/quality/test_quality_text_sampler.py` — module-level `build_document_content()` helper should become a private `TestCase` method.
-- `src/application/tests/fake_llm_generator_adapter.py` — `FakeLlmGeneratorAdapterForTest.generate()` is missing the `options: dict | None = None` param added to `LlmGeneratorPort` in Slice 6 (ADR-4); latent signature drift, not currently exercised by any test passing `options=`.
-- **Source**: Engram #627.
-
-### 4. Magic values not audited across the remaining `src/` infrastructure adapters (partially resolved)
+### 1. Magic values not audited across the remaining `src/` infrastructure adapters (partially resolved)
 The `ArticleSize` enum (Spanish members) and the magic-number thresholds in `ArticleSizeClassifier`, `QualityLevelResolver`, and `PublicationVerdictEvaluator` were resolved — see "Resolved" section below. The following magic literals identified during that audit were explicitly deferred (out of scope for that change) and remain unaddressed:
 - `StructureValidator._extract_present_sections()` — hardcoded `100` char header limit.
 - `DocxCitationAdapter._collect_multi_author()` — hardcoded `100` max author name length.
@@ -33,33 +14,55 @@ The `ArticleSize` enum (Spanish members) and the magic-number thresholds in `Art
 - `DocxReportAdapter` — `250` words/page divisor, `5` list slice size, `150` truncation size, `3` replacements limit, `6`x`2` table dimensions, `80` separator repeat count.
 - **Source**: Engram #630; `openspec/changes/archive/2026-07-04-resolve-spanish-and-magic-debt/exploration.md`.
 
-### 5. Spanish domain-vocabulary enums pending final rename pass (partially resolved)
+### 2. Spanish domain-vocabulary enums pending final rename pass (partially resolved)
 `ArticleType`'s Spanish member KEYS were renamed to English — see "Resolved" section below. The following remain deliberately untouched:
 - `QualityDimension` — keys already English; `.value`s stay Spanish (match literal LLM/document text), rename of values still deferred to the final pass together with parsing logic.
 - `SectionType` — keys and values both stay Spanish/bilingual on purpose: members like `RESUMEN`/`ABSTRACT`, `INTRODUCCION`/`INTRODUCTION` are intentional parallel-language pairs, not translation debt.
 - **Source**: Engram #613; `openspec/changes/archive/2026-07-04-resolve-domain-vocabulary-enums-debt/`.
 
-### 6. Accumulated dead-code registry (by design — not to be cleaned per-slice)
+### 3. Accumulated dead-code registry (by design — not to be cleaned per-slice)
 Per convention (Engram #605), dead code found while migrating a legacy module is documented, not removed, and batched for a future dedicated cleanup pass instead of being fixed slice-by-slice:
 - Slice 4 (validate-citations): `extract_all_citations()` in `citation_matcher.py` — no call sites, confirmed dead. `business_logic/article_analyzer.py` (`ArticleAnalyzer`) — whole module never wired to `main.py`/`gradio_app.py`, sole caller of `generate_report()`.
 - Slice 5 (analyze-quality): `self.client = ollama.Client(...)` in `QualityAnalyzer.__init__` — built but never used. `article_type` param of `analyze_quality(document_content, article_type)` — never read in the method body (kept intentionally, not removed). `analyze_document_quality()` convenience function at end of file — calls the instance method with 3 args against a 2-arg signature; broken/unreachable.
 - **Source**: Engram #605 (topic `migration/dead-code-registry`).
 
-### 7. Legacy modules (`domain/`, `data_access/`, `business_logic/`, `presentation/`) not yet deleted
+### 4. Legacy modules (`domain/`, `data_access/`, `business_logic/`, `presentation/`) not yet deleted
 *Note: This item is not actually unplanned technical debt, but is formally scheduled as part of the migration process under Slice 16 (final cleanup and removal of legacy root packages).*
 Slice 16 (final cleanup: delete legacy top-level packages) was explicitly postponed until the full hexagonal migration (Slices 0-15) is confirmed working in real use.
 - This is why item 1 (the `domain` package collision) still exists — both the legacy and the new `src/domain` package coexist on purpose for now.
 - **Source**: Engram #735.
 
-### 8. Bare module imports in `main.py` and `tests/test_main_cli_args.py`
-Convention (Engram #707, established during Slice 12 / export-report review): full-module imports like `import os` are prohibited — must import specific names instead (e.g. `from os.path import dirname, join, exists`). `main.py` and `tests/test_main_cli_args.py` predate or were never audited against this rule.
-- **Verified**: 2026-07-02, `grep "^import "`:
-  - `main.py:10-14,23` — `import argparse`, `import re`, `import sys`, `import os`, `import traceback`, `import json`.
-  - `tests/test_main_cli_args.py:5-8` — `import io`, `import os`, `import sys`, `import unittest`.
-- **Found by**: Judge A during the `resolve-cli-and-fake-debt` Judgment Day review (Round 2) — flagged as CRITICAL but ruled out of scope for that change since the diff didn't touch these lines; logged here instead.
-- **Source**: Engram #707.
+### 5. `@generic_error_handler` applied to adapters instead of use cases only
+Convention: `@generic_error_handler` should only decorate application-layer use case methods, never infrastructure adapters — error handling is a use-case responsibility, not an adapter one. The following adapters currently violate this:
+- `DocxTextAdapter.read_paragraphs()` (`src/infrastructure/adapters/document/docx_text_adapter.py`)
+- `DocxCitationAdapter.extract_citations()` (`src/infrastructure/adapters/document/docx_citation_adapter.py`)
+- `DocxReferenceAdapter.extract_references()` (`src/infrastructure/adapters/document/docx_reference_adapter.py`)
+- `DocxEumicAdapter.inspect()` (`src/infrastructure/adapters/document/docx_eumic_adapter.py`)
+- `OllamaGeneratorAdapter.generate()` (`src/infrastructure/adapters/llm_generator/ollama_generator_adapter.py`)
+- Pre-existing debt, not introduced by `refactor_analyze_document_wiring` — none of these 5 files were touched by that change.
+- **Source**: Engram `pattern/generic-error-handler-scope`; discovered during judgment-day review of `refactor_analyze_document_wiring` (2026-07-04).
 
 ## Resolved (was tracked, no longer applies)
+
+### Explicit keyword arguments not audited across the full codebase
+Audited and refactored the codebase to use explicit keyword arguments in all function/method calls to prevent bugs and enforce clean interfaces.
+- **Verified fixed**: 2026-07-03, openspec change `resolve-explicit-keyword-arguments` — verified cleanly by `sdd-verify`.
+- **Source**: `openspec/changes/archive/2026-07-03-resolve-explicit-keyword-arguments/`.
+
+### Method-ordering convention not audited across existing classes
+Reordered methods in existing classes to follow the convention of public methods before private, grouped alphabetically (excluding dunder methods).
+- **Verified fixed**: 2026-07-03, openspec change `resolve-method-ordering` — verified cleanly by `sdd-verify`.
+- **Source**: `openspec/changes/archive/2026-07-03-resolve-method-ordering/`.
+
+### Slice 5 OOP/encapsulation violations
+Fixed encapsulation and OOP patterns in Slice 5 code, including `QualityLevelResolver` extraction, pattern encapsulation in `QualityTextSampler`, and cleaner test helpers.
+- **Verified fixed**: 2026-07-03, openspec change `resolve-slice-5-technical-debt` — verified cleanly by `sdd-verify`.
+- **Source**: `openspec/changes/archive/2026-07-03-resolve-slice-5-technical-debt/`.
+
+### Bare module imports in `main.py` and `tests/test_main_cli_args.py`
+Prohibited full-module imports like `import os` and replaced them with specific name imports (e.g. `from os import getenv`).
+- **Verified fixed**: 2026-07-03, openspec change `resolve-bare-imports` — verified cleanly by `sdd-verify`.
+- **Source**: `openspec/changes/archive/2026-07-03-resolve-bare-imports/`.
 
 ### `tests/smoke/test_validate_structure_parity.py` broken import
 Was importing `DocumentContent` from `src.domain.dtos.document_content_dto`, but the real class is `DocumentContentDTO`. Logged as tech debt in `openspec/archive/2026-07-01-refactor-slice-14-cli/tasks.md`.

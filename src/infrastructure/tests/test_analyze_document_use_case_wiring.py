@@ -12,19 +12,29 @@ class TestAnalyzeDocumentUseCaseWiring(TestCase):
         result = AnalyzeDocumentUseCaseWiring().create_use_case()
         self.assertIsInstance(result, AnalyzeDocumentUseCase)
 
-    def test_create_use_case_wires_all_sub_use_cases(self):
+    def test_create_use_case_wires_all_ports_and_services(self):
         result = AnalyzeDocumentUseCaseWiring().create_use_case()
-        self.assertIsNotNone(result._read_document_use_case)
-        self.assertIsNotNone(result._extract_content_use_case)
-        self.assertIsNotNone(result._extract_citations_use_case)
-        self.assertIsNotNone(result._validate_apa_use_case)
-        self.assertIsNotNone(result._check_grammar_use_case)
-        self.assertIsNotNone(result._classify_article_use_case)
-        self.assertIsNotNone(result._analyze_quality_use_case)
-        self.assertIsNotNone(result._validate_structure_use_case)
-        self.assertIsNotNone(result._match_citations_use_case)
-        self.assertIsNotNone(result._verify_eumic_use_case)
+        self.assertIsNotNone(result._document_text_port)
+        self.assertIsNotNone(result._content_extraction_port)
+        self.assertIsNotNone(result._character_count_port)
+        self.assertIsNotNone(result._citation_extraction_port)
+        self.assertIsNotNone(result._reference_extraction_port)
+        self.assertIsNotNone(result._grammar_check_port)
+        self.assertIsNotNone(result._document_format_inspection_port)
+        self.assertIsNotNone(result._apa_validator)
+        self.assertIsNotNone(result._article_classifier)
+        self.assertIsNotNone(result._quality_analyzer)
+        self.assertIsNotNone(result._structure_validator)
+        self.assertIsNotNone(result._citation_matcher)
         self.assertIsNotNone(result._recommendation_builder)
+
+    def test_article_classifier_and_quality_analyzer_share_llm_generator(self):
+        wiring = AnalyzeDocumentUseCaseWiring()
+        use_case = wiring.create_use_case()
+        self.assertIs(
+            use_case._article_classifier._llm_generator,
+            use_case._quality_analyzer._llm_generator,
+        )
 
     def test_env_var_overrides_quality_threshold(self):
         with patch.dict(os.environ, {"RECOMMENDATION_QUALITY_THRESHOLD": "6.5"}):

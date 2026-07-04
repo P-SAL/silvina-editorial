@@ -196,66 +196,27 @@ def validate_all_citations(
 
 ---
 
-## 5. ValidateApaUseCase
+## 5. APA Validation Orchestration
 
-**File**: `src/application/validate_apa_use_case.py`
-**Class name**: `ValidateApaUseCase`
+> **Superseded (2026-07-04, `refactor_analyze_document_wiring`)**: `ValidateApaUseCase`
+> and `ValidateApaWiring` were eliminated as redundant pass-through layers. This
+> orchestration now lives in `AnalyzeDocumentUseCase._validate_apa()` — see
+> `openspec/specs/analyze-document/spec.md`. `AnalyzeDocumentUseCaseWiring._get_apa_validator()`
+> constructs a fresh `ApaValidator()` directly (no intermediate sub-wiring).
 
-### 5.1 Constructor
-
-```python
-def __init__(self, validator: ApaValidator) -> None:
-```
-
-Stores `validator` as `self._validator` (or equivalent private attribute).
-
-### 5.2 `execute()` Method
-
-```python
-def execute(
-    self,
-    citations: list[tuple[str, int, str]]
-) -> ApaValidationResult:
-```
+**Method**: `AnalyzeDocumentUseCase._validate_apa(self, citations: list[tuple[str, int, str]]) -> ApaValidationResultDTO`
 
 **Behavior**:
 
-1. If `citations` is empty → return `ApaValidationResult(is_valid=True, violation_count=0, violations=[])` immediately. MUST NOT raise an exception (ADR-4: domain services return empty results for empty inputs).
-2. Otherwise, call `self._validator.validate_all_citations(citations)` → `violations: list[ApaViolation]`.
+1. If `citations` is empty → return `ApaValidationResultDTO(is_valid=True, violation_count=0, violations=[])` immediately. MUST NOT raise an exception (ADR-4: domain services return empty results for empty inputs).
+2. Otherwise, call `self._apa_validator.validate_all_citations(citations=citations)` → `violations: list[ApaViolationDTO]`.
 3. Compute `violation_count = len(violations)`.
 4. Compute `is_valid = (violation_count == 0)`.
-5. Return `ApaValidationResult(is_valid=is_valid, violation_count=violation_count, violations=violations)`.
+5. Return `ApaValidationResultDTO(is_valid=is_valid, violation_count=violation_count, violations=violations)`.
 
 **Constraints**:
 - Never raises an exception for valid (possibly empty) input.
-- Is a pure pass-through orchestrator; no APA logic lives here.
-
----
-
-## 6. ValidateApaWiring
-
-**File**: `src/infrastructure/wirings/validate_apa_wiring.py`
-**Class name**: `ValidateApaWiring`
-
-### 6.1 `create_use_case()` Method
-
-```python
-@classmethod
-def create_use_case(cls) -> ValidateApaUseCase:
-```
-
-- Internally calls `cls._get_validator()` to obtain an `ApaValidator` instance.
-- Returns `ValidateApaUseCase(validator=cls._get_validator())`.
-
-### 6.2 `_get_validator()` Private Method
-
-```python
-@classmethod
-def _get_validator(cls) -> ApaValidator:
-```
-
-- Returns a fresh `ApaValidator()` instance.
-- Follows the `_get_*` naming convention established by `ValidateStructureWiring`.
+- Is a pure pass-through step; no APA logic lives here (that stays in `ApaValidator`).
 
 ---
 
@@ -268,8 +229,8 @@ def _get_validator(cls) -> ApaValidator:
 | `ApaValidationResult`   | `src/domain/dtos/apa_validation_result_dto.py`             |
 | Citation package init   | `src/domain/citation/__init__.py`                          |
 | `ApaValidator` service  | `src/domain/citation/apa_validator.py`                     |
-| `ValidateApaUseCase`    | `src/application/validate_apa_use_case.py`                 |
-| `ValidateApaWiring`     | `src/infrastructure/wirings/validate_apa_wiring.py`        |
+| Orchestration           | `AnalyzeDocumentUseCase._validate_apa()` (`src/application/analyze_document_use_case.py`) |
+| Wiring                  | `AnalyzeDocumentUseCaseWiring._get_apa_validator()` (`src/infrastructure/wirings/analyze_document_use_case_wiring.py`) |
 | Domain tests            | `src/domain/tests/citation/test_apa_validator.py`          |
 
 ---
@@ -402,22 +363,22 @@ Then the result contains no violations
 
 ```
 Given an empty list of citations
-When ValidateApaUseCase.execute([]) is called
-Then the result is ApaValidationResult(is_valid=True, violation_count=0, violations=[])
+When AnalyzeDocumentUseCase._validate_apa([]) is called
+Then the result is ApaValidationResultDTO(is_valid=True, violation_count=0, violations=[])
 And no exception is raised
 ```
 
-### S-13: Use case computes is_valid and violation_count correctly
+### S-13: Orchestration computes is_valid and violation_count correctly
 
 ```
 Given a list containing one citation with a CONJUNCTION_ERROR
-When ValidateApaUseCase.execute(citations) is called
+When AnalyzeDocumentUseCase._validate_apa(citations) is called
 Then result.violation_count == 1
 And result.is_valid == False
 And len(result.violations) == 1
 
 Given a list containing only valid citations
-When ValidateApaUseCase.execute(citations) is called
+When AnalyzeDocumentUseCase._validate_apa(citations) is called
 Then result.violation_count == 0
 And result.is_valid == True
 ```
@@ -438,13 +399,13 @@ When caller attempts v.location = 99
 Then FrozenInstanceError is raised
 ```
 
-### S-15: Wiring creates a valid use case
+### S-15: Wiring creates a valid ApaValidator
 
 ```
-Given ValidateApaWiring
-When create_use_case() is called
-Then the returned object is an instance of ValidateApaUseCase
-And calling execute([]) on the result returns ApaValidationResult(is_valid=True, ...)
+Given AnalyzeDocumentUseCaseWiring
+When _get_apa_validator() is called
+Then the returned object is an instance of ApaValidator
+And AnalyzeDocumentUseCase._validate_apa([]) returns ApaValidationResultDTO(is_valid=True, ...)
 ```
 
 ---

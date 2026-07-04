@@ -27,9 +27,7 @@ sys.path.insert(0, str(ROOT))
 from data_access.word_reader import WordReader
 from business_logic.article_classifier import ArticleClassifier as LegacyClassifier
 from src.domain.dtos.document_content_dto import DocumentContentDTO
-from src.infrastructure.wirings.classify_article_use_case_wiring import (
-    ClassifyArticleUseCaseWiring,
-)
+from src.infrastructure.wirings.analyze_document_use_case_wiring import AnalyzeDocumentUseCaseWiring
 
 DOCS = ROOT / "docs" / "sample-documents"
 _CANNED_RESPONSE = {"response": "S4: SI\nS5: SI\nS6: SI"}
@@ -41,7 +39,7 @@ class TestClassifyArticleParity(TestCase):
     def setUpClass(cls):
         cls.reader = WordReader()
         cls.legacy = LegacyClassifier()
-        cls.use_case = ClassifyArticleUseCaseWiring().create_use_case()
+        cls.article_classifier = AnalyzeDocumentUseCaseWiring()._get_article_classifier()
 
     def _run(self, filename: str):
         paragraphs = self.reader.read_word_document(str(DOCS / filename))
@@ -59,7 +57,7 @@ class TestClassifyArticleParity(TestCase):
             "src.infrastructure.adapters.llm_generator.ollama_generator_adapter.ollama.Client.generate",
             return_value=_CANNED_RESPONSE,
         ) as new_generate:
-            new_result = self.use_case.execute(document_content)
+            new_result = self.article_classifier.classify(document_content=document_content)
         return legacy_result, new_result, legacy_generate, new_generate
 
     def test_cientifico_parity(self):

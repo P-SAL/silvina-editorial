@@ -88,27 +88,34 @@ Returns `tuple[list[SectionName], list[SectionName]]`:
 
 ---
 
-## 2. Use Case — ValidateStructureUseCase
+## 2. Orchestration — AnalyzeDocumentUseCase._validate_structure()
+
+> **Superseded (2026-07-04, `refactor_analyze_document_wiring`)**: `ValidateStructureUseCase`
+> and `ValidateStructureWiring` were eliminated as redundant pass-through layers. This
+> orchestration now lives in `AnalyzeDocumentUseCase._validate_structure()`, and the wiring
+> in `AnalyzeDocumentUseCaseWiring._get_structure_validator()` — see
+> `openspec/specs/analyze-document/spec.md`.
 
 ### 2.1 Signature
 
 ```python
-def execute(
-    document_content: DocumentContent,
+def _validate_structure(
+    self,
+    document_content: DocumentContentDTO,
     article_type: ArticleType,
-    has_references: bool = False,
-) -> StructureValidationResult
+    has_references: bool,
+) -> StructureValidationResultDTO
 ```
 
 ### 2.2 Empty Document Guard
 
 If `document_content.paragraphs` is empty (i.e., `len(document_content.paragraphs) == 0`),
-the use case MUST raise `DocumentEmpty` (from `src.domain.exceptions.document_errors`)
+`_validate_structure` MUST raise `DocumentEmpty` (from `src.domain.exceptions.document_errors`)
 BEFORE delegating to the domain service.
 
 ### 2.3 Post-Processing Rules (applied before DTO construction)
 
-After `StructureValidator.validate()` returns `(_, missing)`, the use case applies
+After `StructureValidator.validate()` returns `(_, missing)`, `_validate_structure` applies
 these rules in order before building the frozen DTO:
 
 1. **Development removal (unconditional)**: Always remove `SectionName.DEVELOPMENT` from `missing`.
@@ -116,7 +123,7 @@ these rules in order before building the frozen DTO:
 2. **References removal (conditional)**: If `has_references is True`, also remove `SectionName.REFERENCES`
    from `missing`.
 
-The `present_sections` return value from `validate()` is discarded (`_`) — the use case
+The `present_sections` return value from `validate()` is discarded (`_`) — the orchestrator
 only operates on `missing_sections`.
 
 Post-processing is applied BEFORE the final DTO is constructed. The frozen DTO is built once
@@ -131,39 +138,37 @@ After post-processing:
 
 ### 2.5 Isolation
 
-`ValidateStructureUseCase` MUST NOT accept or forward `has_references` to `StructureValidator`.
+`_validate_structure` MUST NOT accept or forward `has_references` to `StructureValidator.validate()`.
 The domain service has no knowledge of the `has_references` business rule.
 
 ---
 
-## 3. Wiring — ValidateStructureWiring
+## 3. Wiring — AnalyzeDocumentUseCaseWiring._get_structure_validator()
 
 ### 3.1 Factory Behavior
 
-`ValidateStructureWiring` MUST:
-- Be instantiable (no `@staticmethod` — instance methods allow subclassing for tests).
-- Expose `create_use_case(self) -> ValidateStructureUseCase` as the public factory method.
-- Create each dependency in its own private `_get_*` method — one method per dependency.
-  Current dependencies: `_get_structure_validator(self) -> StructureValidator`.
-- Inject dependencies via constructor arguments (not inline construction inside `create_use_case`).
+`AnalyzeDocumentUseCaseWiring` MUST:
+- Create the `StructureValidator` dependency in its own private `_get_structure_validator(self) -> StructureValidator` method.
+- Inject it into `AnalyzeDocumentUseCase`'s constructor (not constructed inline inside `execute()`).
 
 Pattern:
 ```python
-class ValidateStructureWiring:
-    def create_use_case(self) -> ValidateStructureUseCase:
-        return ValidateStructureUseCase(validator=self._get_structure_validator())
+class AnalyzeDocumentUseCaseWiring:
+    def create_use_case(self) -> AnalyzeDocumentUseCase:
+        return AnalyzeDocumentUseCase(
+            ...,
+            structure_validator=self._get_structure_validator(),
+            ...,
+        )
 
     def _get_structure_validator(self) -> StructureValidator:
         return StructureValidator()
 ```
 
-This pattern enables test subclasses to override individual `_get_*` methods to inject mocks
-without touching the composition logic. All future wirings MUST follow this same structure.
-
 ### 3.2 No Infrastructure Dependencies
 
-The wiring MUST NOT import from `src.infrastructure.adapters`, any port interface, or any
-external library. All dependencies are pure domain-layer classes.
+`_get_structure_validator()` MUST NOT import from `src.infrastructure.adapters`, any port
+interface, or any external library. `StructureValidator` is a pure domain-layer class.
 
 ---
 
@@ -183,14 +188,11 @@ src/
         __init__.py
         test_structure_validator.py
   application/
-    validate_structure_use_case.py
-    tests/
-      __init__.py
-      test_validate_structure_use_case.py
+    analyze_document_use_case.py    # _validate_structure() lives here
   infrastructure/
     wirings/
       __init__.py
-      validate_structure_wiring.py
+      analyze_document_use_case_wiring.py    # _get_structure_validator() lives here
 ```
 
 ---
@@ -313,56 +315,56 @@ When _extract_present_sections is called
 Then "Introducción" is in the returned list
 ```
 
-### S-12: Use case raises DocumentEmpty on empty paragraphs list
+### S-12: Orchestrator raises DocumentEmpty on empty paragraphs list
 
 ```
-Given a DocumentContent where paragraphs == []
+Given a DocumentContentDTO where paragraphs == []
 And article_type = ArticleType.CIENTIFICO
-When ValidateStructureUseCase.execute() is called
+When AnalyzeDocumentUseCase._validate_structure() is called
 Then DocumentEmpty is raised
-And StructureValidator.validate_structure is NOT called
+And StructureValidator.validate is NOT called
 ```
 
-### S-13: Use case always removes "Desarrollo" from missing_sections
+### S-13: Orchestrator always removes "Desarrollo" from missing_sections
 
 ```
-Given a DocumentContent with paragraphs that contain all DIVULGACION sections
+Given a DocumentContentDTO with paragraphs that contain all DIVULGACION sections
   EXCEPT "Desarrollo"
 And article_type = ArticleType.DIVULGACION
 And has_references = False
-When ValidateStructureUseCase.execute() is called
+When AnalyzeDocumentUseCase._validate_structure() is called
 Then "Desarrollo" is NOT in result.missing_sections
 And result.is_valid is True
 ```
 
-### S-14: Use case with has_references=True removes "Referencias" from missing_sections
+### S-14: Orchestrator with has_references=True removes "Referencias" from missing_sections
 
 ```
-Given a DocumentContent with paragraphs that contain all CIENTIFICO sections
+Given a DocumentContentDTO with paragraphs that contain all CIENTIFICO sections
   EXCEPT "Referencias"
 And article_type = ArticleType.CIENTIFICO
 And has_references = True
-When ValidateStructureUseCase.execute() is called
+When AnalyzeDocumentUseCase._validate_structure() is called
 Then "Referencias" is NOT in result.missing_sections
 And result.is_valid is True
 ```
 
-### S-15: Use case with has_references=False does NOT remove "Referencias"
+### S-15: Orchestrator with has_references=False does NOT remove "Referencias"
 
 ```
-Given a DocumentContent with paragraphs that contain all CIENTIFICO sections
+Given a DocumentContentDTO with paragraphs that contain all CIENTIFICO sections
   EXCEPT "Referencias"
 And article_type = ArticleType.CIENTIFICO
-And has_references = False (default)
-When ValidateStructureUseCase.execute() is called
+And has_references = False
+When AnalyzeDocumentUseCase._validate_structure() is called
 Then "Referencias" IS in result.missing_sections
 And result.is_valid is False
 ```
 
-### S-15b: Domain service DOES report "Desarrollo" as missing (before use case post-processing)
+### S-15b: Domain service DOES report "Desarrollo" as missing (before orchestrator post-processing)
 
 ```
-Given a DocumentContent without any "Desarrollo" or "Development" paragraph
+Given a DocumentContentDTO without any "Desarrollo" or "Development" paragraph
 And article_type = ArticleType.DIVULGACION
 When validate is called DIRECTLY on the domain service
 Then "Desarrollo" IS in result.missing_sections
@@ -371,9 +373,9 @@ Then "Desarrollo" IS in result.missing_sections
 ### S-16: UNKNOWN article type — no required sections, always valid
 
 ```
-Given a DocumentContent with any paragraphs (non-empty)
+Given a DocumentContentDTO with any paragraphs (non-empty)
 And article_type = ArticleType.UNKNOWN
-When ValidateStructureUseCase.execute() is called
+When AnalyzeDocumentUseCase._validate_structure() is called
 Then result.is_valid is True
 And result.missing_sections == []
 ```
@@ -400,11 +402,11 @@ When _extract_present_sections is called
 Then "referencias" appears in the lowercased detected sections
 ```
 
-### S-19: Wiring creates use case without errors
+### S-19: Wiring creates the domain service without errors
 
 ```
-Given ValidateStructureWiring().create_use_case() is called
-Then the return value is an instance of ValidateStructureUseCase
+Given AnalyzeDocumentUseCaseWiring()._get_structure_validator() is called
+Then the return value is an instance of StructureValidator
 And no external adapters, ports, or infrastructure classes are imported
 ```
 
@@ -479,13 +481,13 @@ All 10 legacy tests MUST pass against the new domain service.
 ### Domain service output
 - `StructureValidationResult(is_valid, missing_sections, section_details={}, timestamp=<auto>)`
 
-### Use case inputs
-- `document_content: DocumentContent`
+### Orchestrator (`_validate_structure`) inputs
+- `document_content: DocumentContentDTO`
 - `article_type: ArticleType`
-- `has_references: bool = False`
+- `has_references: bool`
 
-### Use case output
-- `StructureValidationResult` with post-processing applied
+### Orchestrator (`_validate_structure`) output
+- `StructureValidationResultDTO` with post-processing applied
 
 ### Exception
 - `DocumentEmpty` raised when `document_content.paragraphs == []`

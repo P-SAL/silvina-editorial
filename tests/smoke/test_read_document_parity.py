@@ -14,7 +14,7 @@ from pathlib import Path
 from unittest import TestCase
 
 from data_access.word_reader import WordReader
-from src.infrastructure.wirings.read_document_use_case_wiring import ReadDocumentUseCaseWiring
+from src.infrastructure.wirings.analyze_document_use_case_wiring import AnalyzeDocumentUseCaseWiring
 
 DOCS = Path(__file__).parent.parent.parent / "docs" / "sample-documents"
 
@@ -29,16 +29,25 @@ class TestReadDocumentParity(TestCase):
     @classmethod
     def setUpClass(cls):
         cls.legacy_reader = WordReader()
-        cls.use_case = ReadDocumentUseCaseWiring().create_use_case()
+        cls.document_text_port = AnalyzeDocumentUseCaseWiring()._get_document_text_port()
 
     def test_cientifico_matches_legacy(self):
         path = str(DOCS / _DOCUMENTS[0])
-        self.assertEqual(self.use_case.execute(path), self.legacy_reader.read_word_document(path))
+        self.assertEqual(
+            self.document_text_port.read_paragraphs(path=path),
+            self.legacy_reader.read_word_document(path),
+        )
 
     def test_divulgacion_matches_legacy(self):
         path = str(DOCS / _DOCUMENTS[1])
-        self.assertEqual(self.use_case.execute(path), self.legacy_reader.read_word_document(path))
+        self.assertEqual(
+            self.document_text_port.read_paragraphs(path=path),
+            self.legacy_reader.read_word_document(path),
+        )
 
     def test_opinion_matches_legacy(self):
         path = str(DOCS / _DOCUMENTS[2])
-        self.assertEqual(self.use_case.execute(path), self.legacy_reader.read_word_document(path))
+        self.assertEqual(
+            self.document_text_port.read_paragraphs(path=path),
+            self.legacy_reader.read_word_document(path),
+        )
