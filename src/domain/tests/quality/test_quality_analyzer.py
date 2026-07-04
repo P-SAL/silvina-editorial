@@ -1,9 +1,11 @@
 from unittest import TestCase
 
 from src.domain.dtos.document_content_dto import DocumentContentDTO
+from src.domain.dtos.quality_level_thresholds_dto import QualityLevelThresholdsDTO
 from src.domain.enums.quality_level import QualityLevel
 from src.domain.exceptions.quality_errors import QualityAnalysisFailed
 from src.domain.quality.quality_analyzer import QualityAnalyzer
+from src.domain.quality.quality_level_resolver import QualityLevelResolver
 from src.domain.quality.quality_response_parser import QualityResponseParser
 from src.domain.quality.quality_text_sampler import QualityTextSampler
 from src.domain.tests.quality.fake_llm_generator_adapter import FakeLlmGeneratorAdapter
@@ -44,6 +46,14 @@ def build_analyzer(fake_adapter: FakeLlmGeneratorAdapter) -> QualityAnalyzer:
         response_parser=QualityResponseParser(),
         clarity_coherence_prompt_template=CLARITY_COHERENCE_PROMPT_TEMPLATE,
         argumentation_conclusions_prompt_template=ARGUMENTATION_CONCLUSIONS_PROMPT_TEMPLATE,
+        resolver=QualityLevelResolver(
+            thresholds=QualityLevelThresholdsDTO(
+                excellent_threshold=9.0,
+                good_threshold=7.0,
+                acceptable_threshold=5.0,
+                needs_improvement_threshold=3.0,
+            )
+        ),
     )
 
 
