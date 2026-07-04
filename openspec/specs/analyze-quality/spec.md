@@ -459,56 +459,46 @@ default) is a PR-B design decision, not constrained by this requirement.
   `_MINIMUM_SAMPLE_WORD_COUNT = 400` / `_TEXT_SAMPLE_CHARACTER_LIMIT = 8000`
   constants
 
-### Requirement: AnalyzeQualityUseCase Thin Pass-Through
+### Requirement: QualityAnalyzer Is Consumed Directly by the Orchestrator
 
-`AnalyzeQualityUseCase` (`src/application/analyze_quality_use_case.py`) MUST
-expose `execute(document_content: DocumentContentDTO, article_type) ->
-QualityResultDTO`, delegating to `QualityAnalyzer` without adding business logic.
-The `article_type` parameter MUST remain in the signature even though the
-underlying domain service never reads its value — it is not removed in this
-slice.
+> **Superseded (2026-07-04, `refactor_analyze_document_wiring`)**: `AnalyzeQualityUseCase`
+> and `AnalyzeQualityUseCaseWiring` were eliminated as redundant pass-through layers.
+> `AnalyzeDocumentUseCase` now depends on `QualityAnalyzer` directly and calls
+> `.analyze(document_content=..., article_type=...)` from its `execute()` method — see
+> `openspec/specs/analyze-document/spec.md`. `AnalyzeDocumentUseCaseWiring._get_quality_analyzer()`
+> constructs the domain service directly (no intermediate sub-wiring).
 
-#### Scenario: Use case returns the domain service's result unchanged
+`AnalyzeDocumentUseCase` MUST depend on `QualityAnalyzer` directly and call
+`analyze(document_content=document_content, article_type=classification.article_type)`
+without adding business logic.
+
+#### Scenario: Orchestrator uses the domain service's result unchanged
 
 - GIVEN a `DocumentContentDTO` and an `article_type` value
-- WHEN `AnalyzeQualityUseCase.execute(document_content, article_type)` is called
+- WHEN `AnalyzeDocumentUseCase.execute()` calls `self._quality_analyzer.analyze(document_content=document_content, article_type=article_type)`
 - THEN the returned `QualityResultDTO` matches what `QualityAnalyzer.analyze`
   would produce for the same `document_content`
 
-#### Scenario: article_type is accepted but not required to affect the result
+### Requirement: AnalyzeDocumentUseCaseWiring Assembles Domain Service and Adapter
 
-- GIVEN two calls to `execute()` with the same `document_content` but different
-  `article_type` values
-- WHEN both calls succeed
-- THEN both calls are accepted without error regardless of the `article_type`
-  value passed
+`AnalyzeDocumentUseCaseWiring._get_quality_analyzer()` MUST construct `QualityAnalyzer`
+directly. It MUST reuse the shared `OllamaGeneratorAdapter` instance from `_get_llm_generator()`
+(the same instance injected into `ArticleClassifier` — see classify-article spec) rather than
+assembling a second adapter. The wiring MUST NOT contain business logic.
 
-### Requirement: AnalyzeQualityUseCaseWiring Assembles Domain Service and Adapter
+#### Scenario: Wiring produces a usable QualityAnalyzer instance
 
-`AnalyzeQualityUseCaseWiring` (`src/infrastructure/wirings/analyze_quality_use_case_wiring.py`)
-MUST expose `create_use_case() -> AnalyzeQualityUseCase` as its single
-public method, following the instance-based `_get_*`/`_*` accessor pattern from
-Slices 2-4. It MUST additionally assemble an `OllamaGeneratorAdapter` instance via
-a private method returning the `LlmGeneratorPort` type, and inject it into
-`QualityAnalyzer`. This is the first wiring in the migration that assembles a real
-infrastructure adapter rather than only domain objects. The wiring MUST NOT
-contain business logic. (See "Updated Dependencies for PR-B" below — this
-requirement's full implementation, including loading the 2 prompt template files
-and reading the 2 sampling env vars, is PR-B scope; this spec records the
-dependency, not PR-B's own requirements.)
-
-#### Scenario: Wiring produces a usable use case instance
-
-- GIVEN an `AnalyzeQualityUseCaseWiring` instance
+- GIVEN an `AnalyzeDocumentUseCaseWiring` instance
 - WHEN `create_use_case()` is called
-- THEN it returns an `AnalyzeQualityUseCase` ready to call `.execute(...)`, backed
-  by a real `OllamaGeneratorAdapter`
+- THEN the resulting `AnalyzeDocumentUseCase._quality_analyzer` is a real
+  `QualityAnalyzer` backed by a real `OllamaGeneratorAdapter`
 
-#### Scenario: Adapter accessor returns the port type
+#### Scenario: LLM generator instance is shared, not duplicated
 
-- GIVEN the wiring's private adapter-accessor method
-- WHEN its return type annotation is inspected
-- THEN it is declared as `LlmGeneratorPort`, not `OllamaGeneratorAdapter`
+- GIVEN `AnalyzeDocumentUseCaseWiring().create_use_case()`
+- WHEN the resulting `_article_classifier._llm_generator` and
+  `_quality_analyzer._llm_generator` are compared
+- THEN they are the exact same object (`is`), not merely equal instances
 
 ### Requirement: No print() Statements in Migrated Code
 

@@ -99,19 +99,32 @@ Raises `ReferenceParsingFailed` on failure. MUST NOT import from `data_access/`.
 **S8b — Item type**: GIVEN returned list | WHEN items inspected | THEN all are `ReferenceDTO` instances.
 **S8c — section_type**: GIVEN returned string | THEN value is one of the three allowed section names.
 
-### R9 — ExtractCitationsUseCase
+### R9 — Citations and References Are Consumed Directly by the Orchestrator
 
-`ExtractCitationsUseCase` MUST exist at `src/application/extract_citations_use_case.py`.
-Constructor: `(citation_port: CitationExtractionPort, reference_port: ReferenceExtractionPort)`.
-`@generic_error_handler` on `execute(self, docx_path: str) -> CitationExtractionResultDTO`.
+> **Superseded (2026-07-04, `refactor_analyze_document_wiring`)**: `ExtractCitationsUseCase`
+> and `ExtractCitationsUseCaseWiring` were eliminated as redundant pass-through layers.
+> `AnalyzeDocumentUseCase` now depends on `CitationExtractionPort` and
+> `ReferenceExtractionPort` directly and calls `extract_citations(docx_path=...)` /
+> `extract_references(docx_path=...)` from its `execute()` method — see
+> `openspec/specs/analyze-document/spec.md`. The `CitationExtractionResultDTO`
+> aggregate DTO is no longer constructed; `citations`, `references`, and `section_type`
+> are handled as separate local values inside the orchestrator.
 
-**S9a — Return type**: GIVEN fakes injected | WHEN `execute(docx_path)` called | THEN return is `CitationExtractionResultDTO`.
-**S9b — Field delegation**: GIVEN fake citation port returns `[cit]` and fake reference port returns `([ref], "Bibliografía")` | WHEN `execute` called | THEN `.citations == [cit]`, `.references == [ref]`, `.section_type == "Bibliografía"`.
+`AnalyzeDocumentUseCase.execute()` MUST call `citation_extraction_port.extract_citations(docx_path=document_path)`
+and `reference_extraction_port.extract_references(docx_path=document_path)`, using their
+results unchanged (citations list, references list, and section_type string respectively).
 
-### R10 — ExtractCitationsUseCaseWiring
+**S9a — Direct port usage**: GIVEN fake `CitationExtractionPort` and `ReferenceExtractionPort`
+injected into `AnalyzeDocumentUseCase` | WHEN `execute(document_path)` is called | THEN
+both ports are called exactly once with `docx_path=document_path`.
 
-`ExtractCitationsUseCaseWiring` MUST exist at `src/infrastructure/wirings/extract_citations_use_case_wiring.py`.
-`create_use_case() -> ExtractCitationsUseCase` MUST wire `DocxCitationAdapter` to `_citation_port`
-and `DocxReferenceAdapter` to `_reference_port`.
+### R10 — AnalyzeDocumentUseCaseWiring Wires the Adapters Directly
 
-**S10a — Correct types**: GIVEN `create_use_case()` called | WHEN private attributes inspected | THEN `isinstance(uc._citation_port, DocxCitationAdapter)` and `isinstance(uc._reference_port, DocxReferenceAdapter)` are both `True`.
+`AnalyzeDocumentUseCaseWiring._get_citation_extraction_port()` MUST return a `DocxCitationAdapter`
+and `_get_reference_extraction_port()` MUST return a `DocxReferenceAdapter` (both constructed with
+the shared `_get_document_text_port()` instance).
+
+**S10a — Correct types**: GIVEN `AnalyzeDocumentUseCaseWiring().create_use_case()` called | WHEN
+the resulting use case's private attributes are inspected | THEN
+`isinstance(uc._citation_extraction_port, DocxCitationAdapter)` and
+`isinstance(uc._reference_extraction_port, DocxReferenceAdapter)` are both `True`.

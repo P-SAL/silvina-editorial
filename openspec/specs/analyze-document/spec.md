@@ -246,19 +246,57 @@ Its method `build(...) -> tuple[list[RecommendationDTO], PublicationVerdictDTO]`
 
 ### Requirement: AnalyzeDocumentUseCase Orchestrator
 
-`AnalyzeDocumentUseCase` MUST live in `src/application/analyze_document_use_case.py` and coordinate the document analysis steps. It accepts its 11 dependencies via constructor injection. Method `execute(document_path: str) -> ReportInputDTO` MUST be wrapped with `@generic_error_handler` and perform:
+> **Modified (2026-07-04, `refactor_analyze_document_wiring`)**: The 10 pass-through
+> sub-use cases (`ReadDocumentUseCase`, `ExtractContentUseCase`, `ExtractCitationsUseCase`,
+> `ValidateApaUseCase`, `CheckGrammarUseCase`, `ClassifyArticleUseCase`, `AnalyzeQualityUseCase`,
+> `ValidateStructureUseCase`, `MatchCitationsUseCase`, `VerifyEumicUseCase`) and their 10
+> wirings were deleted. `AnalyzeDocumentUseCase` now orchestrates 7 ports, 5 domain services,
+> and 1 builder directly — 13 dependencies total (not 11). Fallback/filtering logic that used
+> to live inside the deleted sub-use cases (`CharacterCountUnavailable` handling, APA's
+> empty-citations guard, grammar scoring, structure's `DEVELOPMENT`/`REFERENCES` filtering) was
+> moved into private methods on `AnalyzeDocumentUseCase` itself (`_extract_content`,
+> `_validate_apa`, `_check_grammar`, `_validate_structure`). See each capability's own spec
+> (`read-document`, `extract-content`, `extract-citations`, `validate-apa`, `check-grammar`,
+> `classify-article`, `analyze-quality`, `validate-structure`, `validate-citations`) for the
+> "Superseded" note pointing back here.
 
-1. Load paragraphs via `read_document_use_case`.
-2. Extract content via `extract_content_use_case`.
-3. Extract citations via `extract_citations_use_case`.
-4. Filter `AUTHOR_YEAR` citations and pass tuples `(text, location, paragraph_text)` to `validate_apa_use_case`.
-5. Grammar check via `check_grammar_use_case`.
-6. Classify article via `classify_article_use_case`.
-7. Analyze quality via `analyze_quality_use_case` using `classification.article_type`.
-8. Validate structure using `classification.effective_structure_type` and `has_references = len(references) > 0`.
+`AnalyzeDocumentUseCase` MUST live in `src/application/analyze_document_use_case.py` and
+coordinate the document analysis steps. It accepts its 13 dependencies via constructor
+injection:
+
+- Ports: `document_text_port`, `content_extraction_port`, `character_count_port`,
+  `citation_extraction_port`, `reference_extraction_port`, `grammar_check_port`,
+  `document_format_inspection_port`
+- Domain services: `apa_validator`, `article_classifier`, `quality_analyzer`,
+  `structure_validator`, `citation_matcher`
+- Builder: `recommendation_builder`
+
+Method `execute(document_path: str) -> ReportInputDTO` MUST be wrapped with `@generic_error_handler`
+(the single error-handling layer for the whole pipeline — none of its collaborator ports/services
+carry their own `@generic_error_handler` at the orchestration level) and perform:
+
+1. Load paragraphs via `document_text_port.read_paragraphs(path=document_path)`.
+2. Extract content via private method `_extract_content(paragraphs, docx_path=document_path)`,
+   which calls `content_extraction_port.extract()` then merges accurate counts from
+   `character_count_port.count()`, falling back to text-based counts on `CharacterCountUnavailable`
+   or a `None` result.
+3. Extract citations via `citation_extraction_port.extract_citations(docx_path=document_path)`
+   and references via `reference_extraction_port.extract_references(docx_path=document_path)`.
+4. Filter `AUTHOR_YEAR` citations and pass tuples `(text, location, paragraph_text)` to private
+   method `_validate_apa(citations)` (empty-citations guard: returns
+   `ApaValidationResultDTO(is_valid=True, violation_count=0, violations=[])` immediately without
+   calling `apa_validator` when the filtered list is empty).
+5. Grammar check via private method `_check_grammar(paragraphs)`, which calls
+   `grammar_check_port.check()` and computes score/feedback from the error count via
+   `GrammarScoreLevel.from_error_count()`.
+6. Classify article via `article_classifier.classify(document_content=document_content)`.
+7. Analyze quality via `quality_analyzer.analyze(document_content=..., article_type=classification.article_type)`.
+8. Validate structure via private method `_validate_structure(document_content, article_type=classification.effective_structure_type, has_references=len(references) > 0)`
+   (raises `DocumentEmpty` if `document_content.paragraphs` is empty; removes `SectionName.DEVELOPMENT`
+   unconditionally and `SectionName.REFERENCES` when `has_references` is `True`).
 9. Parse `section_type` to `SectionName`; fallback to `SectionName.REFERENCES` on `ValueError`.
-10. Match citations via `match_citations_use_case`.
-11. Verify EUMIC via `verify_eumic_use_case` (no fatal exception on violations).
+10. Match citations via `citation_matcher.match_citations_to_references(citations=..., references=..., section_type=section_name)`.
+11. Verify EUMIC via `document_format_inspection_port.inspect(docx_path=document_path, word_count=document_content.word_count)` (no fatal exception on violations).
 12. Call `recommendation_builder.build()` and **unpack the tuple**: `recommendations, verdict = builder.build(...)`.
 13. Construct and return `ReportInputDTO` with all results including `verdict`.
 
@@ -266,35 +304,69 @@ Its method `build(...) -> tuple[list[RecommendationDTO], PublicationVerdictDTO]`
 
 - GIVEN a valid `document_path`
 - WHEN `execute(document_path)` is called
-- THEN each sub-use case is called exactly once and a `ReportInputDTO` is returned
+- THEN each port/domain-service collaborator is called exactly once and a `ReportInputDTO` is returned
 
 #### Scenario: Only AUTHOR_YEAR citations are validated
 
 - GIVEN a document with 2 `AUTHOR_YEAR` and 1 `NUMERIC` citations
 - WHEN the orchestrator runs
-- THEN only the 2 `AUTHOR_YEAR` citations are sent to `ValidateApaUseCase`
+- THEN only the 2 `AUTHOR_YEAR` citations are sent to `_validate_apa` (and, since non-empty,
+  forwarded to `apa_validator.validate_all_citations()`)
 
 #### Scenario: Structure validation uses effective structure type
 
 - GIVEN a `CIENTIFICO` article without `"IMRyD"` in reasoning
 - WHEN structure validation is invoked
-- THEN `ValidateStructureUseCase` receives `ArticleType.DIVULGACION`
+- THEN `structure_validator.validate()` receives `article_type=ArticleType.DIVULGACION`
+
+#### Scenario: has_references correctly filters REFERENCES from missing sections
+
+- GIVEN `structure_validator.validate()` returns `SectionName.REFERENCES` among the missing sections
+- WHEN `_validate_structure` is called with `has_references=True`
+- THEN `SectionName.REFERENCES` is NOT in the resulting `missing_sections`
+- WHEN `_validate_structure` is called with `has_references=False`
+- THEN `SectionName.REFERENCES` IS in the resulting `missing_sections`
 
 ---
 
 ### Requirement: AnalyzeDocumentUseCaseWiring Assembly Factory
 
-`AnalyzeDocumentUseCaseWiring` MUST reside in `src/infrastructure/wirings/analyze_document_use_case_wiring.py`. It MUST follow the **private-method wiring pattern** established in other wirings (e.g. `AnalyzeQualityUseCaseWiring`):
+> **Modified (2026-07-04, `refactor_analyze_document_wiring`)**: `AnalyzeDocumentUseCaseWiring`
+> is now the sole composition root for the analysis pipeline — it no longer delegates to 10
+> sub-wirings. Each `_get_xxx()` method builds its adapter or domain service directly.
+
+`AnalyzeDocumentUseCaseWiring` MUST reside in `src/infrastructure/wirings/analyze_document_use_case_wiring.py`.
+It MUST follow the **private-method wiring pattern**:
 
 - `create_use_case()` delegates each dependency to a `_get_xxx()` private method.
-- Each `_get_xxx()` method instantiates the corresponding sub-wiring or builds the object directly.
+- Each `_get_xxx()` method instantiates the corresponding adapter or domain service directly
+  (no sub-wiring classes remain).
+- `_get_document_text_port()` returns `DocxTextAdapter()`.
+- `_get_content_extraction_port()` returns `ParagraphContentAdapter()`.
+- `_get_character_count_port()` returns `Win32ComWordCountAdapter()`.
+- `_get_citation_extraction_port()` returns `DocxCitationAdapter(document_text_port=self._get_document_text_port())`.
+- `_get_reference_extraction_port()` returns `DocxReferenceAdapter(document_text_port=self._get_document_text_port())`.
+- `_get_grammar_check_port()` returns `LanguageToolAdapter()`.
+- `_get_document_format_inspection_port()` returns `DocxEumicAdapter()`.
+- `_get_apa_validator()` returns `ApaValidator()`.
+- `_get_citation_matcher()` returns `CitationMatcher()`.
+- `_get_structure_validator()` returns `StructureValidator()`.
+- `_get_article_classifier()` and `_get_quality_analyzer()` each construct their domain service
+  directly, both consuming the **same shared** `LlmGeneratorPort` instance from `_get_llm_generator()`
+  (memoized on the wiring instance) rather than each assembling their own `OllamaGeneratorAdapter`.
 - `_get_recommendation_builder()` calls `RecommendationConfig.build_settings()` to obtain settings.
 
 #### Scenario: Wiring constructs correct dependency graph
 
 - GIVEN the wiring configuration
 - WHEN `AnalyzeDocumentUseCaseWiring().create_use_case()` is called
-- THEN it returns a valid `AnalyzeDocumentUseCase` with all 11 dependencies injected
+- THEN it returns a valid `AnalyzeDocumentUseCase` with all 13 dependencies injected
+
+#### Scenario: Article classifier and quality analyzer share one LLM generator instance
+
+- GIVEN `AnalyzeDocumentUseCaseWiring().create_use_case()`
+- WHEN `result._article_classifier._llm_generator` and `result._quality_analyzer._llm_generator` are compared
+- THEN they are the exact same object (`is`), not merely equal instances
 
 #### Scenario: Environment variable overrides threshold at wiring time
 
