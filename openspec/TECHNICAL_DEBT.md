@@ -24,11 +24,14 @@ Flagged during classify-article PR-1 review; explicitly left untouched to avoid 
 - `src/application/tests/fake_llm_generator_adapter.py` — `FakeLlmGeneratorAdapterForTest.generate()` is missing the `options: dict | None = None` param added to `LlmGeneratorPort` in Slice 6 (ADR-4); latent signature drift, not currently exercised by any test passing `options=`.
 - **Source**: Engram #627.
 
-### 4. Non-English identifiers and magic values not audited across `src/`
-Two pending audit items across the whole `src/` tree (not a single slice):
-1. Any variable/constant/class/method name still in Spanish beyond the already-known cases (see item 6 below, which is the separate, already-scoped exception for domain-vocabulary enums).
-2. Hardcoded/magic literals (numbers, strings) that should be named constants.
-- **Source**: Engram #630.
+### 4. Magic values not audited across the remaining `src/` infrastructure adapters (partially resolved)
+The `ArticleSize` enum (Spanish members) and the magic-number thresholds in `ArticleSizeClassifier`, `QualityLevelResolver`, and `PublicationVerdictEvaluator` were resolved — see "Resolved" section below. The following magic literals identified during that audit were explicitly deferred (out of scope for that change) and remain unaddressed:
+- `StructureValidator._extract_present_sections()` — hardcoded `100` char header limit.
+- `DocxCitationAdapter._collect_multi_author()` — hardcoded `100` max author name length.
+- `DocxReferenceAdapter` — raw regex flags `2 | 16` instead of `re.IGNORECASE | re.DOTALL`.
+- `LanguageToolAdapter._map_to_dto()` — hardcoded `3` max replacements.
+- `DocxReportAdapter` — `250` words/page divisor, `5` list slice size, `150` truncation size, `3` replacements limit, `6`x`2` table dimensions, `80` separator repeat count.
+- **Source**: Engram #630; `openspec/changes/archive/2026-07-04-resolve-spanish-and-magic-debt/exploration.md`.
 
 ### 5. Spanish domain-vocabulary enums pending final rename pass
 Enums like `QualityDimension`, `ArticleType`, `SectionType` keep Spanish `.value`s (they match literal text from the LLM/documents) by deliberate decision — renaming is deferred to a dedicated final pass at the end of the whole migration, together with their parsing logic, not per-slice.
@@ -73,6 +76,11 @@ Was importing `DocumentContent` from `src.domain.dtos.document_content_dto`, but
 Running `pytest -q` from the repo root threw `ModuleNotFoundError: No module named 'domain.tests'` across dozens of files under `src/domain/tests/`. Both the legacy top-level `domain/` package and `src/domain/` shared the name `domain`, causing pytest's default import mode to resolve the wrong one (104 collection errors on baseline).
 - **Verified fixed**: 2026-07-02, openspec change `resolve-pytest-domain-collision` — configured `pytest.ini` with `addopts = --import-mode=importlib` and `pythonpath = .`, added empty `src/__init__.py` to prevent top-level namespace collision. Results: 635 passed, 3 skipped, 0 collection errors (confirmed via `.venv/Scripts/pytest.exe -q`). Legacy `domain/` and `src/domain/` remain untouched as required.
 - **Source**: Engram #752-#756 (proposal, design, tasks, apply-progress, verify-report); `openspec/changes/resolve-pytest-domain-collision/`.
+
+### `ArticleSize` enum Spanish members and magic-number thresholds in classification/quality/recommendation
+`ArticleSize` enum members were in Spanish (`LARGO`, `CORTO`, `NO_DEFINIDO`, `FUERA_RANGO`); `ArticleSizeClassifier`, `QualityLevelResolver`, and `PublicationVerdictEvaluator` had hardcoded magic-number thresholds.
+- **Verified fixed**: 2026-07-04, openspec change `resolve-spanish-and-magic-debt` — enum members renamed to `LONG`/`SHORT`/`UNDEFINED`/`OUT_OF_RANGE` (Spanish `.value`s preserved for report/downstream compatibility); the three classes now accept keyword-only injected thresholds (defaults unchanged), loaded from `.env` via their wirings/config. No behavioral changes. `.venv/Scripts/pytest.exe -q` → 641 passed, 3 skipped (up from 635 baseline). Verified independently by `sdd-verify` (0 CRITICAL).
+- **Source**: Engram #630, #777-#783 (proposal, spec, design, tasks, apply-progress, verify-report, archive-report); `openspec/changes/archive/2026-07-04-resolve-spanish-and-magic-debt/`.
 
 ## Notes on scope
 

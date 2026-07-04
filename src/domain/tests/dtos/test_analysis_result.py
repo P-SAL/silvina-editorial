@@ -18,7 +18,7 @@ class TestAnalysisResultDTO(TestCase):
         document_content = DocumentContentDTO(word_count=500, char_count=3000)
         classification = ClassificationResultDTO(
             article_type=ArticleType.CIENTIFICO,
-            article_size=ArticleSize.LARGO,
+            article_size=ArticleSize.LONG,
             confidence=0.9,
             reasoning="Scientific article",
         )

@@ -1,12 +1,20 @@
 from unittest import TestCase
 
+from src.domain.dtos.quality_level_thresholds_dto import QualityLevelThresholdsDTO
 from src.domain.enums.quality_level import QualityLevel
 from src.domain.quality.quality_level_resolver import QualityLevelResolver
 
 
 class TestQualityLevelResolver(TestCase):
     def setUp(self):
-        self.resolver = QualityLevelResolver()
+        self.resolver = QualityLevelResolver(
+            thresholds=QualityLevelThresholdsDTO(
+                excellent_threshold=9.0,
+                good_threshold=7.0,
+                acceptable_threshold=5.0,
+                needs_improvement_threshold=3.0,
+            )
+        )
 
     def test_score_of_nine_point_zero_returns_excellent(self):
         self.assertEqual(self.resolver.resolve(9.0), QualityLevel.EXCELLENT)
@@ -31,3 +39,18 @@ class TestQualityLevelResolver(TestCase):
 
     def test_score_just_below_three_returns_poor(self):
         self.assertEqual(self.resolver.resolve(2.9), QualityLevel.POOR)
+
+    def test_custom_thresholds_resolve_correctly(self):
+        resolver = QualityLevelResolver(
+            thresholds=QualityLevelThresholdsDTO(
+                excellent_threshold=8.0,
+                good_threshold=6.0,
+                acceptable_threshold=4.0,
+                needs_improvement_threshold=2.0,
+            )
+        )
+
+        self.assertEqual(resolver.resolve(8.0), QualityLevel.EXCELLENT)
+        self.assertEqual(resolver.resolve(7.9), QualityLevel.GOOD)
+        self.assertEqual(resolver.resolve(4.0), QualityLevel.ACCEPTABLE)
+        self.assertEqual(resolver.resolve(1.9), QualityLevel.POOR)

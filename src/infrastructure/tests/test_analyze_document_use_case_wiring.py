@@ -51,3 +51,17 @@ class TestAnalyzeDocumentUseCaseWiring(TestCase):
         self.assertAlmostEqual(settings.critical_citation_match_threshold, 50.0)
         self.assertEqual(settings.citation_count_threshold, 10)
         self.assertAlmostEqual(settings.classification_confidence_threshold, 0.7)
+        self.assertAlmostEqual(settings.critical_quality_threshold, 5.0)
+        self.assertAlmostEqual(settings.critical_grammar_threshold, 5.0)
+
+    def test_env_var_overrides_critical_quality_threshold(self):
+        with patch.dict(os.environ, {"RECOMMENDATION_CRITICAL_QUALITY_THRESHOLD": "4.0"}):
+            result = AnalyzeDocumentUseCaseWiring().create_use_case()
+        settings: RecommendationSettingsDTO = result._recommendation_builder._settings
+        self.assertAlmostEqual(settings.critical_quality_threshold, 4.0)
+
+    def test_env_var_overrides_critical_grammar_threshold(self):
+        with patch.dict(os.environ, {"RECOMMENDATION_CRITICAL_GRAMMAR_THRESHOLD": "4.0"}):
+            result = AnalyzeDocumentUseCaseWiring().create_use_case()
+        settings: RecommendationSettingsDTO = result._recommendation_builder._settings
+        self.assertAlmostEqual(settings.critical_grammar_threshold, 4.0)

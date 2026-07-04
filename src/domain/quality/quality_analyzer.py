@@ -19,14 +19,14 @@ class QualityAnalyzer:
         response_parser: QualityResponseParser,
         clarity_coherence_prompt_template: str,
         argumentation_conclusions_prompt_template: str,
-        resolver: QualityLevelResolver | None = None,
+        resolver: QualityLevelResolver,
     ) -> None:
         self._llm_generator = llm_generator
         self._text_sampler = text_sampler
         self._response_parser = response_parser
         self._clarity_coherence_prompt_template = clarity_coherence_prompt_template
         self._argumentation_conclusions_prompt_template = argumentation_conclusions_prompt_template
-        self._resolver = resolver or QualityLevelResolver()
+        self._resolver = resolver
 
     def analyze(self, document_content: DocumentContentDTO, article_type) -> QualityResultDTO:
         """Score document quality across Claridad, Coherencia, Argumentación and Conclusiones."""

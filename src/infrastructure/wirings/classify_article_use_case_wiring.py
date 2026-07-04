@@ -17,6 +17,7 @@ from src.domain.classification.methodological_vocabulary_detector import (
     MethodologicalVocabularyDetector,
 )
 from src.domain.classification.reference_signal_detector import ReferenceSignalDetector
+from src.domain.dtos.article_size_thresholds_dto import ArticleSizeThresholdsDTO
 from src.domain.ports.llm_generator_port import LlmGeneratorPort
 from src.infrastructure.adapters.llm_generator.ollama_generator_adapter import (
     OllamaGeneratorAdapter,
@@ -35,7 +36,7 @@ class ClassifyArticleUseCaseWiring:
         return ArticleClassifier(
             llm_generator=self._get_llm_generator(),
             signal_detector=ImrydSignalDetector(),
-            article_size_classifier=ArticleSizeClassifier(),
+            article_size_classifier=self._get_article_size_classifier(),
             text_sampler=ArticleClassificationTextSampler(),
             response_parser=ArticleClassificationResponseParser(),
             signal_prompt_template=read_text_resource(
@@ -46,6 +47,19 @@ class ClassifyArticleUseCaseWiring:
             methodological_vocabulary_detector=MethodologicalVocabularyDetector(),
             reference_signal_detector=ReferenceSignalDetector(),
             rule_table=ClassificationRuleTable(),
+        )
+
+    def _get_article_size_classifier(self) -> ArticleSizeClassifier:
+        return ArticleSizeClassifier(thresholds=self._get_article_size_thresholds())
+
+    def _get_article_size_thresholds(self) -> ArticleSizeThresholdsDTO:
+        return ArticleSizeThresholdsDTO(
+            short_min_chars=int(getenv("ARTICLE_SIZE_SHORT_MIN_CHARS", "16000")),
+            short_max_chars=int(getenv("ARTICLE_SIZE_SHORT_MAX_CHARS", "24000")),
+            undefined_min_chars=int(getenv("ARTICLE_SIZE_UNDEFINED_MIN_CHARS", "24001")),
+            undefined_max_chars=int(getenv("ARTICLE_SIZE_UNDEFINED_MAX_CHARS", "35999")),
+            long_min_chars=int(getenv("ARTICLE_SIZE_LONG_MIN_CHARS", "36000")),
+            long_max_chars=int(getenv("ARTICLE_SIZE_LONG_MAX_CHARS", "40000")),
         )
 
     def _get_llm_generator(self) -> LlmGeneratorPort:

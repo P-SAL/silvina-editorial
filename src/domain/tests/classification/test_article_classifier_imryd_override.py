@@ -14,6 +14,7 @@ from src.domain.classification.methodological_vocabulary_detector import (
     MethodologicalVocabularyDetector,
 )
 from src.domain.classification.reference_signal_detector import ReferenceSignalDetector
+from src.domain.dtos.article_size_thresholds_dto import ArticleSizeThresholdsDTO
 from src.domain.dtos.document_content_dto import DocumentContentDTO
 from src.domain.enums.article_type import ArticleType
 from src.domain.enums.classification_confidence import ClassificationConfidence
@@ -60,7 +61,16 @@ class TestArticleClassifierImrydOverride(TestCase):
             ArticleClassifier(
                 llm_generator=self._fake_llm_generator,
                 signal_detector=ImrydSignalDetector(),
-                article_size_classifier=ArticleSizeClassifier(),
+                article_size_classifier=ArticleSizeClassifier(
+                    thresholds=ArticleSizeThresholdsDTO(
+                        short_min_chars=16000,
+                        short_max_chars=24000,
+                        undefined_min_chars=24001,
+                        undefined_max_chars=35999,
+                        long_min_chars=36000,
+                        long_max_chars=40000,
+                    )
+                ),
                 text_sampler=ArticleClassificationTextSampler(),
                 response_parser=ArticleClassificationResponseParser(),
                 signal_prompt_template="TEXTO: {text_sample}",
@@ -92,7 +102,16 @@ class TestArticleClassifierImrydOverride(TestCase):
         return ArticleClassifier(
             llm_generator=self._fake_llm_generator,
             signal_detector=ImrydSignalDetector(),
-            article_size_classifier=ArticleSizeClassifier(),
+            article_size_classifier=ArticleSizeClassifier(
+                thresholds=ArticleSizeThresholdsDTO(
+                    short_min_chars=16000,
+                    short_max_chars=24000,
+                    undefined_min_chars=24001,
+                    undefined_max_chars=35999,
+                    long_min_chars=36000,
+                    long_max_chars=40000,
+                )
+            ),
             text_sampler=ArticleClassificationTextSampler(),
             response_parser=ArticleClassificationResponseParser(),
             signal_prompt_template="TITULO: {title}\nTEXTO: {text_sample}",

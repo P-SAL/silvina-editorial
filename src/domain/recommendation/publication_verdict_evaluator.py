@@ -10,8 +10,8 @@ class PublicationVerdictEvaluator:
         match_rate = context.citation_match_rate
 
         has_critical_issues = (
-            context.quality.overall_score < 5.0
-            or context.grammar.score < 5.0
+            context.quality.overall_score < context.settings.critical_quality_threshold
+            or context.grammar.score < context.settings.critical_grammar_threshold
             or not context.structure.is_valid
             or match_rate < context.settings.critical_citation_match_threshold
         )
