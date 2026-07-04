@@ -16,8 +16,8 @@ class ExtractContentUseCaseWiring:
             count_port=self._get_count_port(),
         )
 
-    def _get_extraction_port(self) -> ContentExtractionPort:
-        return ParagraphContentAdapter()
-
     def _get_count_port(self) -> CharacterCountPort:
         return Win32ComWordCountAdapter()
+
+    def _get_extraction_port(self) -> ContentExtractionPort:
+        return ParagraphContentAdapter()

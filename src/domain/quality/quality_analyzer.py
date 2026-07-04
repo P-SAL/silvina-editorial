@@ -81,9 +81,6 @@ class QualityAnalyzer:
             },
         )
 
-    def _render_prompt(self, template: str, text_sample: str) -> str:
-        return template.format(text_sample=text_sample)
-
     def _ensure_call_produced_usable_content(
         self,
         parsed_response: ParsedResponseDTO,
@@ -93,3 +90,6 @@ class QualityAnalyzer:
             dimension in parsed_response.matched_dimensions for dimension in relevant_dimensions
         ):
             raise QualityAnalysisFailed()
+
+    def _render_prompt(self, template: str, text_sample: str) -> str:
+        return template.format(text_sample=text_sample)

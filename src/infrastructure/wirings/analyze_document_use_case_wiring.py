@@ -43,17 +43,8 @@ class AnalyzeDocumentUseCaseWiring:
             recommendation_builder=self._get_recommendation_builder(),
         )
 
-    def _get_read_document_use_case(self) -> ReadDocumentUseCase:
-        return ReadDocumentUseCaseWiring().create_use_case()
-
-    def _get_extract_content_use_case(self) -> ExtractContentUseCase:
-        return ExtractContentUseCaseWiring().create_use_case()
-
-    def _get_extract_citations_use_case(self) -> ExtractCitationsUseCase:
-        return ExtractCitationsUseCaseWiring().create_use_case()
-
-    def _get_validate_apa_use_case(self) -> ValidateApaUseCase:
-        return ValidateApaWiring().create_use_case()
+    def _get_analyze_quality_use_case(self) -> AnalyzeQualityUseCase:
+        return AnalyzeQualityUseCaseWiring().create_use_case()
 
     def _get_check_grammar_use_case(self) -> CheckGrammarUseCase:
         return CheckGrammarUseCaseWiring().create_use_case()
@@ -61,17 +52,26 @@ class AnalyzeDocumentUseCaseWiring:
     def _get_classify_article_use_case(self) -> ClassifyArticleUseCase:
         return ClassifyArticleUseCaseWiring().create_use_case()
 
-    def _get_analyze_quality_use_case(self) -> AnalyzeQualityUseCase:
-        return AnalyzeQualityUseCaseWiring().create_use_case()
+    def _get_extract_citations_use_case(self) -> ExtractCitationsUseCase:
+        return ExtractCitationsUseCaseWiring().create_use_case()
 
-    def _get_validate_structure_use_case(self) -> ValidateStructureUseCase:
-        return ValidateStructureWiring().create_use_case()
+    def _get_extract_content_use_case(self) -> ExtractContentUseCase:
+        return ExtractContentUseCaseWiring().create_use_case()
 
     def _get_match_citations_use_case(self) -> MatchCitationsUseCase:
         return MatchCitationsUseCaseWiring().create_use_case()
 
-    def _get_verify_eumic_use_case(self) -> VerifyEumicUseCase:
-        return VerifyEumicUseCaseWiring().create_use_case()
+    def _get_read_document_use_case(self) -> ReadDocumentUseCase:
+        return ReadDocumentUseCaseWiring().create_use_case()
 
     def _get_recommendation_builder(self) -> RecommendationBuilder:
         return RecommendationBuilder(settings=RecommendationConfig.build_settings())
+
+    def _get_validate_apa_use_case(self) -> ValidateApaUseCase:
+        return ValidateApaWiring().create_use_case()
+
+    def _get_validate_structure_use_case(self) -> ValidateStructureUseCase:
+        return ValidateStructureWiring().create_use_case()
+
+    def _get_verify_eumic_use_case(self) -> VerifyEumicUseCase:
+        return VerifyEumicUseCaseWiring().create_use_case()
