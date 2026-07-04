@@ -60,7 +60,7 @@ class ArticleClassifier:
         )
 
         imryd_signals = self._signal_detector.detect(document_content=document_content)
-        if imryd_signals["imryd_complete"] and article_size != ArticleSize.FUERA_RANGO:
+        if imryd_signals["imryd_complete"] and article_size != ArticleSize.OUT_OF_RANGE:
             return ClassificationResultDTO.create(
                 article_type=ArticleType.CIENTIFICO,
                 article_size=article_size,

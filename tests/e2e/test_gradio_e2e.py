@@ -115,7 +115,7 @@ def _build_report_input_dto():
     )
     classification = ClassificationResultDTO.create(
         article_type=ArticleType.CIENTIFICO,
-        article_size=ArticleSize.CORTO,
+        article_size=ArticleSize.SHORT,
         confidence=0.9,
         reasoning="Contiene metodología IMRyD",
     )

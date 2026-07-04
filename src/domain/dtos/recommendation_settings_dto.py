@@ -15,3 +15,5 @@ class RecommendationSettingsDTO(BaseDTO):
     critical_citation_match_threshold: float
     citation_count_threshold: int
     classification_confidence_threshold: float
+    critical_quality_threshold: float
+    critical_grammar_threshold: float

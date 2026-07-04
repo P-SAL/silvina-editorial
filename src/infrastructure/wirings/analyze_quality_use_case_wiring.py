@@ -38,7 +38,17 @@ class AnalyzeQualityUseCaseWiring:
             argumentation_conclusions_prompt_template=read_text_resource(
                 directory=PROMPTS_DIR, filename="argumentation_conclusions_prompt.txt"
             ),
-            resolver=QualityLevelResolver(),
+            resolver=self._get_quality_level_resolver(),
+        )
+
+    def _get_quality_level_resolver(self) -> QualityLevelResolver:
+        return QualityLevelResolver(
+            excellent_threshold=float(getenv("QUALITY_LEVEL_EXCELLENT_THRESHOLD", "9.0")),
+            good_threshold=float(getenv("QUALITY_LEVEL_GOOD_THRESHOLD", "7.0")),
+            acceptable_threshold=float(getenv("QUALITY_LEVEL_ACCEPTABLE_THRESHOLD", "5.0")),
+            needs_improvement_threshold=float(
+                getenv("QUALITY_LEVEL_NEEDS_IMPROVEMENT_THRESHOLD", "3.0")
+            ),
         )
 
     def _get_text_sampler(self) -> QualityTextSampler:

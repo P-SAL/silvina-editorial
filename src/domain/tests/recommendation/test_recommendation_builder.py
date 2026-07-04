@@ -19,6 +19,8 @@ def _default_settings(**overrides) -> RecommendationSettingsDTO:
         "critical_citation_match_threshold": 50.0,
         "citation_count_threshold": 10,
         "classification_confidence_threshold": 0.7,
+        "critical_quality_threshold": 5.0,
+        "critical_grammar_threshold": 5.0,
     }
     defaults.update(overrides)
     return RecommendationSettingsDTO(**defaults)
@@ -129,6 +131,12 @@ class TestRecommendationBuilder(TestCase):
         _, verdict = self._build(quality=_make_quality(overall_score=4.5))
         self.assertEqual(verdict.verdict, PublicationVerdict.CRITICAL)
 
+    def test_critical_verdict_uses_custom_critical_quality_threshold(self):
+        self.settings = _default_settings(critical_quality_threshold=8.0)
+        self.builder = RecommendationBuilder(self.settings)
+        _, verdict = self._build(quality=_make_quality(overall_score=7.5))
+        self.assertEqual(verdict.verdict, PublicationVerdict.CRITICAL)
+
     # --- Grammar ---
 
     def test_high_priority_when_grammar_below_threshold(self):
@@ -137,6 +145,12 @@ class TestRecommendationBuilder(TestCase):
 
     def test_critical_verdict_when_grammar_below_critical_threshold(self):
         _, verdict = self._build(grammar=_make_grammar(score=4.5))
+        self.assertEqual(verdict.verdict, PublicationVerdict.CRITICAL)
+
+    def test_critical_verdict_uses_custom_critical_grammar_threshold(self):
+        self.settings = _default_settings(critical_grammar_threshold=8.0)
+        self.builder = RecommendationBuilder(self.settings)
+        _, verdict = self._build(grammar=_make_grammar(score=7.5))
         self.assertEqual(verdict.verdict, PublicationVerdict.CRITICAL)
 
     # --- Dimension scores ---

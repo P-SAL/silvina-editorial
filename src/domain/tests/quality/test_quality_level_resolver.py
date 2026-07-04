@@ -31,3 +31,16 @@ class TestQualityLevelResolver(TestCase):
 
     def test_score_just_below_three_returns_poor(self):
         self.assertEqual(self.resolver.resolve(2.9), QualityLevel.POOR)
+
+    def test_custom_thresholds_override_defaults(self):
+        resolver = QualityLevelResolver(
+            excellent_threshold=8.0,
+            good_threshold=6.0,
+            acceptable_threshold=4.0,
+            needs_improvement_threshold=2.0,
+        )
+
+        self.assertEqual(resolver.resolve(8.0), QualityLevel.EXCELLENT)
+        self.assertEqual(resolver.resolve(7.9), QualityLevel.GOOD)
+        self.assertEqual(resolver.resolve(4.0), QualityLevel.ACCEPTABLE)
+        self.assertEqual(resolver.resolve(1.9), QualityLevel.POOR)
