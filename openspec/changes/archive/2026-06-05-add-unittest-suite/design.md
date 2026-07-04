@@ -32,7 +32,7 @@ graph TD
     C --> D[APA / EUMIC / Structure Validators]
     D --> E[ReportFormatter / Exporters]
     E --> F[Output Markdown/JSON/docx Reports]
-    
+
     style B fill:#f9f,stroke:#333,stroke-width:2px
     style C fill:#bbf,stroke:#333,stroke-width:2px
     style D fill:#fbf,stroke:#333,stroke-width:2px
