@@ -5,7 +5,6 @@ Provides a user-friendly interface for non-technical editorial staff.
 """
 
 import gradio as gr
-import os
 import sys
 import json
 import traceback
@@ -15,10 +14,6 @@ from pathlib import Path
 from typing import Any
 import base64
 import webbrowser
-
-# Add project root to path
-project_root = Path(__file__).parent
-sys.path.insert(0, str(project_root))
 
 from src.domain.dtos.analysis_result_dto import AnalysisResultDTO
 from src.domain.dtos.base_dto import BaseDTO
@@ -30,6 +25,11 @@ from src.infrastructure.wirings.analyze_document_use_case_wiring import (
     AnalyzeDocumentUseCaseWiring,
 )
 from src.infrastructure.wirings.export_report_wiring import ExportReportWiring
+
+# Add project root to path
+project_root = Path(__file__).parent
+sys.path.insert(0, str(project_root))
+
 
 analyze_document_use_case = AnalyzeDocumentUseCaseWiring().create_use_case()
 export_report_use_case = ExportReportWiring().create_use_case()

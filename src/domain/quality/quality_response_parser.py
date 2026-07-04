@@ -65,6 +65,23 @@ class QualityResponseParser:
 
         return ParsedResponseDTO(scores=scores, matched_dimensions=frozenset(matched_dimensions))
 
+    def _extract_feedback(self, block: str) -> str:
+        lines = block.strip().split("\n")
+        feedback_lines = [
+            _LIST_MARKER_PATTERN.sub("", line.strip()) for line in lines[1:] if line.strip()
+        ]
+        feedback = " ".join(feedback_lines)
+        feedback = _RECOMMENDATION_TAIL_PATTERN.sub("", feedback).strip()
+        feedback = " ".join(feedback.split())
+
+        if len(feedback) < 10:
+            return self._unscored_dimension_feedback
+
+        sentences = [s.strip() for s in feedback.split(".") if s.strip()]
+        if len(sentences) > 3:
+            return ". ".join(sentences[:3]) + "."
+        return feedback
+
     def _extract_score(self, block: str) -> float:
         match = _EXPLICIT_SCORE_PATTERN.search(block)
         if match is None:
@@ -82,23 +99,6 @@ class QualityResponseParser:
             if any(keyword in block_lower for keyword in keywords):
                 return score
         return self._unscored_dimension_score
-
-    def _extract_feedback(self, block: str) -> str:
-        lines = block.strip().split("\n")
-        feedback_lines = [
-            _LIST_MARKER_PATTERN.sub("", line.strip()) for line in lines[1:] if line.strip()
-        ]
-        feedback = " ".join(feedback_lines)
-        feedback = _RECOMMENDATION_TAIL_PATTERN.sub("", feedback).strip()
-        feedback = " ".join(feedback.split())
-
-        if len(feedback) < 10:
-            return self._unscored_dimension_feedback
-
-        sentences = [s.strip() for s in feedback.split(".") if s.strip()]
-        if len(sentences) > 3:
-            return ". ".join(sentences[:3]) + "."
-        return feedback
 
     def _map_block_to_dimension(self, block: str) -> QualityDimension | None:
         block_lower = block[:200].lower()

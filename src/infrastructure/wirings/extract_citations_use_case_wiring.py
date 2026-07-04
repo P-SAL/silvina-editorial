@@ -17,8 +17,8 @@ class ExtractCitationsUseCaseWiring:
     def _get_citation_port(self) -> CitationExtractionPort:
         return DocxCitationAdapter(document_text_port=self._get_document_text_port())
 
-    def _get_reference_port(self) -> ReferenceExtractionPort:
-        return DocxReferenceAdapter(document_text_port=self._get_document_text_port())
-
     def _get_document_text_port(self) -> DocumentTextPort:
         return DocxTextAdapter()
+
+    def _get_reference_port(self) -> ReferenceExtractionPort:
+        return DocxReferenceAdapter(document_text_port=self._get_document_text_port())

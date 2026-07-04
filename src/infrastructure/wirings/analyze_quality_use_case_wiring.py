@@ -22,6 +22,11 @@ class AnalyzeQualityUseCaseWiring:
     def create_use_case(self) -> AnalyzeQualityUseCase:
         return AnalyzeQualityUseCase(analyzer=self._get_quality_analyzer())
 
+    def _get_llm_generator(self) -> LlmGeneratorPort:
+        model_name = getenv("OLLAMA_MODEL_NAME", "llama3-gradient:8b-instruct-1048k-q4_K_M")
+        base_url = getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+        return OllamaGeneratorAdapter(model_name=model_name, base_url=base_url)
+
     def _get_quality_analyzer(self) -> QualityAnalyzer:
         return QualityAnalyzer(
             llm_generator=self._get_llm_generator(),
@@ -35,11 +40,6 @@ class AnalyzeQualityUseCaseWiring:
             ),
             resolver=QualityLevelResolver(),
         )
-
-    def _get_llm_generator(self) -> LlmGeneratorPort:
-        model_name = getenv("OLLAMA_MODEL_NAME", "llama3-gradient:8b-instruct-1048k-q4_K_M")
-        base_url = getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-        return OllamaGeneratorAdapter(model_name=model_name, base_url=base_url)
 
     def _get_text_sampler(self) -> QualityTextSampler:
         return QualityTextSampler(
