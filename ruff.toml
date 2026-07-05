@@ -38,19 +38,10 @@ mccabe.max-complexity = 10
 exclude = [
     ".venv",
     "**/*.txt",
-    # Código legacy: coexiste durante la migración hexagonal y se elimina en el
-    # slice final. No se lintea (tiene defectos conocidos documentados en el plan).
-    "domain/",
-    "data_access/",
-    "business_logic/",
-    "presentation/",
     "tests/",
     "main.py",
     "gradio_app.py",
-    "apa_validator.py",
-    "eumic_verifier.py",
     "process_feedback.py",
-    "config.py",
     "conftest.py",
 ]
 
