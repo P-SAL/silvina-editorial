@@ -36,7 +36,7 @@ Chain strategy: feature-branch-chain
 
 ## Phase 2: Delete Legacy Files & Folders (PR 2)
 
-- [ ] 2.1 Delete legacy source directories: `domain/`, `data_access/`, `business_logic/`, `presentation/`.
-- [ ] 2.2 Delete legacy root files: `apa_validator.py`, `eumic_verifier.py`, `config.py`, `main_legacy.py`.
-- [ ] 2.3 Delete legacy tests directory: `tests/legacy/`.
-- [ ] 2.4 Run `pytest` to verify the codebase and adapted test suite function completely without legacy code.
+- [x] 2.1 Delete legacy source directories: `domain/`, `data_access/`, `business_logic/`, `presentation/`.
+- [x] 2.2 Delete legacy root files: `apa_validator.py`, `eumic_verifier.py`, `config.py`, `main_legacy.py`.
+- [x] 2.3 Delete legacy tests directory: `tests/legacy/`.
+- [x] 2.4 Run `pytest` to verify the codebase and adapted test suite function completely without legacy code.
