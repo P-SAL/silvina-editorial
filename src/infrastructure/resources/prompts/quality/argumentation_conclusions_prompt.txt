@@ -7,6 +7,7 @@ INSTRUCCIONES:
 1. Evalúa SOLO lo que está presente en el texto
 2. Para Conclusiones: si no hay sección formal, infiere del contenido final del texto
 3. La ortografía y gramática ya fueron verificadas - enfócate en el CONTENIDO
+4. Escribe en texto plano: no uses notación LaTeX ni símbolos matemáticos (nada de $, \times, \ge, etc.). Si necesitas citar números o comparaciones, escribilos como en el texto original (ej: "1 x 10^8", "mayor o igual a")
 
 FORMATO DE RESPUESTA (OBLIGATORIO):
 
