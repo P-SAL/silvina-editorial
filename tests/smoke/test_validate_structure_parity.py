@@ -52,6 +52,7 @@ class TestValidateStructureParity(TestCase):
 
     def test_cientifico_missing_sections(self):
         is_valid, missing = self._validate(*_DOCUMENTS[0])
+        # test_Científico.docx lacks dedicated Methodology, Results, and Discussion sections.
         self.assertEqual(
             missing,
             {SectionName.METHODOLOGY, SectionName.RESULTS, SectionName.DISCUSSION},
@@ -65,6 +66,7 @@ class TestValidateStructureParity(TestCase):
 
     def test_opinion_missing_sections(self):
         is_valid, missing = self._validate(*_DOCUMENTS[2])
+        # test_opinion_v2.docx lacks dedicated Introduction, Argumentation, and Conclusions sections.
         self.assertEqual(
             missing,
             {SectionName.INTRODUCTION, SectionName.ARGUMENTATION, SectionName.CONCLUSIONS},

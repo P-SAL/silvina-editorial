@@ -15,6 +15,7 @@ from unittest import TestCase
 from unittest.mock import patch
 
 from src.domain.dtos.document_content_dto import DocumentContentDTO
+from src.domain.enums.article_size import ArticleSize
 from src.domain.enums.article_type import ArticleType
 from src.infrastructure.adapters.document.docx_text_adapter import DocxTextAdapter
 from src.infrastructure.wirings.analyze_document_use_case_wiring import AnalyzeDocumentUseCaseWiring
@@ -46,17 +47,26 @@ class TestClassifyArticleParity(TestCase):
         return result, generate
 
     def test_cientifico_classified_as_popular_science(self):
-        self._assert_classifies_as(_DOCUMENTS[0], ArticleType.POPULAR_SCIENCE)
+        self._assert_classifies_as(
+            _DOCUMENTS[0], ArticleType.POPULAR_SCIENCE, ArticleSize.UNDEFINED
+        )
 
     def test_divulgacion_classified_as_popular_science(self):
-        self._assert_classifies_as(_DOCUMENTS[1], ArticleType.POPULAR_SCIENCE)
+        self._assert_classifies_as(
+            _DOCUMENTS[1], ArticleType.POPULAR_SCIENCE, ArticleSize.OUT_OF_RANGE
+        )
 
     def test_opinion_classified_as_popular_science(self):
-        self._assert_classifies_as(_DOCUMENTS[2], ArticleType.POPULAR_SCIENCE)
+        self._assert_classifies_as(
+            _DOCUMENTS[2], ArticleType.POPULAR_SCIENCE, ArticleSize.OUT_OF_RANGE
+        )
 
-    def _assert_classifies_as(self, filename: str, expected_type: ArticleType):
+    def _assert_classifies_as(
+        self, filename: str, expected_type: ArticleType, expected_size: ArticleSize
+    ):
         result, generate = self._run(filename)
         self.assertEqual(result.article_type, expected_type)
+        self.assertEqual(result.article_size, expected_size)
         self.assertEqual(generate.call_count, 1)
 
 

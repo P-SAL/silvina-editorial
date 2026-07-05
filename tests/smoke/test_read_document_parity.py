@@ -28,18 +28,25 @@ class TestReadDocumentParity(TestCase):
         cls.document_text_port = DocxTextAdapter()
 
     def test_cientifico_returns_stripped_nonempty_paragraphs(self):
-        self._assert_reads_stripped_nonempty_paragraphs(_DOCUMENTS[0])
+        self._assert_reads_stripped_nonempty_paragraphs(
+            _DOCUMENTS[0], "Capacidades de Razonamiento Emergente"
+        )
 
     def test_divulgacion_returns_stripped_nonempty_paragraphs(self):
-        self._assert_reads_stripped_nonempty_paragraphs(_DOCUMENTS[1])
+        self._assert_reads_stripped_nonempty_paragraphs(
+            _DOCUMENTS[1], "Inteligencia Artificial en Sistemas de Salud"
+        )
 
     def test_opinion_returns_stripped_nonempty_paragraphs(self):
-        self._assert_reads_stripped_nonempty_paragraphs(_DOCUMENTS[2])
+        self._assert_reads_stripped_nonempty_paragraphs(_DOCUMENTS[2], "Sigue Siendo Humano")
 
-    def _assert_reads_stripped_nonempty_paragraphs(self, filename: str):
+    def _assert_reads_stripped_nonempty_paragraphs(self, filename: str, expected_fragment: str):
         path = str(DOCS / filename)
         paragraphs = self.document_text_port.read_paragraphs(path=path)
         self.assertGreater(len(paragraphs), 0)
         for paragraph in paragraphs:
             self.assertEqual(paragraph, paragraph.strip())
             self.assertNotEqual(paragraph, "")
+        # Verify actual content is preserved from the fixture.
+        joined_text = " ".join(paragraphs)
+        self.assertIn(expected_fragment, joined_text)
