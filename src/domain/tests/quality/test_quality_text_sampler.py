@@ -75,7 +75,18 @@ class TestQualityTextSampler(TestCase):
 
         sample = sampler.build_sample(document_content)
 
-        self.assertLessEqual(len(sample), 500)
+        self.assertGreaterEqual(len(sample), 500)
+        self.assertTrue(sample.rstrip().endswith("Palabra"))
+
+    def test_sample_completes_the_paragraph_crossing_the_limit_instead_of_cutting_mid_word(self):
+        paragraphs = ["Corto uno.", "Corto dos.", "PARRAFO_FINAL " + "palabra " * 50]
+        document_content = self._build_document_content(paragraphs)
+        sampler = QualityTextSampler(min_sample_word_count=10000, text_sample_character_limit=25)
+
+        sample = sampler.build_sample(document_content)
+
+        self.assertIn("PARRAFO_FINAL", sample)
+        self.assertTrue(sample.rstrip().endswith("palabra"))
 
     def test_defaults_match_legacy_hardcoded_constants(self):
         paragraphs = ["Intro corta."] * 3 + ["Parrafo de relleno."] * 2 + ["Conclusion breve."]

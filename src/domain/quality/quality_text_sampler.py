@@ -37,10 +37,19 @@ class QualityTextSampler:
         )
         parts.extend(self._collect_conclusion_or_tail_paragraphs(document_content.paragraphs))
 
-        text_sample = " ".join(parts)[: self._text_sample_character_limit]
+        text_sample = self._join_to_paragraph_boundary(parts)
         if len(text_sample.split()) < self._min_sample_word_count:
-            return " ".join(document_content.paragraphs)[: self._text_sample_character_limit]
+            return self._join_to_paragraph_boundary(document_content.paragraphs)
         return text_sample
+
+    def _join_to_paragraph_boundary(self, paragraphs: list[str]) -> str:
+        """Join paragraphs, completing in full the one that first reaches the character limit."""
+        included: list[str] = []
+        for paragraph in paragraphs:
+            included.append(paragraph)
+            if len(" ".join(included)) >= self._text_sample_character_limit:
+                break
+        return " ".join(included)
 
     def _collect_conclusion_or_tail_paragraphs(self, paragraphs: list[str]) -> list[str]:
         conclusion_paragraphs = []
