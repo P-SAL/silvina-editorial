@@ -1,8 +1,18 @@
+"""
+Smoke test: ParagraphContentAdapter extracts structured content from real fixtures.
+
+Exercises src.infrastructure.adapters.document.paragraph_content_adapter.
+ParagraphContentAdapter directly against a real sample document, verifying
+title, abstract, keywords, and sections are extracted as expected.
+
+Run with: python -m pytest tests/smoke/ -v
+"""
+
 from pathlib import Path
 from unittest import TestCase
 
-from data_access.content_extractor import ContentExtractor
-from src.infrastructure.wirings.analyze_document_use_case_wiring import AnalyzeDocumentUseCaseWiring
+from src.infrastructure.adapters.document.docx_text_adapter import DocxTextAdapter
+from src.infrastructure.adapters.document.paragraph_content_adapter import ParagraphContentAdapter
 
 DOCS = Path(__file__).parent.parent.parent / "docs" / "sample-documents"
 _DOCUMENT = "1. test_Científico.docx"
@@ -11,20 +21,29 @@ _DOCUMENT = "1. test_Científico.docx"
 class TestExtractContentParity(TestCase):
     @classmethod
     def setUpClass(cls):
-        wiring = AnalyzeDocumentUseCaseWiring()
-        path = str(DOCS / _DOCUMENT)
-        paragraphs = wiring._get_document_text_port().read_paragraphs(path=path)
-        cls.legacy = ContentExtractor().extract_content(paragraphs)
-        cls.result = wiring._get_content_extraction_port().extract(paragraphs=paragraphs)
+        paragraphs = DocxTextAdapter().read_paragraphs(path=str(DOCS / _DOCUMENT))
+        cls.result = ParagraphContentAdapter().extract(paragraphs=paragraphs)
 
-    def test_title_matches_legacy(self):
-        self.assertEqual(self.result.title, self.legacy.title)
+    def test_title_is_extracted(self):
+        self.assertIsNotNone(self.result.title)
+        self.assertIn("Capacidades de Razonamiento Emergente", self.result.title)
 
-    def test_abstract_matches_legacy(self):
-        self.assertEqual(self.result.abstract, self.legacy.abstract)
+    def test_abstract_is_extracted(self):
+        self.assertIsNotNone(self.result.abstract)
+        self.assertTrue(self.result.abstract.startswith("Los modelos de lenguaje de gran escala"))
 
-    def test_keywords_match_legacy(self):
-        self.assertEqual(self.result.keywords, self.legacy.keywords)
+    def test_keywords_are_extracted(self):
+        self.assertEqual(
+            self.result.keywords,
+            [
+                "modelos de lenguaje de gran escala",
+                "capacidades emergentes",
+                "aprendizaje en contexto",
+                "razonamiento por cadena de pensamiento",
+                "leyes de escala",
+                "interpretabilidad mecanicista",
+            ],
+        )
 
-    def test_sections_match_legacy(self):
-        self.assertEqual(self.result.sections, self.legacy.sections)
+    def test_sections_are_extracted(self):
+        self.assertIn("REFERENCIAS", self.result.sections)

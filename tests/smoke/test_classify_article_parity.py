@@ -1,35 +1,25 @@
-# ruff: noqa: E402
 """
-Smoke tests: parity between legacy ArticleClassifier and new ClassifyArticleUseCase.
+Smoke test: ArticleClassifier classifies real sample documents correctly.
 
-Legacy path:
-    WordReader -> paragraphs -> LegacyClassifier.classify_article() -> ClassificationResult
-
-New path:
-    WordReader -> paragraphs -> DocumentContentDTO -> ClassifyArticleUseCase.execute()
-    -> ClassificationResultDTO
-
-Both sides' LLM calls are mocked with a canned response so this test never touches a
-live Ollama instance — only the S4/S5/S6 signal-extraction network call is faked; real
-.docx parsing and the deterministic signals (IMRyD override, S2a/S2b/S3) still run.
+Exercises src.domain.classification.article_classifier.ArticleClassifier
+(wired with src.infrastructure.adapters.llm_generator.ollama_generator_adapter.
+OllamaGeneratorAdapter) against real .docx fixtures. Only the S4/S5/S6
+signal-extraction network call is mocked with a canned response — real .docx
+parsing and the deterministic signals (IMRyD override, S2a/S2b/S3) still run.
 
 Run with: python -m pytest tests/smoke/ -v
 """
 
-import sys
 from pathlib import Path
 from unittest import TestCase
 from unittest.mock import patch
 
-ROOT = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(ROOT))
-
-from data_access.word_reader import WordReader
-from business_logic.article_classifier import ArticleClassifier as LegacyClassifier
 from src.domain.dtos.document_content_dto import DocumentContentDTO
+from src.domain.enums.article_type import ArticleType
+from src.infrastructure.adapters.document.docx_text_adapter import DocxTextAdapter
 from src.infrastructure.wirings.analyze_document_use_case_wiring import AnalyzeDocumentUseCaseWiring
 
-DOCS = ROOT / "docs" / "sample-documents"
+DOCS = Path(__file__).parent.parent.parent / "docs" / "sample-documents"
 _CANNED_RESPONSE = {"response": "S4: SI\nS5: SI\nS6: SI"}
 _DOCUMENTS = ["1. test_Científico.docx", "2. test_divulgacion_v2.docx", "3. test_opinion_v2.docx"]
 
@@ -37,46 +27,40 @@ _DOCUMENTS = ["1. test_Científico.docx", "2. test_divulgacion_v2.docx", "3. tes
 class TestClassifyArticleParity(TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.reader = WordReader()
-        cls.legacy = LegacyClassifier()
+        cls.reader = DocxTextAdapter()
         cls.article_classifier = AnalyzeDocumentUseCaseWiring()._get_article_classifier()
 
     def _run(self, filename: str):
-        paragraphs = self.reader.read_word_document(str(DOCS / filename))
+        paragraphs = self.reader.read_paragraphs(path=str(DOCS / filename))
         document_content = DocumentContentDTO(
             word_count=sum(len(paragraph.split()) for paragraph in paragraphs),
             char_count=sum(len(paragraph) for paragraph in paragraphs),
             paragraphs=paragraphs,
         )
         with patch(
-            "business_logic.article_classifier.ollama.Client.generate",
+            "src.infrastructure.adapters.llm_generator.ollama_generator_adapter."
+            "ollama.Client.generate",
             return_value=_CANNED_RESPONSE,
-        ) as legacy_generate:
-            legacy_result = self.legacy.classify_article(document_content)
-        with patch(
-            "src.infrastructure.adapters.llm_generator.ollama_generator_adapter.ollama.Client.generate",
-            return_value=_CANNED_RESPONSE,
-        ) as new_generate:
-            new_result = self.article_classifier.classify(document_content=document_content)
-        return legacy_result, new_result, legacy_generate, new_generate
+        ) as generate:
+            result = self.article_classifier.classify(document_content=document_content)
+        return result, generate
 
-    def test_cientifico_parity(self):
-        legacy, new, legacy_generate, new_generate = self._run(_DOCUMENTS[0])
-        self._assert_mocks_intercepted_the_same_number_of_calls(legacy_generate, new_generate)
-        self.assertEqual(new.article_type.value, legacy.article_type.value)
-        self.assertEqual(new.confidence, legacy.confidence)
+    def test_cientifico_classified_as_popular_science(self):
+        self._assert_classifies_as(_DOCUMENTS[0], ArticleType.POPULAR_SCIENCE)
 
-    def test_divulgacion_parity(self):
-        legacy, new, legacy_generate, new_generate = self._run(_DOCUMENTS[1])
-        self._assert_mocks_intercepted_the_same_number_of_calls(legacy_generate, new_generate)
-        self.assertEqual(new.article_type.value, legacy.article_type.value)
-        self.assertEqual(new.confidence, legacy.confidence)
+    def test_divulgacion_classified_as_popular_science(self):
+        self._assert_classifies_as(_DOCUMENTS[1], ArticleType.POPULAR_SCIENCE)
 
-    def test_opinion_parity(self):
-        legacy, new, legacy_generate, new_generate = self._run(_DOCUMENTS[2])
-        self._assert_mocks_intercepted_the_same_number_of_calls(legacy_generate, new_generate)
-        self.assertEqual(new.article_type.value, legacy.article_type.value)
-        self.assertEqual(new.confidence, legacy.confidence)
+    def test_opinion_classified_as_popular_science(self):
+        self._assert_classifies_as(_DOCUMENTS[2], ArticleType.POPULAR_SCIENCE)
 
-    def _assert_mocks_intercepted_the_same_number_of_calls(self, legacy_generate, new_generate):
-        self.assertEqual(new_generate.call_count, legacy_generate.call_count)
+    def _assert_classifies_as(self, filename: str, expected_type: ArticleType):
+        result, generate = self._run(filename)
+        self.assertEqual(result.article_type, expected_type)
+        self.assertEqual(generate.call_count, 1)
+
+
+if __name__ == "__main__":
+    import unittest
+
+    unittest.main()

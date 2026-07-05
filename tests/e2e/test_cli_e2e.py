@@ -60,7 +60,6 @@ class TestCLIE2E(unittest.TestCase):
         mock_client = _make_ollama_client_mock()
         with (
             patch("ollama.Client", return_value=mock_client),
-            patch("data_access.word_counter.WIN32COM_AVAILABLE", False),
             patch(
                 "src.infrastructure.adapters.document.win32com_word_count_adapter."
                 "WIN32COM_AVAILABLE",
@@ -78,7 +77,6 @@ class TestCLIE2E(unittest.TestCase):
         mock_client = _make_ollama_client_mock()
         with (
             patch("ollama.Client", return_value=mock_client),
-            patch("data_access.word_counter.WIN32COM_AVAILABLE", False),
             patch(
                 "src.infrastructure.adapters.document.win32com_word_count_adapter."
                 "WIN32COM_AVAILABLE",
@@ -103,7 +101,6 @@ class TestCLIE2E(unittest.TestCase):
         mock_client = _make_ollama_client_mock()
         with (
             patch("ollama.Client", return_value=mock_client),
-            patch("data_access.word_counter.WIN32COM_AVAILABLE", False),
             patch(
                 "src.infrastructure.adapters.document.win32com_word_count_adapter."
                 "WIN32COM_AVAILABLE",
@@ -121,7 +118,6 @@ class TestCLIE2E(unittest.TestCase):
         mock_client = _make_ollama_client_mock()
         with (
             patch("ollama.Client", return_value=mock_client),
-            patch("data_access.word_counter.WIN32COM_AVAILABLE", False),
             patch(
                 "src.infrastructure.adapters.document.win32com_word_count_adapter."
                 "WIN32COM_AVAILABLE",
