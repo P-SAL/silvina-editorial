@@ -26,13 +26,12 @@ Per convention (Engram #605), dead code found while migrating a legacy module is
 - Slice 5 (analyze-quality): `self.client = ollama.Client(...)` in `QualityAnalyzer.__init__` — built but never used. `article_type` param of `analyze_quality(document_content, article_type)` — never read in the method body (kept intentionally, not removed). `analyze_document_quality()` convenience function at end of file — calls the instance method with 3 args against a 2-arg signature; broken/unreachable.
 - **Source**: Engram #605 (topic `migration/dead-code-registry`).
 
-### 4. Legacy modules (`domain/`, `data_access/`, `business_logic/`, `presentation/`) not yet deleted
-*Note: This item is not actually unplanned technical debt, but is formally scheduled as part of the migration process under Slice 16 (final cleanup and removal of legacy root packages).*
-Slice 16 (final cleanup: delete legacy top-level packages) was explicitly postponed until the full hexagonal migration (Slices 0-15) is confirmed working in real use.
-- This is why item 1 (the `domain` package collision) still exists — both the legacy and the new `src/domain` package coexist on purpose for now.
-- **Source**: Engram #735.
+### 5. README.md documents the deleted legacy structure
+`README.md` (lines 18, 63-66, 215-236) still describes the old 4-layer legacy root layout (`domain/`, `data_access/`, `business_logic/`, `presentation/`, `apa_validator.py`, `eumic_verifier.py`) that Slice 16 (`cleanup-legacy-packages`) deleted from the repo. The "Project Structure" section shows a directory tree that no longer exists.
+- Update to describe the `src/` hexagonal layout (`src/domain/`, `src/application/`, `src/infrastructure/`) and remove references to the deleted legacy packages/files.
+- **Source**: judgment-day review of `cleanup-legacy-packages` PR2 (2026-07-05) — flagged by Judge B, verified real via grep; deferred by user decision to a later pass.
 
-### 5. `@generic_error_handler` applied to adapters instead of use cases only
+### 6. `@generic_error_handler` applied to adapters instead of use cases only
 Convention: `@generic_error_handler` should only decorate application-layer use case methods, never infrastructure adapters — error handling is a use-case responsibility, not an adapter one. The following adapters currently violate this:
 - `DocxTextAdapter.read_paragraphs()` (`src/infrastructure/adapters/document/docx_text_adapter.py`)
 - `DocxCitationAdapter.extract_citations()` (`src/infrastructure/adapters/document/docx_citation_adapter.py`)
@@ -43,6 +42,11 @@ Convention: `@generic_error_handler` should only decorate application-layer use 
 - **Source**: Engram `pattern/generic-error-handler-scope`; discovered during judgment-day review of `refactor_analyze_document_wiring` (2026-07-04).
 
 ## Resolved (was tracked, no longer applies)
+
+### Legacy modules (`domain/`, `data_access/`, `business_logic/`, `presentation/`) not yet deleted
+Slice 16 (final cleanup: delete legacy top-level packages) was postponed until the full hexagonal migration (Slices 0-15) was confirmed working, then executed as its own SDD change.
+- **Verified fixed**: 2026-07-05, openspec change `cleanup-legacy-packages` (PR1 commit `54967c8` + PR2 commit `60ba349`) — deleted `domain/`, `data_access/`, `business_logic/` (incl. `vocab/`), `presentation/`, `apa_validator.py`, `eumic_verifier.py`, `config.py`, `main_legacy.py`, `tests/legacy/`; adapted `tests/smoke/`/`tests/e2e/` to test `src/` directly; cleaned dead `ruff.toml` exclude entries. Full suite green: 589 passed, 3 skipped, 0 failed. Both PRs passed judgment-day (PR1 approved after 1 fix round, PR2 approved with 1 deferred follow-up — see item 5 above).
+- **Source**: Engram #735 (original), #802-#810 (proposal, design, tasks, apply/verify PR1+PR2, judgment-day PR1); `openspec/changes/cleanup-legacy-packages/`.
 
 ### Explicit keyword arguments not audited across the full codebase
 Audited and refactored the codebase to use explicit keyword arguments in all function/method calls to prevent bugs and enforce clean interfaces.
