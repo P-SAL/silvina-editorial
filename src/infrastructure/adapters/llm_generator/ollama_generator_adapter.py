@@ -1,6 +1,5 @@
 import ollama
 
-from src.domain.exceptions.decorators.generic_error_handler import generic_error_handler
 from src.domain.exceptions.language_model_errors import LanguageModelUnavailable
 from src.domain.ports.llm_generator_port import LlmGeneratorPort
 
@@ -12,7 +11,6 @@ class OllamaGeneratorAdapter(LlmGeneratorPort):
         self._model_name = model_name
         self._base_url = base_url
 
-    @generic_error_handler
     def generate(self, prompt: str, options: dict | None = None) -> str:
         """Return Ollama's generated text for the given prompt."""
         try:

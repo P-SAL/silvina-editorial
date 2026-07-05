@@ -4,7 +4,6 @@ from src.domain.document.document_text_port import DocumentTextPort
 from src.domain.document.reference_extraction_port import ReferenceExtractionPort
 from src.domain.dtos.reference_dto import ReferenceDTO
 from src.domain.exceptions.reference_errors import ReferenceParsingFailed  # noqa: F401
-from src.domain.exceptions.decorators.generic_error_handler import generic_error_handler
 
 _DEFAULT_SECTION_TYPE = "Referencias"
 
@@ -28,7 +27,6 @@ class DocxReferenceAdapter(ReferenceExtractionPort):
     def __init__(self, document_text_port: DocumentTextPort) -> None:
         self._document_text_port = document_text_port
 
-    @generic_error_handler
     def extract_references(self, docx_path: str) -> tuple[list[ReferenceDTO], str]:
         full_text = "".join(self._document_text_port.read_paragraphs(path=docx_path))
         bib_match = _BIB_SECTION_PATTERN.search(full_text)

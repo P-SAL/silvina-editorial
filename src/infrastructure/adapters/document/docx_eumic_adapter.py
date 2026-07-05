@@ -8,7 +8,6 @@ from src.domain.document.document_format_inspection_port import DocumentFormatIn
 from src.domain.dtos.eumic_violation_dto import EumicViolationDTO
 from src.domain.enums.allowed_font import AllowedFont
 from src.domain.enums.formula_xml_marker import FormulaXmlMarker
-from src.domain.exceptions.decorators.generic_error_handler import generic_error_handler
 from src.infrastructure.adapters.document.eumic_document_standards import (
     ABSTRACT_MAX_WORD_COUNT,
     ABSTRACT_MIN_WORD_COUNT,
@@ -34,7 +33,6 @@ from src.infrastructure.adapters.document.eumic_violation_factory import EumicVi
 class DocxEumicAdapter(DocumentFormatInspectionPort):
     """Inspects a .docx document for EUMIC editorial standard violations."""
 
-    @generic_error_handler
     def inspect(self, docx_path: str, word_count: int) -> list[EumicViolationDTO]:
         document = Document(docx_path)
         violations: list[EumicViolationDTO] = []

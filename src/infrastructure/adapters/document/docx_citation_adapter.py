@@ -5,7 +5,6 @@ from src.domain.document.document_text_port import DocumentTextPort
 from src.domain.dtos.citation_dto import CitationDTO
 from src.domain.enums.citation_type import CitationType
 from src.domain.exceptions.citation_errors import CitationParsingFailed  # noqa: F401
-from src.domain.exceptions.decorators.generic_error_handler import generic_error_handler
 
 _INTRO_PHRASES = ("Como", "Según", "Si", "No", "En", "El", "La", "Los", "Las", "Un", "Una")
 
@@ -25,7 +24,6 @@ class DocxCitationAdapter(CitationExtractionPort):
     def __init__(self, document_text_port: DocumentTextPort) -> None:
         self._document_text_port = document_text_port
 
-    @generic_error_handler
     def extract_citations(self, docx_path: str) -> list[CitationDTO]:
         paragraphs = self._document_text_port.read_paragraphs(path=docx_path)
         return self._extract_citations(full_text=" ".join(paragraphs))
