@@ -5,6 +5,8 @@ Provides a user-friendly interface for non-technical editorial staff.
 """
 
 import gradio as gr
+import html
+import re
 import sys
 import json
 import traceback
@@ -142,6 +144,14 @@ def process_document(uploaded_file):
 # ============================================
 # RESULTS DISPLAY
 # ============================================
+_MARKDOWN_BOLD_PATTERN = re.compile(r"\*\*(.+?)\*\*")
+
+
+def _render_feedback_html(text: str) -> str:
+    """Escape HTML special characters, then render **bold** Markdown as <strong> tags."""
+    return _MARKDOWN_BOLD_PATTERN.sub(r"<strong>\1</strong>", html.escape(text))
+
+
 def create_results_display(report: ReportInputDTO) -> str:
     """
     Creates professional HTML display of analysis results.
@@ -210,7 +220,9 @@ def create_results_display(report: ReportInputDTO) -> str:
         status_color
     }; color: white; padding: 25px; border-radius: 8px; margin-bottom: 25px; text-align: center;">
             <h2 style="margin: 0; font-size: 32px;">{status_icon} {status}</h2>
-            <p style="margin: 10px 0 0 0; font-size: 16px; opacity: 0.95;">{verdict.message}</p>
+            <p style="margin: 10px 0 0 0; font-size: 16px; opacity: 0.95;">{
+        _render_feedback_html(verdict.message)
+    }</p>
         </div>
 
         <!-- Quality Scores -->
@@ -221,7 +233,7 @@ def create_results_display(report: ReportInputDTO) -> str:
                     {grammar_score:.1f}<span style="font-size: 24px; color: #999;">/10</span>
                 </div>
                 <div style="color: #666; margin-top: 5px; font-size: 14px;">
-                    {grammar.feedback}
+                    {_render_feedback_html(grammar.feedback)}
                 </div>
             </div>
             <div style="background: #f8f9fa; padding: 20px; border-radius: 6px; text-align: center;">
@@ -278,7 +290,7 @@ def create_results_display(report: ReportInputDTO) -> str:
                 <div style="background: #dee2e6; height: 8px; border-radius: 4px; overflow: hidden;">
                     <div style="background: {EUMIC_COLORS["primary"]}; height: 100%; width: {data["score"] * 10}%;"></div>
                 </div>
-                <div style="font-size: 13px; color: #666; margin-top: 4px;">{data.get("feedback", "")}</div>
+                <div style="font-size: 13px; color: #666; margin-top: 4px;">{_render_feedback_html(data.get("feedback", ""))}</div>
             </div>
             '''
                 for dim, data in quality.dimension_scores.items()
@@ -290,10 +302,10 @@ def create_results_display(report: ReportInputDTO) -> str:
         <!-- Critical Issues -->
         {
         f'''
-        <div style="background: #f8d7da; border-left: 4px solid {EUMIC_COLORS["danger"]}; padding: 15px; margin-bottom: 20px; border-radius: 4px;">
-            <h4 style="margin: 0 0 10px 0; color: #721c24;">⚠️ Problemas Críticos Detectados</h4>
-            <ul style="margin: 0; padding-left: 20px; color: #721c24;">
-                {"".join([f"<li>{rec.message}</li>" for rec in critical_recommendations])}
+        <div class="critical-issues-box" style="background: #f8d7da; border-left: 4px solid {EUMIC_COLORS["danger"]}; padding: 15px; margin-bottom: 20px; border-radius: 4px;">
+            <h4 style="margin: 0 0 10px 0;">⚠️ Problemas Críticos Detectados</h4>
+            <ul style="margin: 0; padding-left: 20px;">
+                {"".join([f"<li>{_render_feedback_html(rec.message)}</li>" for rec in critical_recommendations])}
             </ul>
         </div>
         '''
@@ -693,6 +705,7 @@ if __name__ == "__main__":
         .logo-container img {max-width: 180px; max-height: 100px;}
         .logo-container h1 {color: white; margin: 15px 0 5px 0;}
         .logo-container p {color: rgba(255,255,255,0.9); margin: 0;}
+        .critical-issues-box, .critical-issues-box h4, .critical-issues-box li {color: #721c24 !important;}
         footer {display: none !important;}
         """,
     )
