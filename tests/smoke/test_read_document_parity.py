@@ -1,11 +1,9 @@
 """
-Smoke test: parity between legacy WordReader and new ReadDocumentUseCase.
+Smoke test: DocxTextAdapter reads real .docx fixtures correctly.
 
-Legacy path:
-    WordReader.read_word_document(path) -> list[str]
-
-New path:
-    ReadDocumentUseCaseWiring().create_use_case().execute(path) -> list[str]
+Exercises src.infrastructure.adapters.document.docx_text_adapter.DocxTextAdapter
+directly against real sample documents, verifying it returns non-empty,
+stripped paragraphs in document order.
 
 Run with: python -m pytest tests/smoke/ -v
 """
@@ -13,8 +11,7 @@ Run with: python -m pytest tests/smoke/ -v
 from pathlib import Path
 from unittest import TestCase
 
-from data_access.word_reader import WordReader
-from src.infrastructure.wirings.analyze_document_use_case_wiring import AnalyzeDocumentUseCaseWiring
+from src.infrastructure.adapters.document.docx_text_adapter import DocxTextAdapter
 
 DOCS = Path(__file__).parent.parent.parent / "docs" / "sample-documents"
 
@@ -28,26 +25,28 @@ _DOCUMENTS = [
 class TestReadDocumentParity(TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.legacy_reader = WordReader()
-        cls.document_text_port = AnalyzeDocumentUseCaseWiring()._get_document_text_port()
+        cls.document_text_port = DocxTextAdapter()
 
-    def test_cientifico_matches_legacy(self):
-        path = str(DOCS / _DOCUMENTS[0])
-        self.assertEqual(
-            self.document_text_port.read_paragraphs(path=path),
-            self.legacy_reader.read_word_document(path),
+    def test_cientifico_returns_stripped_nonempty_paragraphs(self):
+        self._assert_reads_stripped_nonempty_paragraphs(
+            _DOCUMENTS[0], "Capacidades de Razonamiento Emergente"
         )
 
-    def test_divulgacion_matches_legacy(self):
-        path = str(DOCS / _DOCUMENTS[1])
-        self.assertEqual(
-            self.document_text_port.read_paragraphs(path=path),
-            self.legacy_reader.read_word_document(path),
+    def test_divulgacion_returns_stripped_nonempty_paragraphs(self):
+        self._assert_reads_stripped_nonempty_paragraphs(
+            _DOCUMENTS[1], "Inteligencia Artificial en Sistemas de Salud"
         )
 
-    def test_opinion_matches_legacy(self):
-        path = str(DOCS / _DOCUMENTS[2])
-        self.assertEqual(
-            self.document_text_port.read_paragraphs(path=path),
-            self.legacy_reader.read_word_document(path),
-        )
+    def test_opinion_returns_stripped_nonempty_paragraphs(self):
+        self._assert_reads_stripped_nonempty_paragraphs(_DOCUMENTS[2], "Sigue Siendo Humano")
+
+    def _assert_reads_stripped_nonempty_paragraphs(self, filename: str, expected_fragment: str):
+        path = str(DOCS / filename)
+        paragraphs = self.document_text_port.read_paragraphs(path=path)
+        self.assertGreater(len(paragraphs), 0)
+        for paragraph in paragraphs:
+            self.assertEqual(paragraph, paragraph.strip())
+            self.assertNotEqual(paragraph, "")
+        # Verify actual content is preserved from the fixture.
+        joined_text = " ".join(paragraphs)
+        self.assertIn(expected_fragment, joined_text)

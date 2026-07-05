@@ -56,7 +56,11 @@ class TestGradioAppE2E(unittest.TestCase):
         cls._patches = [
             patch("ollama.Client", return_value=mock_client),
             patch("language_tool_python.LanguageTool", return_value=MagicMock()),
-            patch("data_access.word_counter.WIN32COM_AVAILABLE", False),
+            patch(
+                "src.infrastructure.adapters.document.win32com_word_count_adapter."
+                "WIN32COM_AVAILABLE",
+                False,
+            ),
         ]
         for p in cls._patches:
             p.start()
@@ -380,7 +384,11 @@ class TestGradioClientE2E(unittest.TestCase):
         with (
             patch("ollama.Client", return_value=mock_client),
             patch("language_tool_python.LanguageTool", return_value=MagicMock()),
-            patch("data_access.word_counter.WIN32COM_AVAILABLE", False),
+            patch(
+                "src.infrastructure.adapters.document.win32com_word_count_adapter."
+                "WIN32COM_AVAILABLE",
+                False,
+            ),
         ):
             import gradio_app
 
