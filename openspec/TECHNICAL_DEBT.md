@@ -5,15 +5,6 @@ Consolidated inventory of technical debt accumulated during the hexagonal migrat
 Each item lists status as verified against the current codebase, not just the state at the time it was logged.
 ## Confirmed still present
 
-### 1. Magic values not audited across the remaining `src/` infrastructure adapters (partially resolved)
-The `ArticleSize` enum (Spanish members) and the magic-number thresholds in `ArticleSizeClassifier`, `QualityLevelResolver`, and `PublicationVerdictEvaluator` were resolved — see "Resolved" section below. The following magic literals identified during that audit were explicitly deferred (out of scope for that change) and remain unaddressed:
-- `StructureValidator._extract_present_sections()` — hardcoded `100` char header limit.
-- `DocxCitationAdapter._collect_multi_author()` — hardcoded `100` max author name length.
-- `DocxReferenceAdapter` — raw regex flags `2 | 16` instead of `re.IGNORECASE | re.DOTALL`.
-- `LanguageToolAdapter._map_to_dto()` — hardcoded `3` max replacements.
-- `DocxReportAdapter` — `250` words/page divisor, `5` list slice size, `150` truncation size, `3` replacements limit, `6`x`2` table dimensions, `80` separator repeat count.
-- **Source**: Engram #630; `openspec/changes/archive/2026-07-04-resolve-spanish-and-magic-debt/exploration.md`.
-
 ### 2. Spanish domain-vocabulary enums pending final rename pass (partially resolved)
 `ArticleType`'s Spanish member KEYS were renamed to English — see "Resolved" section below. The following remain deliberately untouched:
 - `QualityDimension` — keys already English; `.value`s stay Spanish (match literal LLM/document text), rename of values still deferred to the final pass together with parsing logic.
@@ -22,8 +13,7 @@ The `ArticleSize` enum (Spanish members) and the magic-number thresholds in `Art
 
 ### 3. Accumulated dead-code registry (by design — not to be cleaned per-slice)
 Per convention (Engram #605), dead code found while migrating a legacy module is documented, not removed, and batched for a future dedicated cleanup pass instead of being fixed slice-by-slice:
-- Slice 4 (validate-citations): `extract_all_citations()` in `citation_matcher.py` — no call sites, confirmed dead. `business_logic/article_analyzer.py` (`ArticleAnalyzer`) — whole module never wired to `main.py`/`gradio_app.py`, sole caller of `generate_report()`.
-- Slice 5 (analyze-quality): `self.client = ollama.Client(...)` in `QualityAnalyzer.__init__` — built but never used. `article_type` param of `analyze_quality(document_content, article_type)` — never read in the method body (kept intentionally, not removed). `analyze_document_quality()` convenience function at end of file — calls the instance method with 3 args against a 2-arg signature; broken/unreachable.
+- Slice 5 (analyze-quality): `article_type` param of `analyze_quality(document_content, article_type)` (now `QualityAnalyzer.analyze(...)` in `src/domain/quality/quality_analyzer.py`) — never read in the method body.
 - **Source**: Engram #605 (topic `migration/dead-code-registry`).
 
 ### 5. README.md documents the deleted legacy structure
@@ -31,17 +21,25 @@ Per convention (Engram #605), dead code found while migrating a legacy module is
 - Update to describe the `src/` hexagonal layout (`src/domain/`, `src/application/`, `src/infrastructure/`) and remove references to the deleted legacy packages/files.
 - **Source**: judgment-day review of `cleanup-legacy-packages` PR2 (2026-07-05) — flagged by Judge B, verified real via grep; deferred by user decision to a later pass.
 
-### 6. `@generic_error_handler` applied to adapters instead of use cases only
-Convention: `@generic_error_handler` should only decorate application-layer use case methods, never infrastructure adapters — error handling is a use-case responsibility, not an adapter one. The following adapters currently violate this:
-- `DocxTextAdapter.read_paragraphs()` (`src/infrastructure/adapters/document/docx_text_adapter.py`)
-- `DocxCitationAdapter.extract_citations()` (`src/infrastructure/adapters/document/docx_citation_adapter.py`)
-- `DocxReferenceAdapter.extract_references()` (`src/infrastructure/adapters/document/docx_reference_adapter.py`)
-- `DocxEumicAdapter.inspect()` (`src/infrastructure/adapters/document/docx_eumic_adapter.py`)
-- `OllamaGeneratorAdapter.generate()` (`src/infrastructure/adapters/llm_generator/ollama_generator_adapter.py`)
-- Pre-existing debt, not introduced by `refactor_analyze_document_wiring` — none of these 5 files were touched by that change.
-- **Source**: Engram `pattern/generic-error-handler-scope`; discovered during judgment-day review of `refactor_analyze_document_wiring` (2026-07-04).
+### 7. Version number loaded from version.txt instead of .env
+The current version number (used in UI/reports) is defined in and read from the `.env` file. It should be extracted into a standalone `version.txt` file at the root of the project to decouple software versioning from environment configuration.
+- **Source**: User feedback (2026-07-06).
+
+### 8. Centralized Configuration class to read .env and instantiate settings DTOs
+Wirings in `src/infrastructure/wirings/` currently read configuration variables directly from the environment (e.g. via `getenv` or `load_dotenv`) and construct settings/parameters inline. This logic should be centralized into a single `Configuration` class or helper in the infrastructure layer that parses `.env`, validates config variables, and instantiates the necessary settings DTOs for injection.
+- **Source**: User feedback (2026-07-06).
 
 ## Resolved (was tracked, no longer applies)
+
+### Magic values not audited across the remaining `src/` infrastructure adapters
+Parameterized the remaining adapters to avoid raw magic number and literal threshold dependencies, reading custom values from environment variables or settings DTOs.
+- **Verified fixed**: 2026-07-06, openspec change `resolve-magic-values-debt` — verified cleanly by `sdd-verify`.
+- **Source**: `openspec/changes/archive/2026-07-06-resolve-magic-values-debt/`.
+
+### `@generic_error_handler` applied to adapters instead of use cases only
+Removed `@generic_error_handler` decorator and its import from all infrastructure adapters. Use case boundary errors are now caught properly without mixing layer responsibilities.
+- **Verified fixed**: 2026-07-05, openspec change `resolve-generic-error-handler-scope` — verified cleanly by `sdd-verify`.
+- **Source**: `openspec/changes/archive/2026-07-05-resolve-generic-error-handler-scope/`.
 
 ### Legacy modules (`domain/`, `data_access/`, `business_logic/`, `presentation/`) not yet deleted
 Slice 16 (final cleanup: delete legacy top-level packages) was postponed until the full hexagonal migration (Slices 0-15) was confirmed working, then executed as its own SDD change.
