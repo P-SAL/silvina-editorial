@@ -16,7 +16,9 @@ SAMPLE_DOCUMENT = (
 
 class TestDocxCitationAdapter(TestCase):
     def setUp(self):
-        self.adapter = DocxCitationAdapter(document_text_port=DocxTextAdapter())
+        self.adapter = DocxCitationAdapter(
+            document_text_port=DocxTextAdapter(), max_author_name_length=100
+        )
         self.result = self.adapter.extract_citations(docx_path=str(SAMPLE_DOCUMENT))
 
     def test_s7a_returns_non_empty_list(self):
@@ -30,3 +32,19 @@ class TestDocxCitationAdapter(TestCase):
     def test_s7c_citation_type_is_author_year(self):
         for item in self.result:
             self.assertEqual(item.citation_type, CitationType.AUTHOR_YEAR)
+
+    def test_s7d_custom_max_author_name_length_rejects_long_author_name(self):
+        adapter = DocxCitationAdapter(
+            document_text_port=DocxTextAdapter(), max_author_name_length=5
+        )
+        full_text = "Como plantea Rodríguez y Fernández (2020), esto es relevante."
+        citations = adapter._extract_citations(full_text=full_text)
+        self.assertFalse(any(citation.author == "Rodríguez y Fernández" for citation in citations))
+
+    def test_default_max_author_name_length_accepts_long_author_name(self):
+        adapter = DocxCitationAdapter(
+            document_text_port=DocxTextAdapter(), max_author_name_length=100
+        )
+        full_text = "Como plantea Rodríguez y Fernández (2020), esto es relevante."
+        citations = adapter._extract_citations(full_text=full_text)
+        self.assertTrue(any(citation.author == "Rodríguez y Fernández" for citation in citations))

@@ -15,7 +15,7 @@ def _make_document(paragraphs: list[str]) -> DocumentContentDTO:
 
 class TestStructureValidatorUnknown(TestCase):
     def setUp(self):
-        self.validator = StructureValidator()
+        self.validator = StructureValidator(max_header_length=100)
 
     def test_unknown_type_always_valid(self):
         doc = _make_document(["Cualquier párrafo"])

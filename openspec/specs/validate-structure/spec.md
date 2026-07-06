@@ -42,11 +42,12 @@ _SECTION_ALIASES: dict[SectionName, list[str]] = {
 A paragraph from `DocumentContent.paragraphs` qualifies as a section header when EITHER of the
 following conditions is true:
 
-1. `len(paragraph) < 100` (short-header rule), OR
+1. `len(paragraph) < max_header_length` (short-header rule), OR
 2. The paragraph (lowercased, stripped) starts with `{keyword}:` or `{keyword} :`
    for any keyword in any alias list in `section_map` (inline-header rule).
 
-Paragraphs of length >= 100 that do NOT match the inline-header pattern are NEVER treated as
+`StructureValidator` MUST accept an optional `max_header_length: int` in its constructor (defaulting to 100).
+Paragraphs of length >= `max_header_length` that do NOT match the inline-header pattern are NEVER treated as
 section headers, even if they contain section keywords in body text.
 
 When a paragraph qualifies as a header, the service searches it (case-insensitively) for
@@ -150,6 +151,7 @@ The domain service has no knowledge of the `has_references` business rule.
 `AnalyzeDocumentUseCaseWiring` MUST:
 - Create the `StructureValidator` dependency in its own private `_get_structure_validator(self) -> StructureValidator` method.
 - Inject it into `AnalyzeDocumentUseCase`'s constructor (not constructed inline inside `execute()`).
+- Load the maximum header length from the environment variable `STRUCTURE_MAX_HEADER_LENGTH` (defaulting to 100) and pass it to `StructureValidator`.
 
 Pattern:
 ```python
@@ -162,7 +164,8 @@ class AnalyzeDocumentUseCaseWiring:
         )
 
     def _get_structure_validator(self) -> StructureValidator:
-        return StructureValidator()
+        max_header_length = int(os.environ.get("STRUCTURE_MAX_HEADER_LENGTH", 100))
+        return StructureValidator(max_header_length=max_header_length)
 ```
 
 ### 3.2 No Infrastructure Dependencies
@@ -315,6 +318,15 @@ When _extract_present_sections is called
 Then "Introducción" is in the returned list
 ```
 
+### S-11b: Custom max_header_length threshold
+
+```
+Given a StructureValidator constructed with max_header_length = 50
+And a paragraph of length 60: "Introducción de nuevas metodologías en el campo de..."
+When _extract_present_sections is called with this paragraph
+Then result is []
+```
+
 ### S-12: Orchestrator raises DocumentEmpty on empty paragraphs list
 
 ```
@@ -407,6 +419,7 @@ Then "referencias" appears in the lowercased detected sections
 ```
 Given AnalyzeDocumentUseCaseWiring()._get_structure_validator() is called
 Then the return value is an instance of StructureValidator
+And the instance is configured with the value from environment variable STRUCTURE_MAX_HEADER_LENGTH (defaulting to 100)
 And no external adapters, ports, or infrastructure classes are imported
 ```
 

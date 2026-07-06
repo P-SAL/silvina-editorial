@@ -22,6 +22,18 @@ class DocxReportSettings:
     score_medium_threshold: float = field(
         default_factory=lambda: float(environ.get("SILVINA_SCORE_MEDIUM_THRESHOLD", "6.0"))
     )
+    words_per_page: int = field(
+        default_factory=lambda: int(environ.get("REPORT_WORDS_PER_PAGE", "250"))
+    )
+    max_errors_displayed: int = field(
+        default_factory=lambda: int(environ.get("REPORT_MAX_ERRORS_DISPLAYED", "5"))
+    )
+    context_truncation_limit: int = field(
+        default_factory=lambda: int(environ.get("REPORT_CONTEXT_TRUNCATION_LIMIT", "150"))
+    )
+    max_replacements: int = field(
+        default_factory=lambda: int(environ.get("REPORT_MAX_REPLACEMENTS", "3"))
+    )
 
     font_name: str = AllowedFont.CALIBRI.value
 

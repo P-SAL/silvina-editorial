@@ -70,9 +70,31 @@ Defines the port, DTO, exception, adapter, use case, wiring, and fake double tha
 
 ---
 
+### Requirement: DocxReportSettings Configuration Object
+
+`DocxReportSettings` MUST be a dataclass at `src/infrastructure/adapters/report/docx_report_settings.py` with the following fields:
+- `words_per_page: int` (with default factory reading from environment variable `REPORT_WORDS_PER_PAGE`, defaulting to 250)
+- `max_errors_displayed: int` (with default factory reading from environment variable `REPORT_MAX_ERRORS_DISPLAYED`, defaulting to 5)
+- `context_truncation_limit: int` (with default factory reading from environment variable `REPORT_CONTEXT_TRUNCATION_LIMIT`, defaulting to 150)
+- `max_replacements: int` (with default factory reading from environment variable `REPORT_MAX_REPLACEMENTS`, defaulting to 3)
+
+#### Scenario: Settings loads from environment
+
+- GIVEN environment variables `REPORT_WORDS_PER_PAGE=300`, `REPORT_MAX_ERRORS_DISPLAYED=10`
+- WHEN `DocxReportSettings()` is instantiated
+- THEN `settings.words_per_page == 300` AND `settings.max_errors_displayed == 10`
+
+#### Scenario: Settings uses defaults when environment variables are unset
+
+- GIVEN no environment variables are set
+- WHEN `DocxReportSettings()` is instantiated
+- THEN `settings.words_per_page == 250`, `settings.max_errors_displayed == 5`, `settings.context_truncation_limit == 150`, `settings.max_replacements == 3`
+
+---
+
 ### Requirement: DocxReportAdapter Hard-Fails Without python-docx
 
-`DocxReportAdapter.__init__` MUST raise `ReportExportUnavailable` at construction time when `DOCX_AVAILABLE` is `False`. The system SHALL NOT proceed to serve requests without python-docx installed.
+`DocxReportAdapter.__init__` MUST raise `ReportExportUnavailable` at construction time when `DOCX_AVAILABLE` is `False`. The constructor MUST accept an optional `settings: DocxReportSettings` parameter (defaulting to a default-constructed `DocxReportSettings` if not provided). The system SHALL NOT proceed to serve requests without python-docx installed.
 
 #### Scenario: Adapter raises at construction when python-docx is absent
 
@@ -91,6 +113,12 @@ Defines the port, DTO, exception, adapter, use case, wiring, and fake double tha
 ### Requirement: DocxReportAdapter Produces Functionally Equivalent DOCX
 
 `DocxReportAdapter.export()` MUST produce a `.docx` containing the same 11 sections as `WordExporter`, in order: title page, executive summary, document info, classification, quality analysis, grammar, APA validation, structure validation, citations, recommendations, footer. All 13 private rendering methods MUST remain private. Error wrapping is handled by `@generic_error_handler` at the use case layer, not the adapter.
+
+The `DocxReportAdapter` MUST utilize configuration settings from `DocxReportSettings` instead of hardcoded magic values:
+- Use `settings.words_per_page` for estimating pages (`estimated_pages = word_count // words_per_page`).
+- Use `settings.max_errors_displayed` to limit the number of displayed grammar errors and APA validation violations.
+- Use `settings.context_truncation_limit` to truncate grammar error context.
+- Use `settings.max_replacements` to limit the number of replacements shown per grammar error.
 
 The `_add_recommendations` method MUST render the publication verdict from `report_input.verdict` (a `PublicationVerdictDTO`) before the specific recommendations list. Color mapping: `PublicationVerdict.CRITICAL` and `PublicationVerdict.WARNING` → `reject_color_rgb`; `PublicationVerdict.APPROVED` → `publishable_color_rgb`. Specific recommendations use `RecommendationPriority` icons (`HIGH` → 🔴, `MEDIUM` → 🟡, `LOW` → 🟢) and attribute access (`rec.priority`, `rec.message`).
 
@@ -113,6 +141,15 @@ The `_add_recommendations` method MUST render the publication verdict from `repo
 - GIVEN a path that cannot be written
 - WHEN `DocxReportAdapter.export(report_input, path)` is called
 - THEN the underlying `OSError` propagates; `@generic_error_handler` on the use case wraps it as `SrcGenericError`
+
+#### Scenario: Settings are respected during rendering
+
+- GIVEN a `DocxReportSettings` with `words_per_page` = 100, `max_errors_displayed` = 2, `context_truncation_limit` = 10, `max_replacements` = 1
+- WHEN `DocxReportAdapter.export()` is called with this configuration
+- THEN the exported report uses page estimation based on 100 words per page
+- AND at most 2 grammar/APA errors are listed
+- AND error contexts are truncated to 10 characters
+- AND at most 1 replacement is shown per error
 
 ---
 
@@ -154,13 +191,14 @@ The `_add_recommendations` method MUST render the publication verdict from `repo
 
 ### Requirement: ExportReportWiring Assembles the Full Object Graph
 
-`ExportReportWiring.create_use_case() -> ExportReportUseCase` MUST resolve `logo_path` relative to the project root, instantiate `DocxReportAdapter`, and return a fully wired `ExportReportUseCase`. It MUST raise `ReportExportUnavailable` at startup if python-docx is absent.
+`ExportReportWiring.create_use_case() -> ExportReportUseCase` MUST resolve `logo_path` relative to the project root, instantiate `DocxReportSettings` (loading configuration from the environment), instantiate `DocxReportAdapter` with that settings object, and return a fully wired `ExportReportUseCase`. It MUST raise `ReportExportUnavailable` at startup if python-docx is absent.
 
 #### Scenario: Wiring returns a fully wired use case
 
 - GIVEN python-docx is installed
 - WHEN `ExportReportWiring.create_use_case()` is called
 - THEN it returns an `ExportReportUseCase` whose port is a `DocxReportAdapter`
+- AND the adapter's settings are loaded from environment variables `REPORT_WORDS_PER_PAGE`, `REPORT_MAX_ERRORS_DISPLAYED`, `REPORT_CONTEXT_TRUNCATION_LIMIT`, and `REPORT_MAX_REPLACEMENTS`
 
 #### Scenario: Wiring fails at startup without python-docx
 

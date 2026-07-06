@@ -75,3 +75,38 @@ class TestAnalyzeDocumentUseCaseWiring(TestCase):
             result = AnalyzeDocumentUseCaseWiring().create_use_case()
         settings: RecommendationSettingsDTO = result._recommendation_builder._settings
         self.assertAlmostEqual(settings.critical_grammar_threshold, 4.0)
+
+    def test_env_var_overrides_structure_max_header_length(self):
+        with patch.dict(os.environ, {"STRUCTURE_MAX_HEADER_LENGTH": "50"}):
+            result = AnalyzeDocumentUseCaseWiring().create_use_case()
+        self.assertEqual(result._structure_validator._max_header_length, 50)
+
+    def test_default_structure_max_header_length_when_env_var_absent(self):
+        env_without = {k: v for k, v in os.environ.items() if k != "STRUCTURE_MAX_HEADER_LENGTH"}
+        with patch.dict(os.environ, env_without, clear=True):
+            result = AnalyzeDocumentUseCaseWiring().create_use_case()
+        self.assertEqual(result._structure_validator._max_header_length, 100)
+
+    def test_env_var_overrides_citation_max_author_name_length(self):
+        with patch.dict(os.environ, {"CITATION_MAX_AUTHOR_NAME_LENGTH": "5"}):
+            result = AnalyzeDocumentUseCaseWiring().create_use_case()
+        self.assertEqual(result._citation_extraction_port._max_author_name_length, 5)
+
+    def test_default_citation_max_author_name_length_when_env_var_absent(self):
+        env_without = {
+            k: v for k, v in os.environ.items() if k != "CITATION_MAX_AUTHOR_NAME_LENGTH"
+        }
+        with patch.dict(os.environ, env_without, clear=True):
+            result = AnalyzeDocumentUseCaseWiring().create_use_case()
+        self.assertEqual(result._citation_extraction_port._max_author_name_length, 100)
+
+    def test_env_var_overrides_grammar_max_replacements(self):
+        with patch.dict(os.environ, {"GRAMMAR_MAX_REPLACEMENTS": "2"}):
+            result = AnalyzeDocumentUseCaseWiring().create_use_case()
+        self.assertEqual(result._grammar_check_port._max_replacements, 2)
+
+    def test_default_grammar_max_replacements_when_env_var_absent(self):
+        env_without = {k: v for k, v in os.environ.items() if k != "GRAMMAR_MAX_REPLACEMENTS"}
+        with patch.dict(os.environ, env_without, clear=True):
+            result = AnalyzeDocumentUseCaseWiring().create_use_case()
+        self.assertEqual(result._grammar_check_port._max_replacements, 3)

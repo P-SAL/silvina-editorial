@@ -24,8 +24,8 @@ class StructureValidator:
         ],
     }
 
-    def __init__(self) -> None:
-        pass
+    def __init__(self, max_header_length: int) -> None:
+        self._max_header_length = max_header_length
 
     def validate(
         self,
@@ -46,7 +46,7 @@ class StructureValidator:
 
         for para in paragraphs:
             text_lower = para.lower().strip()
-            is_short_header = len(text_lower) < 100
+            is_short_header = len(text_lower) < self._max_header_length
             is_inline_header = any(
                 text_lower.startswith(kw + ":") or text_lower.startswith(kw + " :")
                 for kw in all_keywords
