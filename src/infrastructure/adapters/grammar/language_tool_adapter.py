@@ -13,8 +13,9 @@ _MAX_ERRORS = 10
 class LanguageToolAdapter(GrammarCheckPort):
     """Adapter that uses LanguageTool for grammar checking with lazy Java initialization."""
 
-    def __init__(self, language: str = "es") -> None:
+    def __init__(self, max_replacements: int, language: str = "es") -> None:
         self._language = language
+        self._max_replacements = max_replacements
         self._tool = None
 
     def check(self, paragraphs: list[str]) -> list[GrammarErrorDTO]:
@@ -52,5 +53,5 @@ class LanguageToolAdapter(GrammarCheckPort):
             context=match.context,
             offset=match.offset,
             length=match.error_length,
-            replacements=match.replacements[:3],
+            replacements=match.replacements[: self._max_replacements],
         )

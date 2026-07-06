@@ -2,16 +2,22 @@ import re
 from collections import defaultdict
 from datetime import datetime
 
-from docx import Document
-from docx.enum.table import WD_ALIGN_VERTICAL
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.oxml import OxmlElement
-from docx.oxml.ns import qn
-from docx.shared import Inches, Pt, RGBColor
+try:
+    from docx import Document
+    from docx.enum.table import WD_ALIGN_VERTICAL
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+    from docx.shared import Inches, Pt, RGBColor
+
+    DOCX_AVAILABLE = True
+except ImportError:
+    DOCX_AVAILABLE = False
 
 from src.domain.dtos.report_input_dto import ReportInputDTO
 from src.domain.enums.publication_verdict import PublicationVerdict
 from src.domain.enums.recommendation_priority import RecommendationPriority
+from src.domain.exceptions.report_errors import ReportExportUnavailable
 from src.domain.report.report_export_port import ReportExportPort
 from src.infrastructure.adapters.report.docx_report_settings import DocxReportSettings
 
@@ -26,6 +32,8 @@ class DocxReportAdapter(ReportExportPort):
         logo_path: str | None = None,
         settings: DocxReportSettings | None = None,
     ) -> None:
+        if not DOCX_AVAILABLE:
+            raise ReportExportUnavailable()
         self._logo_path = logo_path
         self._settings = settings or DocxReportSettings()
 
@@ -263,7 +271,7 @@ class DocxReportAdapter(ReportExportPort):
             run.font.color.rgb = RGBColor(*self._settings.heading_color_rgb)
 
         doc_content = report_input.document_content
-        estimated_pages = doc_content.word_count // 250
+        estimated_pages = doc_content.word_count // self._settings.words_per_page
 
         paragraph = doc.add_paragraph()
         paragraph.add_run("Título: ").bold = True
@@ -352,15 +360,22 @@ class DocxReportAdapter(ReportExportPort):
             doc.add_paragraph()
             doc.add_paragraph("Errores Detectados:").bold = True
 
-            for err in grammar.errors[:5]:
+            max_errors = self._settings.max_errors_displayed
+            context_limit = self._settings.context_truncation_limit
+            for err in grammar.errors[:max_errors]:
                 doc.add_paragraph(err.message, style="List Number")
 
-                context_text = err.context if len(err.context) < 150 else err.context[:150] + "..."
+                context_text = (
+                    err.context
+                    if len(err.context) < context_limit
+                    else err.context[:context_limit] + "..."
+                )
                 doc.add_paragraph(f'   Contexto: "{context_text}"', style="List Bullet 2")
 
                 if err.replacements:
+                    max_replacements = self._settings.max_replacements
                     doc.add_paragraph(
-                        f"   Sugerencia: {', '.join(err.replacements[:3])}",
+                        f"   Sugerencia: {', '.join(err.replacements[:max_replacements])}",
                         style="List Bullet 2",
                     )
 
@@ -391,10 +406,11 @@ class DocxReportAdapter(ReportExportPort):
         for violation in violations:
             by_type[violation.error_type].append(violation)
 
+        max_errors = self._settings.max_errors_displayed
         for _, errors in by_type.items():
             doc.add_paragraph(f"CITACIÓN INCORRECTA ({len(errors)}):", style="Heading 3")
 
-            for index, err in enumerate(errors[:5], 1):
+            for index, err in enumerate(errors[:max_errors], 1):
                 doc.add_paragraph(f"{index}. Citación: {err.citation_text}")
                 doc.add_paragraph(f'   Ubicación: "{err.location}"', style="List Bullet 2")
                 doc.add_paragraph(f"   Problema: {err.explanation}", style="List Bullet 2")

@@ -1,4 +1,4 @@
-from re import compile, split
+from re import DOTALL, IGNORECASE, compile, split
 
 from src.domain.document.document_text_port import DocumentTextPort
 from src.domain.document.reference_extraction_port import ReferenceExtractionPort
@@ -19,7 +19,7 @@ _AUTHOR_CLEANUP_PATTERN = compile(
 _LEADING_BULLETS_PATTERN = compile(r"^[\•\-\*\·\s]+")
 _BIB_SECTION_PATTERN = compile(
     r"(Bibliograf[íi]a|Referencias|Fuentes\s*bibliogr[áa]ficas(?:\s*consultadas)?)\s*(.{100,})",
-    flags=2 | 16,  # re.IGNORECASE | re.DOTALL
+    flags=IGNORECASE | DOTALL,
 )
 
 

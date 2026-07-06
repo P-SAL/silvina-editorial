@@ -22,7 +22,7 @@ _OPINION_ALL_SECTIONS = [
 
 class TestStructureValidatorOpinion(TestCase):
     def setUp(self):
-        self.validator = StructureValidator()
+        self.validator = StructureValidator(max_header_length=100)
 
     def test_all_opinion_sections_present_is_valid(self):
         doc = _make_document(_OPINION_ALL_SECTIONS)

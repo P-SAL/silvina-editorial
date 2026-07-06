@@ -21,8 +21,13 @@ _PATTERN_SINGLE_AUTHOR = compile(r"(?<![([])\b([A-ZÁÉÍÓÚÑ][a-záéíóúñ
 
 
 class DocxCitationAdapter(CitationExtractionPort):
-    def __init__(self, document_text_port: DocumentTextPort) -> None:
+    def __init__(
+        self,
+        document_text_port: DocumentTextPort,
+        max_author_name_length: int,
+    ) -> None:
         self._document_text_port = document_text_port
+        self._max_author_name_length = max_author_name_length
 
     def extract_citations(self, docx_path: str) -> list[CitationDTO]:
         paragraphs = self._document_text_port.read_paragraphs(path=docx_path)
@@ -96,7 +101,7 @@ class DocxCitationAdapter(CitationExtractionPort):
         multi_author_names: dict[str, set[str]],
     ) -> None:
         for author, year in _PATTERN_MULTI_AUTHOR.findall(full_text):
-            if len(author) > 100 or author.startswith(_INTRO_PHRASES):
+            if len(author) > self._max_author_name_length or author.startswith(_INTRO_PHRASES):
                 continue
             key = f"{author}|{year}"
             if key in seen:

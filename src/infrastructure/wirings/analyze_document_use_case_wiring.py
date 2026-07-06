@@ -90,13 +90,18 @@ class AnalyzeDocumentUseCaseWiring:
         return Win32ComWordCountAdapter()
 
     def _get_citation_extraction_port(self) -> CitationExtractionPort:
-        return DocxCitationAdapter(document_text_port=self._get_document_text_port())
+        max_author_name_length = int(getenv("CITATION_MAX_AUTHOR_NAME_LENGTH", "100"))
+        return DocxCitationAdapter(
+            document_text_port=self._get_document_text_port(),
+            max_author_name_length=max_author_name_length,
+        )
 
     def _get_reference_extraction_port(self) -> ReferenceExtractionPort:
         return DocxReferenceAdapter(document_text_port=self._get_document_text_port())
 
     def _get_grammar_check_port(self) -> GrammarCheckPort:
-        return LanguageToolAdapter()
+        max_replacements = int(getenv("GRAMMAR_MAX_REPLACEMENTS", "3"))
+        return LanguageToolAdapter(max_replacements=max_replacements)
 
     def _get_document_format_inspection_port(self) -> DocumentFormatInspectionPort:
         return DocxEumicAdapter()
@@ -108,7 +113,8 @@ class AnalyzeDocumentUseCaseWiring:
         return CitationMatcher()
 
     def _get_structure_validator(self) -> StructureValidator:
-        return StructureValidator()
+        max_header_length = int(getenv("STRUCTURE_MAX_HEADER_LENGTH", "100"))
+        return StructureValidator(max_header_length=max_header_length)
 
     def _get_recommendation_builder(self) -> RecommendationBuilder:
         return RecommendationBuilder(settings=RecommendationConfig.build_settings())

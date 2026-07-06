@@ -18,7 +18,7 @@ if _LANGUAGE_TOOL_AVAILABLE:
 )
 class TestLanguageToolAdapter(TestCase):
     def test_tool_is_none_after_construction_before_any_check_call(self):
-        adapter = LanguageToolAdapter()
+        adapter = LanguageToolAdapter(max_replacements=3)
         self.assertIsNone(adapter._tool)
 
     @patch("src.infrastructure.adapters.grammar.language_tool_adapter.language_tool_python")
@@ -39,7 +39,7 @@ class TestLanguageToolAdapter(TestCase):
 
         mock_tool.check.return_value = [grammar_match, spelling_match, grammar_match]
 
-        adapter = LanguageToolAdapter()
+        adapter = LanguageToolAdapter(max_replacements=3)
         result = adapter.check(paragraphs=["some text"])
 
         self.assertEqual(len(result), 2)
@@ -61,7 +61,7 @@ class TestLanguageToolAdapter(TestCase):
 
         mock_tool.check.return_value = [make_match(index=index) for index in range(12)]
 
-        adapter = LanguageToolAdapter()
+        adapter = LanguageToolAdapter(max_replacements=3)
         result = adapter.check(paragraphs=["text"])
 
         self.assertEqual(len(result), 10)
@@ -70,7 +70,47 @@ class TestLanguageToolAdapter(TestCase):
     def test_raises_grammar_check_unavailable_on_backend_failure(self, mock_language_tool_python):
         mock_language_tool_python.LanguageTool.side_effect = RuntimeError("Java crash")
 
-        adapter = LanguageToolAdapter()
+        adapter = LanguageToolAdapter(max_replacements=3)
 
         with self.assertRaises(GrammarCheckUnavailable):
             adapter.check(paragraphs=["text"])
+
+    @patch("src.infrastructure.adapters.grammar.language_tool_adapter.language_tool_python")
+    def test_custom_max_replacements_limits_suggestions_per_error(self, mock_language_tool_python):
+        mock_tool = MagicMock()
+        mock_language_tool_python.LanguageTool.return_value = mock_tool
+
+        grammar_match = MagicMock()
+        grammar_match.rule_issue_type = "grammar"
+        grammar_match.message = "Grammar error"
+        grammar_match.context = "some context"
+        grammar_match.offset = 0
+        grammar_match.error_length = 4
+        grammar_match.replacements = ["a", "b", "c", "d", "e"]
+
+        mock_tool.check.return_value = [grammar_match]
+
+        adapter = LanguageToolAdapter(max_replacements=2)
+        result = adapter.check(paragraphs=["some text"])
+
+        self.assertEqual(len(result[0].replacements), 2)
+
+    @patch("src.infrastructure.adapters.grammar.language_tool_adapter.language_tool_python")
+    def test_default_max_replacements_caps_suggestions_at_three(self, mock_language_tool_python):
+        mock_tool = MagicMock()
+        mock_language_tool_python.LanguageTool.return_value = mock_tool
+
+        grammar_match = MagicMock()
+        grammar_match.rule_issue_type = "grammar"
+        grammar_match.message = "Grammar error"
+        grammar_match.context = "some context"
+        grammar_match.offset = 0
+        grammar_match.error_length = 4
+        grammar_match.replacements = ["a", "b", "c", "d", "e"]
+
+        mock_tool.check.return_value = [grammar_match]
+
+        adapter = LanguageToolAdapter(max_replacements=3)
+        result = adapter.check(paragraphs=["some text"])
+
+        self.assertEqual(len(result[0].replacements), 3)

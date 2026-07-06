@@ -24,7 +24,7 @@ _POPULAR_SCIENCE_ALL_SECTIONS = [
 
 class TestStructureValidatorPopularScience(TestCase):
     def setUp(self):
-        self.validator = StructureValidator()
+        self.validator = StructureValidator(max_header_length=100)
 
     def test_all_popular_science_sections_present_is_valid(self):
         doc = _make_document(_POPULAR_SCIENCE_ALL_SECTIONS)

@@ -39,7 +39,7 @@ class TestValidateStructureParity(TestCase):
     @classmethod
     def setUpClass(cls):
         cls.reader = DocxTextAdapter()
-        cls.structure_validator = StructureValidator()
+        cls.structure_validator = StructureValidator(max_header_length=100)
 
     def _validate(self, filename: str, article_type: ArticleType) -> tuple[bool, set]:
         paragraphs = self.reader.read_paragraphs(path=str(DOCS / filename))
