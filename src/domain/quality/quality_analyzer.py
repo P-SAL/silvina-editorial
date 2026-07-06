@@ -28,7 +28,7 @@ class QualityAnalyzer:
         self._argumentation_conclusions_prompt_template = argumentation_conclusions_prompt_template
         self._resolver = resolver
 
-    def analyze(self, document_content: DocumentContentDTO, article_type) -> QualityResultDTO:
+    def analyze(self, document_content: DocumentContentDTO) -> QualityResultDTO:
         """Score document quality across Claridad, Coherencia, Argumentación and Conclusiones."""
         text_sample = self._text_sampler.build_sample(document_content=document_content)
 

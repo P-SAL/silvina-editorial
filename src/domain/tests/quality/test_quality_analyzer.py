@@ -80,7 +80,7 @@ class TestQualityAnalyzer(TestCase):
         fake_adapter = FakeLlmGeneratorAdapter([VALID_RESPONSE_ONE, VALID_RESPONSE_TWO])
         analyzer = build_analyzer(fake_adapter)
 
-        analyzer.analyze(self.document_content, article_type=None)
+        analyzer.analyze(self.document_content)
 
         self.assertEqual(fake_adapter.call_count, 2)
 
@@ -100,7 +100,7 @@ Las conclusiones se desprenden claramente del contenido desarrollado en detalle.
         fake_adapter = FakeLlmGeneratorAdapter([response_one, response_two])
         analyzer = build_analyzer(fake_adapter)
 
-        result = analyzer.analyze(self.document_content, article_type=None)
+        result = analyzer.analyze(self.document_content)
 
         self.assertEqual(result.overall_score, 7.5)
 
@@ -120,7 +120,7 @@ Las conclusiones se desprenden claramente del contenido desarrollado en detalle.
         fake_adapter = FakeLlmGeneratorAdapter([response_one, response_two])
         analyzer = build_analyzer(fake_adapter)
 
-        result = analyzer.analyze(self.document_content, article_type=None)
+        result = analyzer.analyze(self.document_content)
 
         self.assertEqual(result.quality_level, QualityLevel.GOOD)
 
@@ -148,7 +148,7 @@ Este bloque de claridad nunca deberia usarse porque viene de la llamada dos.
         )
         analyzer = build_analyzer(fake_adapter)
 
-        result = analyzer.analyze(self.document_content, article_type=None)
+        result = analyzer.analyze(self.document_content)
 
         self.assertEqual(result.dimension_scores["claridad"]["score"], 8.0)
         self.assertEqual(result.dimension_scores["coherencia"]["score"], 8.0)
@@ -157,7 +157,7 @@ Este bloque de claridad nunca deberia usarse porque viene de la llamada dos.
         fake_adapter = FakeLlmGeneratorAdapter([VALID_RESPONSE_ONE, VALID_RESPONSE_TWO])
         analyzer = build_analyzer(fake_adapter)
 
-        result = analyzer.analyze(self.document_content, article_type=None)
+        result = analyzer.analyze(self.document_content)
 
         self.assertEqual(result.dimension_scores["argumentacion"]["score"], 8.0)
         self.assertEqual(result.dimension_scores["conclusiones"]["score"], 8.0)
@@ -170,13 +170,13 @@ Este bloque de claridad nunca deberia usarse porque viene de la llamada dos.
         analyzer = build_analyzer(fake_adapter)
 
         with self.assertRaises(QualityAnalysisFailed):
-            analyzer.analyze(self.document_content, article_type=None)
+            analyzer.analyze(self.document_content)
 
     def test_rendered_prompt_preserves_legacy_wording_with_sample_interpolated(self):
         fake_adapter = FakeLlmGeneratorAdapter([VALID_RESPONSE_ONE, VALID_RESPONSE_TWO])
         analyzer = build_analyzer(fake_adapter)
 
-        analyzer.analyze(self.document_content, article_type=None)
+        analyzer.analyze(self.document_content)
 
         text_sample = QualityTextSampler().build_sample(self.document_content)
         self.assertIn(

@@ -80,9 +80,7 @@ class AnalyzeDocumentUseCase:
 
         grammar = self._check_grammar(paragraphs=paragraphs)
         classification = self._article_classifier.classify(document_content=document_content)
-        quality = self._quality_analyzer.analyze(
-            document_content=document_content, article_type=classification.article_type
-        )
+        quality = self._quality_analyzer.analyze(document_content=document_content)
 
         effective_type = classification.effective_structure_type
         has_references = len(references) > 0
