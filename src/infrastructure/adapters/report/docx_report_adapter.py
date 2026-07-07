@@ -29,13 +29,13 @@ class DocxReportAdapter(ReportExportPort):
 
     def __init__(
         self,
+        settings: DocxReportSettings,
         logo_path: str | None = None,
-        settings: DocxReportSettings | None = None,
     ) -> None:
         if not DOCX_AVAILABLE:
             raise ReportExportUnavailable()
         self._logo_path = logo_path
-        self._settings = settings or DocxReportSettings()
+        self._settings = settings
 
     def _color_for_score(self, score: float) -> tuple[int, int, int]:
         if score >= self._settings.score_high_threshold:

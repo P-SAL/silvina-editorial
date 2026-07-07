@@ -1,7 +1,7 @@
 # SDD Configuration — silvina-editorial
 
 project: "silvina-editorial"
-persistence_mode: "openspec"
+persistence_mode: "hybrid"
 
 testing:
   runner: "pytest"
