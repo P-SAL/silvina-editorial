@@ -1,5 +1,3 @@
-from os import getenv
-
 from dotenv import load_dotenv
 
 from src.application.analyze_document_use_case import AnalyzeDocumentUseCase
@@ -47,7 +45,7 @@ from src.infrastructure.adapters.grammar.language_tool_adapter import LanguageTo
 from src.infrastructure.adapters.llm_generator.ollama_generator_adapter import (
     OllamaGeneratorAdapter,
 )
-from src.infrastructure.config.recommendation_config import RecommendationConfig
+from src.infrastructure.env_config import EnvConfig
 from src.infrastructure.resources.prompts.classification import (
     PROMPTS_DIR as CLASSIFICATION_PROMPTS_DIR,
 )
@@ -62,6 +60,7 @@ class AnalyzeDocumentUseCaseWiring:
 
     def __init__(self) -> None:
         self._llm_generator_instance: LlmGeneratorPort | None = None
+        self._env_config_instance: EnvConfig | None = None
 
     def create_use_case(self) -> AnalyzeDocumentUseCase:
         return AnalyzeDocumentUseCase(
@@ -80,6 +79,11 @@ class AnalyzeDocumentUseCaseWiring:
             recommendation_builder=self._get_recommendation_builder(),
         )
 
+    def _get_env_config(self) -> EnvConfig:
+        if self._env_config_instance is None:
+            self._env_config_instance = EnvConfig()
+        return self._env_config_instance
+
     def _get_document_text_port(self) -> DocumentTextPort:
         return DocxTextAdapter()
 
@@ -90,18 +94,18 @@ class AnalyzeDocumentUseCaseWiring:
         return Win32ComWordCountAdapter()
 
     def _get_citation_extraction_port(self) -> CitationExtractionPort:
-        max_author_name_length = int(getenv("CITATION_MAX_AUTHOR_NAME_LENGTH", "100"))
+        env_config = self._get_env_config()
         return DocxCitationAdapter(
             document_text_port=self._get_document_text_port(),
-            max_author_name_length=max_author_name_length,
+            max_author_name_length=env_config.citation_max_author_name_length,
         )
 
     def _get_reference_extraction_port(self) -> ReferenceExtractionPort:
         return DocxReferenceAdapter(document_text_port=self._get_document_text_port())
 
     def _get_grammar_check_port(self) -> GrammarCheckPort:
-        max_replacements = int(getenv("GRAMMAR_MAX_REPLACEMENTS", "3"))
-        return LanguageToolAdapter(max_replacements=max_replacements)
+        env_config = self._get_env_config()
+        return LanguageToolAdapter(max_replacements=env_config.grammar_max_replacements)
 
     def _get_document_format_inspection_port(self) -> DocumentFormatInspectionPort:
         return DocxEumicAdapter()
@@ -113,13 +117,14 @@ class AnalyzeDocumentUseCaseWiring:
         return CitationMatcher()
 
     def _get_structure_validator(self) -> StructureValidator:
-        max_header_length = int(getenv("STRUCTURE_MAX_HEADER_LENGTH", "100"))
-        return StructureValidator(max_header_length=max_header_length)
+        env_config = self._get_env_config()
+        return StructureValidator(max_header_length=env_config.structure_max_header_length)
 
     def _get_recommendation_builder(self) -> RecommendationBuilder:
-        return RecommendationBuilder(settings=RecommendationConfig.build_settings())
+        return RecommendationBuilder(settings=self._get_env_config().get_recommendation_settings())
 
     def _get_article_classifier(self) -> ArticleClassifier:
+        env_config = self._get_env_config()
         return ArticleClassifier(
             llm_generator=self._get_llm_generator(),
             signal_detector=ImrydSignalDetector(),
@@ -129,8 +134,8 @@ class AnalyzeDocumentUseCaseWiring:
             signal_prompt_template=read_text_resource(
                 directory=CLASSIFICATION_PROMPTS_DIR, filename="s4_s5_s6_signal_prompt.txt"
             ),
-            temperature=float(getenv("ARTICLE_CLASSIFIER_TEMPERATURE", "0.1")),
-            num_predict=int(getenv("ARTICLE_CLASSIFIER_NUM_PREDICT", "300")),
+            temperature=env_config.article_classifier_temperature,
+            num_predict=env_config.article_classifier_num_predict,
             methodological_vocabulary_detector=MethodologicalVocabularyDetector(),
             reference_signal_detector=ReferenceSignalDetector(),
             rule_table=ClassificationRuleTable(),
@@ -140,13 +145,14 @@ class AnalyzeDocumentUseCaseWiring:
         return ArticleSizeClassifier(thresholds=self._get_article_size_thresholds())
 
     def _get_article_size_thresholds(self) -> ArticleSizeThresholdsDTO:
+        env_config = self._get_env_config()
         return ArticleSizeThresholdsDTO(
-            short_min_chars=int(getenv("ARTICLE_SIZE_SHORT_MIN_CHARS", "16000")),
-            short_max_chars=int(getenv("ARTICLE_SIZE_SHORT_MAX_CHARS", "24000")),
-            undefined_min_chars=int(getenv("ARTICLE_SIZE_UNDEFINED_MIN_CHARS", "24001")),
-            undefined_max_chars=int(getenv("ARTICLE_SIZE_UNDEFINED_MAX_CHARS", "35999")),
-            long_min_chars=int(getenv("ARTICLE_SIZE_LONG_MIN_CHARS", "36000")),
-            long_max_chars=int(getenv("ARTICLE_SIZE_LONG_MAX_CHARS", "40000")),
+            short_min_chars=env_config.article_size_short_min_chars,
+            short_max_chars=env_config.article_size_short_max_chars,
+            undefined_min_chars=env_config.article_size_undefined_min_chars,
+            undefined_max_chars=env_config.article_size_undefined_max_chars,
+            long_min_chars=env_config.article_size_long_min_chars,
+            long_max_chars=env_config.article_size_long_max_chars,
         )
 
     def _get_quality_analyzer(self) -> QualityAnalyzer:
@@ -167,26 +173,25 @@ class AnalyzeDocumentUseCaseWiring:
         return QualityLevelResolver(thresholds=self._get_quality_level_thresholds())
 
     def _get_quality_level_thresholds(self) -> QualityLevelThresholdsDTO:
+        env_config = self._get_env_config()
         return QualityLevelThresholdsDTO(
-            excellent_threshold=float(getenv("QUALITY_LEVEL_EXCELLENT_THRESHOLD", "9.0")),
-            good_threshold=float(getenv("QUALITY_LEVEL_GOOD_THRESHOLD", "7.0")),
-            acceptable_threshold=float(getenv("QUALITY_LEVEL_ACCEPTABLE_THRESHOLD", "5.0")),
-            needs_improvement_threshold=float(
-                getenv("QUALITY_LEVEL_NEEDS_IMPROVEMENT_THRESHOLD", "3.0")
-            ),
+            excellent_threshold=env_config.quality_level_excellent_threshold,
+            good_threshold=env_config.quality_level_good_threshold,
+            acceptable_threshold=env_config.quality_level_acceptable_threshold,
+            needs_improvement_threshold=env_config.quality_level_needs_improvement_threshold,
         )
 
     def _get_quality_text_sampler(self) -> QualityTextSampler:
+        env_config = self._get_env_config()
         return QualityTextSampler(
-            min_sample_word_count=int(getenv("QUALITY_MIN_SAMPLE_WORD_COUNT", "400")),
-            text_sample_character_limit=int(getenv("QUALITY_TEXT_SAMPLE_CHARACTER_LIMIT", "8000")),
+            min_sample_word_count=env_config.quality_min_sample_word_count,
+            text_sample_character_limit=env_config.quality_text_sample_character_limit,
         )
 
     def _get_llm_generator(self) -> LlmGeneratorPort:
         if self._llm_generator_instance is None:
-            model_name = getenv("OLLAMA_MODEL_NAME", "llama3-gradient:8b-instruct-1048k-q4_K_M")
-            base_url = getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+            env_config = self._get_env_config()
             self._llm_generator_instance = OllamaGeneratorAdapter(
-                model_name=model_name, base_url=base_url
+                model_name=env_config.ollama_model_name, base_url=env_config.ollama_base_url
             )
         return self._llm_generator_instance

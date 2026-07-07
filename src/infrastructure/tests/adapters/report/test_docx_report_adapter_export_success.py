@@ -10,7 +10,7 @@ class TestDocxReportAdapterExportSuccess(TestCase):
     def test_export_returns_true_on_success(self, mock_document_class):
         mock_document_class.return_value = MagicMock()
 
-        adapter = DocxReportAdapter(logo_path=None)
+        adapter = DocxReportAdapter(logo_path=None, settings=ReportFixtures.make_settings())
         result = adapter.export(
             report_input=ReportFixtures.make_report_input_dto(), output_path="output.docx"
         )
@@ -22,7 +22,7 @@ class TestDocxReportAdapterExportSuccess(TestCase):
         mock_doc = MagicMock()
         mock_document_class.return_value = mock_doc
 
-        adapter = DocxReportAdapter(logo_path=None)
+        adapter = DocxReportAdapter(logo_path=None, settings=ReportFixtures.make_settings())
         adapter.export(
             report_input=ReportFixtures.make_report_input_dto(), output_path="output.docx"
         )
@@ -33,7 +33,7 @@ class TestDocxReportAdapterExportSuccess(TestCase):
     def test_export_calls_all_thirteen_add_methods(self, mock_document_class):
         mock_document_class.return_value = MagicMock()
 
-        adapter = DocxReportAdapter(logo_path=None)
+        adapter = DocxReportAdapter(logo_path=None, settings=ReportFixtures.make_settings())
         report_input = ReportFixtures.make_report_input_dto()
 
         with (

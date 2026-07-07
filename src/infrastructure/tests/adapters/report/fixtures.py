@@ -3,9 +3,25 @@ from unittest.mock import MagicMock
 from src.domain.dtos.publication_verdict_dto import PublicationVerdictDTO
 from src.domain.dtos.report_input_dto import ReportInputDTO
 from src.domain.enums.publication_verdict import PublicationVerdict
+from src.infrastructure.adapters.report.docx_report_settings import DocxReportSettings
 
 
 class ReportFixtures:
+    @staticmethod
+    def make_settings(**overrides) -> DocxReportSettings:
+        defaults = {
+            "app_name": "Silvina Editorial Assistant",
+            "app_version": "0.9",
+            "score_high_threshold": 8.0,
+            "score_medium_threshold": 6.0,
+            "words_per_page": 250,
+            "max_errors_displayed": 5,
+            "context_truncation_limit": 150,
+            "max_replacements": 3,
+        }
+        defaults.update(overrides)
+        return DocxReportSettings(**defaults)
+
     @staticmethod
     def make_grammar_mock(score: float = 7.5, errors: list | None = None) -> MagicMock:
         grammar = MagicMock()
