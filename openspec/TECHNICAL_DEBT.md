@@ -5,12 +5,6 @@ Consolidated inventory of technical debt accumulated during the hexagonal migrat
 Each item lists status as verified against the current codebase, not just the state at the time it was logged.
 ## Confirmed still present
 
-### 2. Spanish domain-vocabulary enums pending final rename pass (partially resolved)
-`ArticleType`'s Spanish member KEYS were renamed to English — see "Resolved" section below. The following remain deliberately untouched:
-- `QualityDimension` — keys already English; `.value`s stay Spanish (match literal LLM/document text), rename of values still deferred to the final pass together with parsing logic.
-- `SectionType` — keys and values both stay Spanish/bilingual on purpose: members like `RESUMEN`/`ABSTRACT`, `INTRODUCCION`/`INTRODUCTION` are intentional parallel-language pairs, not translation debt.
-- **Source**: Engram #613; `openspec/changes/archive/2026-07-04-resolve-domain-vocabulary-enums-debt/`.
-
 ### 3. Accumulated dead-code registry (by design — not to be cleaned per-slice)
 Per convention (Engram #605), dead code found while migrating a legacy module is documented, not removed, and batched for a future dedicated cleanup pass instead of being fixed slice-by-slice:
 - Slice 5 (analyze-quality): `article_type` param of `analyze_quality(document_content, article_type)` (now `QualityAnalyzer.analyze(...)` in `src/domain/quality/quality_analyzer.py`) — never read in the method body.
@@ -30,6 +24,11 @@ Wirings in `src/infrastructure/wirings/` currently read configuration variables 
 - **Source**: User feedback (2026-07-06).
 
 ## Resolved (was tracked, no longer applies)
+
+### Spanish domain-vocabulary enums pending final rename pass
+`ArticleType`'s Spanish member KEYS were renamed to English, and `QualityDimension`/`SectionType` Spanish values were accepted as permanent design choices (matching literal LLM outputs and parallel language requirements).
+- **Verified fixed**: 2026-07-07, marked resolved per user decision.
+- **Source**: Engram #613; `openspec/changes/archive/2026-07-04-resolve-domain-vocabulary-enums-debt/`.
 
 ### Magic values not audited across the remaining `src/` infrastructure adapters
 Parameterized the remaining adapters to avoid raw magic number and literal threshold dependencies, reading custom values from environment variables or settings DTOs.
