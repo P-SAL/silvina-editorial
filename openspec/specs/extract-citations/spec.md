@@ -80,7 +80,7 @@ Configurable return tuple for `extract_references` and optional error.
 
 `DocxCitationAdapter(CitationExtractionPort)` MUST exist at
 `src/infrastructure/adapters/document/docx_citation_adapter.py`.
-MUST accept an optional `max_author_name_length: int` in its constructor (defaulting to 100) and store it. During multi-author extraction, if the author name length exceeds `max_author_name_length`, it MUST NOT be parsed as an author.
+MUST accept `max_author_name_length: int` as a required constructor argument and store it (the default lives in the wiring/environment config, not the constructor). During multi-author extraction, if the author name length exceeds `max_author_name_length`, it MUST NOT be parsed as an author.
 The adapter MUST read the document paragraph by paragraph, tracking the 0-based paragraph index, and assign it to the `location` field of each extracted `CitationDTO`.
 If citations are extracted via the legacy raw text fallback (`full_text` or `paragraphs` as `str`), it MUST assign `location=0` to the extracted `CitationDTO`s.
 Constructs `CitationDTO` (not legacy `Citation`).
