@@ -3,6 +3,7 @@ from unittest import TestCase
 from src.domain.dtos.document_content_dto import DocumentContentDTO
 from src.domain.enums.article_type import ArticleType
 from src.domain.enums.section_name import SectionName
+from src.domain.exceptions.document_errors import DocumentEmpty
 from src.domain.structure.structure_validator import StructureValidator
 
 
@@ -87,3 +88,49 @@ class TestStructureValidatorScientific(TestCase):
         self.assertIn(SectionName.DISCUSSION, missing)
         self.assertIn(SectionName.CONCLUSIONS, missing)
         self.assertIn(SectionName.REFERENCES, missing)
+
+    def test_validate_structure_raises_document_empty_when_paragraphs_empty(self):
+        doc = _make_document([])
+        with self.assertRaises(DocumentEmpty):
+            self.validator.validate_structure(
+                document_content=doc, article_type=ArticleType.SCIENTIFIC, has_references=True
+            )
+
+    def test_validate_structure_removes_development_and_references_when_has_references(self):
+        paragraphs = [
+            s.value
+            for s in [
+                SectionName.SUMMARY,
+                SectionName.INTRODUCTION,
+                SectionName.METHODOLOGY,
+                SectionName.RESULTS,
+                SectionName.DISCUSSION,
+                SectionName.CONCLUSIONS,
+            ]
+        ]
+        doc = _make_document(paragraphs)
+        result = self.validator.validate_structure(
+            document_content=doc, article_type=ArticleType.SCIENTIFIC, has_references=True
+        )
+        self.assertNotIn(SectionName.DEVELOPMENT, result.missing_sections)
+        self.assertNotIn(SectionName.REFERENCES, result.missing_sections)
+        self.assertTrue(result.is_valid)
+
+    def test_validate_structure_keeps_references_missing_when_has_references_false(self):
+        paragraphs = [
+            s.value
+            for s in [
+                SectionName.SUMMARY,
+                SectionName.INTRODUCTION,
+                SectionName.METHODOLOGY,
+                SectionName.RESULTS,
+                SectionName.DISCUSSION,
+                SectionName.CONCLUSIONS,
+            ]
+        ]
+        doc = _make_document(paragraphs)
+        result = self.validator.validate_structure(
+            document_content=doc, article_type=ArticleType.SCIENTIFIC, has_references=False
+        )
+        self.assertIn(SectionName.REFERENCES, result.missing_sections)
+        self.assertFalse(result.is_valid)

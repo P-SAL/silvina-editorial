@@ -177,14 +177,15 @@ def validate_citation(
 ```python
 def validate_all_citations(
     self,
-    citations: list[tuple[str, int, str]]
+    citations: list[CitationDTO],
+    paragraphs: list[str]
 ) -> list[ApaViolation]:
 ```
 
-- Accepts a list of `(citation_text, paragraph_index, paragraph_text)` 3-tuples.
-- For each tuple, calls `self.validate_citation(citation_text, paragraph_index, paragraph_text)`.
-- Extends an accumulator list with results (order preserved; matches input order).
-- Returns the accumulated list.
+- Filters the input `citations` list to process only those with `citation_type == CitationType.AUTHOR_YEAR`.
+- For each filtered citation, retrieves the corresponding paragraph text from `paragraphs` using `citation.location`. If `citation.location` is out of bounds, fallback to an empty string.
+- Calls `validate_citation(citation.text, citation.location, paragraph_text)` for each citation.
+- Accumulates and returns the ordered list of all `ApaViolationDTO`s.
 - Empty input list → returns `[]`.
 - No instance state is modified.
 
@@ -198,21 +199,13 @@ def validate_all_citations(
 
 ## 5. APA Validation Orchestration
 
-> **Superseded (2026-07-04, `refactor_analyze_document_wiring`)**: `ValidateApaUseCase`
-> and `ValidateApaWiring` were eliminated as redundant pass-through layers. This
-> orchestration now lives in `AnalyzeDocumentUseCase._validate_apa()` — see
-> `openspec/specs/analyze-document/spec.md`. `AnalyzeDocumentUseCaseWiring._get_apa_validator()`
-> constructs a fresh `ApaValidator()` directly (no intermediate sub-wiring).
-
-**Method**: `AnalyzeDocumentUseCase._validate_apa(self, citations: list[tuple[str, int, str]]) -> ApaValidationResultDTO`
+**Method**: `AnalyzeDocumentUseCase._validate_apa(self, citations: list[CitationDTO], paragraphs: list[str]) -> ApaValidationResultDTO`
 
 **Behavior**:
 
-1. If `citations` is empty → return `ApaValidationResultDTO(is_valid=True, violation_count=0, violations=[])` immediately. MUST NOT raise an exception (ADR-4: domain services return empty results for empty inputs).
-2. Otherwise, call `self._apa_validator.validate_all_citations(citations=citations)` → `violations: list[ApaViolationDTO]`.
-3. Compute `violation_count = len(violations)`.
-4. Compute `is_valid = (violation_count == 0)`.
-5. Return `ApaValidationResultDTO(is_valid=is_valid, violation_count=violation_count, violations=violations)`.
+1. Call `apa_validator.validate_all_citations(citations=citations, paragraphs=paragraphs)`.
+2. Compute `is_valid = (len(violations) == 0)` and `violation_count = len(violations)`.
+3. Return `ApaValidationResultDTO(is_valid=is_valid, violation_count=violation_count, violations=violations)`.
 
 **Constraints**:
 - Never raises an exception for valid (possibly empty) input.
@@ -359,31 +352,24 @@ When validate_citation is called
 Then the result contains no violations
 ```
 
-### S-12: Empty citation list returns is_valid=True
+### S-12: Only AUTHOR_YEAR citations are validated and location preview constructed
+- GIVEN a list containing one `AUTHOR_YEAR` citation at location 0 and one `NUMERIC` citation
+- AND a list of paragraphs: `["Paragraph 0 text contents"]`
+- WHEN `validate_all_citations` is called
+- THEN only the `AUTHOR_YEAR` citation is validated
+- AND the preview is created from `"Paragraph 0 text contents"`
 
-```
-Given an empty list of citations
-When AnalyzeDocumentUseCase._validate_apa([]) is called
-Then the result is ApaValidationResultDTO(is_valid=True, violation_count=0, violations=[])
-And no exception is raised
-```
+### S-13: Empty citation list returns empty violations
+- GIVEN an empty list of citations
+- WHEN `validate_all_citations` is called
+- THEN it returns an empty list `[]`
 
-### S-13: Orchestration computes is_valid and violation_count correctly
+### S-14: Orchestration computes is_valid and violation_count correctly
+- GIVEN a list containing one citation with a conjunction error
+- WHEN `_validate_apa` is called
+- THEN it returns `ApaValidationResultDTO` with `is_valid=False` and `violation_count=1`
 
-```
-Given a list containing one citation with a CONJUNCTION_ERROR
-When AnalyzeDocumentUseCase._validate_apa(citations) is called
-Then result.violation_count == 1
-And result.is_valid == False
-And len(result.violations) == 1
-
-Given a list containing only valid citations
-When AnalyzeDocumentUseCase._validate_apa(citations) is called
-Then result.violation_count == 0
-And result.is_valid == True
-```
-
-### S-14: ApaValidationResult is frozen
+### S-15: ApaValidationResult is frozen
 
 ```
 Given a result = ApaValidationResult(is_valid=True, violation_count=0, violations=[])
@@ -391,7 +377,7 @@ When caller attempts result.is_valid = False
 Then FrozenInstanceError is raised
 ```
 
-### S-14b: ApaViolation is frozen
+### S-16: ApaViolation is frozen
 
 ```
 Given v = ApaViolation(citation_text="...", error_type=..., location=0, explanation="...", correction="...")
@@ -399,13 +385,13 @@ When caller attempts v.location = 99
 Then FrozenInstanceError is raised
 ```
 
-### S-15: Wiring creates a valid ApaValidator
+### S-17: Wiring creates a valid ApaValidator
 
 ```
 Given AnalyzeDocumentUseCaseWiring
 When _get_apa_validator() is called
 Then the returned object is an instance of ApaValidator
-And AnalyzeDocumentUseCase._validate_apa([]) returns ApaValidationResultDTO(is_valid=True, ...)
+And AnalyzeDocumentUseCase._validate_apa([], []) returns ApaValidationResultDTO(is_valid=True, ...)
 ```
 
 ---

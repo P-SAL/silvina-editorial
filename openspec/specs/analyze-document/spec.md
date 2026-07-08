@@ -281,129 +281,123 @@ Its method `build(...) -> tuple[list[RecommendationDTO], PublicationVerdictDTO]`
 
 ---
 
+### Requirement: DocumentContentExtractor Domain Service
+
+The `DocumentContentExtractor` domain service MUST reside in `src/domain/document/document_content_extractor.py`. It SHALL extract document content from a DOCX file using ports and handle count fallback logic.
+- Constructor MUST inject: `document_text_port: DocumentTextPort`, `content_extraction_port: ContentExtractionPort`, and `character_count_port: CharacterCountPort`.
+- Method `extract_content(docx_path: str) -> DocumentContentDTO`:
+  1. Calls `document_text_port.read_paragraphs(path=docx_path)` to load paragraphs.
+  2. Calls `content_extraction_port.extract(paragraphs, docx_path)` to get a base DTO.
+  3. Calls `character_count_port.count(docx_path)`. On `CharacterCountUnavailable` or if result is `None`, returns the base DTO. Otherwise, returns a new DTO replacing word, char, and paragraph counts with the counted values.
+
+#### Scenario: Content extraction executes successfully with count fallback
+- GIVEN a valid DOCX path and `character_count_port` raises `CharacterCountUnavailable`
+- WHEN `extract_content` is called
+- THEN it returns a `DocumentContentDTO` containing text-based fallback counts
+
+---
+
+### Requirement: CitationExtractor Domain Service
+
+The `CitationExtractor` domain service MUST reside in `src/domain/citation/citation_extractor.py`. It SHALL extract citations and references from a DOCX file.
+- Constructor MUST inject: `citation_extraction_port: CitationExtractionPort` and `reference_extraction_port: ReferenceExtractionPort`.
+- Method `extract_citations_and_references(docx_path: str) -> tuple[list[CitationDTO], list[ReferenceDTO], str]`:
+  1. Calls `citation_extraction_port.extract_citations(docx_path=docx_path)`.
+  2. Calls `reference_extraction_port.extract_references(docx_path=docx_path)`.
+  3. Returns the tuple `(citations, references, section_type)`.
+
+#### Scenario: Citations and references are extracted
+- GIVEN a valid DOCX path
+- WHEN `extract_citations_and_references` is called
+- THEN it returns a tuple of citations, references, and references section type
+
+---
+
+### Requirement: DocumentFormatInspector Domain Service
+
+The `DocumentFormatInspector` domain service MUST reside in `src/domain/document/document_format_inspector.py`. It SHALL inspect formatting rules.
+- Constructor MUST inject: `document_format_inspection_port: DocumentFormatInspectionPort`.
+- Method `inspect(docx_path: str, word_count: int) -> list[EumicViolationDTO]`:
+  1. Calls `document_format_inspection_port.inspect(docx_path=docx_path, word_count=word_count)`.
+
+#### Scenario: Format inspection finds violations
+- GIVEN a document path and word count
+- WHEN `inspect` is called
+- THEN it returns a list of formatting violations
+
+---
+
+### Requirement: GrammarChecker Domain Service
+
+The `GrammarChecker` domain service MUST reside in `src/domain/grammar/grammar_checker.py`. It SHALL perform grammar checks and compute score level.
+- Constructor MUST inject: `grammar_check_port: GrammarCheckPort`.
+- Method `check_grammar(paragraphs: list[str]) -> GrammarCheckResultDTO`:
+  1. Calls `grammar_check_port.check(paragraphs=paragraphs)`.
+  2. Maps error count using `GrammarScoreLevel.from_error_count(error_count=len(errors))`.
+  3. Returns `GrammarCheckResultDTO(score=level.score, feedback=level.feedback, errors=errors)`.
+
+#### Scenario: Grammar check returns errors and level
+- GIVEN a list of paragraphs
+- WHEN `check_grammar` is called
+- THEN it returns a `GrammarCheckResultDTO` with grammar score and feedback
+
+---
+
 ### Requirement: AnalyzeDocumentUseCase Orchestrator
 
-> **Modified (2026-07-04, `refactor_analyze_document_wiring`)**: The 10 pass-through
-> sub-use cases (`ReadDocumentUseCase`, `ExtractContentUseCase`, `ExtractCitationsUseCase`,
-> `ValidateApaUseCase`, `CheckGrammarUseCase`, `ClassifyArticleUseCase`, `AnalyzeQualityUseCase`,
-> `ValidateStructureUseCase`, `MatchCitationsUseCase`, `VerifyEumicUseCase`) and their 10
-> wirings were deleted. `AnalyzeDocumentUseCase` now orchestrates 7 ports, 5 domain services,
-> and 1 builder directly — 13 dependencies total (not 11). Fallback/filtering logic that used
-> to live inside the deleted sub-use cases (`CharacterCountUnavailable` handling, APA's
-> empty-citations guard, grammar scoring, structure's `DEVELOPMENT`/`REFERENCES` filtering) was
-> moved into private methods on `AnalyzeDocumentUseCase` itself (`_extract_content`,
-> `_validate_apa`, `_check_grammar`, `_validate_structure`). See each capability's own spec
-> (`read-document`, `extract-content`, `extract-citations`, `validate-apa`, `check-grammar`,
-> `classify-article`, `analyze-quality`, `validate-structure`, `validate-citations`) for the
-> "Superseded" note pointing back here.
+`AnalyzeDocumentUseCase` MUST live in `src/application/analyze_document_use_case.py` and coordinate the document analysis steps. It accepts its 10 domain service dependencies via constructor injection:
+- Domain services: `document_content_extractor`, `citation_extractor`, `document_format_inspector`, `grammar_checker`, `apa_validator`, `article_classifier`, `quality_analyzer`, `structure_validator`, `citation_matcher`, `recommendation_builder`.
+(Previously: Accepted 7 ports, 5 domain services, and 1 builder — 13 dependencies total.)
 
-`AnalyzeDocumentUseCase` MUST live in `src/application/analyze_document_use_case.py` and
-coordinate the document analysis steps. It accepts its 13 dependencies via constructor
-injection:
-
-- Ports: `document_text_port`, `content_extraction_port`, `character_count_port`,
-  `citation_extraction_port`, `reference_extraction_port`, `grammar_check_port`,
-  `document_format_inspection_port`
-- Domain services: `apa_validator`, `article_classifier`, `quality_analyzer`,
-  `structure_validator`, `citation_matcher`
-- Builder: `recommendation_builder`
-
-Method `execute(document_path: str) -> ReportInputDTO` MUST be wrapped with `@generic_error_handler`
-(the single error-handling layer for the whole pipeline — none of its collaborator ports/services
-carry their own `@generic_error_handler` at the orchestration level) and perform:
-
-1. Load paragraphs via `document_text_port.read_paragraphs(path=document_path)`.
-2. Extract content via private method `_extract_content(paragraphs, docx_path=document_path)`,
-   which calls `content_extraction_port.extract()` then merges accurate counts from
-   `character_count_port.count()`, falling back to text-based counts on `CharacterCountUnavailable`
-   or a `None` result.
-3. Extract citations via `citation_extraction_port.extract_citations(docx_path=document_path)`
-   and references via `reference_extraction_port.extract_references(docx_path=document_path)`.
-4. Filter `AUTHOR_YEAR` citations and pass tuples `(text, location, paragraph_text)` to private
-   method `_validate_apa(citations)` (empty-citations guard: returns
-   `ApaValidationResultDTO(is_valid=True, violation_count=0, violations=[])` immediately without
-   calling `apa_validator` when the filtered list is empty).
-5. Grammar check via private method `_check_grammar(paragraphs)`, which calls
-   `grammar_check_port.check()` and computes score/feedback from the error count via
-   `GrammarScoreLevel.from_error_count()`.
-6. Classify article via `article_classifier.classify(document_content=document_content)`.
-7. Analyze quality via `quality_analyzer.analyze(document_content=..., article_type=classification.article_type)`.
-8. Validate structure via private method `_validate_structure(document_content, article_type=classification.effective_structure_type, has_references=len(references) > 0)`
-   (raises `DocumentEmpty` if `document_content.paragraphs` is empty; removes `SectionName.DEVELOPMENT`
-   unconditionally and `SectionName.REFERENCES` when `has_references` is `True`).
-9. Parse `section_type` to `SectionName`; fallback to `SectionName.REFERENCES` on `ValueError`.
-10. Match citations via `citation_matcher.match_citations_to_references(citations=..., references=..., section_type=section_name)`.
-11. Verify EUMIC via `document_format_inspection_port.inspect(docx_path=document_path, word_count=document_content.word_count)` (no fatal exception on violations).
-12. Call `recommendation_builder.build()` and **unpack the tuple**: `recommendations, verdict = builder.build(...)`.
-13. Construct and return `ReportInputDTO` with all results including `verdict`.
+Method `execute(document_path: str) -> ReportInputDTO` MUST be wrapped with `@generic_error_handler` and perform:
+1. Extract content via `document_content_extractor.extract_content(document_path)`.
+2. Extract citations/references via `citation_extractor.extract_citations_and_references(document_path)`.
+3. Validate APA citations via `apa_validator.validate_all_citations(citations, document_content.paragraphs)`.
+4. Grammar check via `grammar_checker.check_grammar(document_content.paragraphs)`.
+5. Classify article via `article_classifier.classify(document_content)`.
+6. Analyze quality via `quality_analyzer.analyze(document_content)`.
+7. Validate structure via `structure_validator.validate_structure(document_content, classification.effective_structure_type, len(references) > 0)`.
+8. Parse references section type to `SectionName`, falling back to `REFERENCES` on `ValueError`.
+9. Match citations via `citation_matcher.match_citations_to_references(citations, references, section_name)`.
+10. Verify format/EUMIC via `document_format_inspector.inspect(document_path, document_content.word_count)`.
+11. Call `recommendation_builder.build(...)` -> `(recommendations, verdict)`.
+12. Return `ReportInputDTO`.
 
 #### Scenario: Orchestrator executes all pipeline steps sequentially
-
 - GIVEN a valid `document_path`
 - WHEN `execute(document_path)` is called
-- THEN each port/domain-service collaborator is called exactly once and a `ReportInputDTO` is returned
-
-#### Scenario: Only AUTHOR_YEAR citations are validated
-
-- GIVEN a document with 2 `AUTHOR_YEAR` and 1 `NUMERIC` citations
-- WHEN the orchestrator runs
-- THEN only the 2 `AUTHOR_YEAR` citations are sent to `_validate_apa` (and, since non-empty,
-  forwarded to `apa_validator.validate_all_citations()`)
+- THEN each of the 10 domain service dependencies is invoked and a `ReportInputDTO` is returned
 
 #### Scenario: Structure validation uses effective structure type
-
-- GIVEN a `CIENTIFICO` article without `"IMRyD"` in reasoning
+- GIVEN a scientific article without "IMRyD" in reasoning
 - WHEN structure validation is invoked
-- THEN `structure_validator.validate()` receives `article_type=ArticleType.DIVULGACION`
-
-#### Scenario: has_references correctly filters REFERENCES from missing sections
-
-- GIVEN `structure_validator.validate()` returns `SectionName.REFERENCES` among the missing sections
-- WHEN `_validate_structure` is called with `has_references=True`
-- THEN `SectionName.REFERENCES` is NOT in the resulting `missing_sections`
-- WHEN `_validate_structure` is called with `has_references=False`
-- THEN `SectionName.REFERENCES` IS in the resulting `missing_sections`
+- THEN the orchestrator calls `structure_validator.validate_structure` with `article_type=ArticleType.DIVULGACION`
 
 ---
 
 ### Requirement: AnalyzeDocumentUseCaseWiring Assembly Factory
 
-> **Modified (2026-07-04, `refactor_analyze_document_wiring`)**: `AnalyzeDocumentUseCaseWiring`
-> is now the sole composition root for the analysis pipeline — it no longer delegates to 10
-> sub-wirings. Each `_get_xxx()` method builds its adapter or domain service directly.
-
-`AnalyzeDocumentUseCaseWiring` MUST reside in `src/infrastructure/wirings/analyze_document_use_case_wiring.py`.
-It MUST follow the **private-method wiring pattern**:
-
+`AnalyzeDocumentUseCaseWiring` MUST reside in `src/infrastructure/wirings/analyze_document_use_case_wiring.py`. It MUST follow the private-method wiring pattern where:
 - `create_use_case()` instantiates `EnvConfig` and delegates dependency injection to `_get_xxx()` private methods, injecting the configurations from the `EnvConfig` instance.
-- Each `_get_xxx()` method instantiates the corresponding adapter or domain service directly (no sub-wiring classes remain).
-- `_get_document_text_port()` returns `DocxTextAdapter()`.
-- `_get_content_extraction_port()` returns `ParagraphContentAdapter()`.
-- `_get_character_count_port()` returns `Win32ComWordCountAdapter()`.
-- `_get_citation_extraction_port()` returns `DocxCitationAdapter(document_text_port=self._get_document_text_port(), max_author_name_length=env_config.citation_max_author_name_length)`.
-- `_get_reference_extraction_port()` returns `DocxReferenceAdapter(document_text_port=self._get_document_text_port())`.
-- `_get_grammar_check_port()` returns `LanguageToolAdapter(max_replacements=env_config.grammar_max_replacements)`.
-- `_get_document_format_inspection_port()` returns `DocxEumicAdapter()`.
-- `_get_apa_validator()` returns `ApaValidator()`.
-- `_get_citation_matcher()` returns `CitationMatcher()`.
-- `_get_structure_validator()` returns `StructureValidator(max_header_length=env_config.structure_max_header_length)`.
-- `_get_article_classifier()` and `_get_quality_analyzer()` each construct their domain service directly, both consuming the **same shared** `LlmGeneratorPort` instance from `_get_llm_generator()` (memoized on the wiring instance) rather than each assembling their own `OllamaGeneratorAdapter`. These services are constructed with configuration values injected from `EnvConfig`.
-- `_get_recommendation_builder()` obtains settings from `EnvConfig.get_recommendation_settings()`.
+- Port helper methods instantiate and memoize/return infrastructure adapters.
+- Domain service helper methods build the 10 domain services directly, wrapping ports or LLM generator dependencies as required.
+- `_get_document_content_extractor()` returns `DocumentContentExtractor(self._get_document_text_port(), self._get_content_extraction_port(), self._get_character_count_port())`.
+- `_get_citation_extractor()` returns `CitationExtractor(self._get_citation_extraction_port(), self._get_reference_extraction_port())`.
+- `_get_document_format_inspector()` returns `DocumentFormatInspector(self._get_document_format_inspection_port())`.
+- `_get_grammar_checker()` returns `GrammarChecker(self._get_grammar_check_port())`.
+(Previously: Constructed and injected 7 ports and 5 domain services directly into the orchestrator.)
 
 #### Scenario: Wiring constructs correct dependency graph
-
 - GIVEN the wiring configuration
 - WHEN `AnalyzeDocumentUseCaseWiring().create_use_case()` is called
-- THEN it returns a valid `AnalyzeDocumentUseCase` with all 13 dependencies injected
+- THEN it returns a valid `AnalyzeDocumentUseCase` with all 10 domain service dependencies injected
 
 #### Scenario: Article classifier and quality analyzer share one LLM generator instance
-
 - GIVEN `AnalyzeDocumentUseCaseWiring().create_use_case()`
 - WHEN `result._article_classifier._llm_generator` and `result._quality_analyzer._llm_generator` are compared
 - THEN they are the exact same object (`is`), not merely equal instances
 
 #### Scenario: Environment variable overrides threshold at wiring time
-
 - GIVEN `QUALITY_THRESHOLD=6.5` is set in the environment before `create_use_case()` instantiates `EnvConfig`
 - WHEN `create_use_case()` is called
 - THEN `recommendation_builder._settings.quality_threshold` equals `6.5`

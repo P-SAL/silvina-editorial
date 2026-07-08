@@ -1,6 +1,8 @@
 from src.domain.dtos.document_content_dto import DocumentContentDTO
+from src.domain.dtos.structure_validation_result_dto import StructureValidationResultDTO
 from src.domain.enums.article_type import ArticleType
 from src.domain.enums.section_name import SectionName
+from src.domain.exceptions.document_errors import DocumentEmpty
 from src.domain.structure.required_sections_provider import RequiredSectionsProvider
 
 
@@ -32,12 +34,32 @@ class StructureValidator:
         document_content: DocumentContentDTO,
         article_type: ArticleType,
     ) -> tuple[list[SectionName], list[SectionName]]:
-        """Return (present_sections, missing_sections)."""
+        """Return (present_sections, missing_sections). Low-level primitive; prefer `validate_structure`."""
         required = self._get_required_sections(article_type)
         present = self._extract_present_sections(document_content.paragraphs)
         present_lower = [s.lower() for s in present]
         missing = [s for s in required if s.lower() not in present_lower]
         return present, missing
+
+    def validate_structure(
+        self,
+        document_content: DocumentContentDTO,
+        article_type: ArticleType,
+        has_references: bool,
+    ) -> StructureValidationResultDTO:
+        """Validate structure, raising on empty documents and filtering non-blocking sections."""
+        if not document_content.paragraphs:
+            raise DocumentEmpty
+
+        _, missing = self.validate(document_content=document_content, article_type=article_type)
+        missing = [s for s in missing if s != SectionName.DEVELOPMENT]
+        if has_references:
+            missing = [s for s in missing if s != SectionName.REFERENCES]
+
+        return StructureValidationResultDTO(
+            is_valid=len(missing) == 0,
+            missing_sections=list(missing),
+        )
 
     def _extract_present_sections(self, paragraphs: list[str]) -> list[SectionName]:
         """Detect canonical section names from a list of paragraph strings."""

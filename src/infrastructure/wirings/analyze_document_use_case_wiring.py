@@ -2,6 +2,7 @@ from dotenv import load_dotenv
 
 from src.application.analyze_document_use_case import AnalyzeDocumentUseCase
 from src.domain.citation.apa_validator import ApaValidator
+from src.domain.citation.citation_extractor import CitationExtractor
 from src.domain.citation.citation_matcher import CitationMatcher
 from src.domain.classification.article_classification_response_parser import (
     ArticleClassificationResponseParser,
@@ -20,12 +21,15 @@ from src.domain.classification.reference_signal_detector import ReferenceSignalD
 from src.domain.document.character_count_port import CharacterCountPort
 from src.domain.document.citation_extraction_port import CitationExtractionPort
 from src.domain.document.content_extraction_port import ContentExtractionPort
+from src.domain.document.document_content_extractor import DocumentContentExtractor
 from src.domain.document.document_format_inspection_port import DocumentFormatInspectionPort
+from src.domain.document.document_format_inspector import DocumentFormatInspector
 from src.domain.document.document_text_port import DocumentTextPort
 from src.domain.document.reference_extraction_port import ReferenceExtractionPort
 from src.domain.dtos.article_size_thresholds_dto import ArticleSizeThresholdsDTO
 from src.domain.dtos.quality_level_thresholds_dto import QualityLevelThresholdsDTO
 from src.domain.grammar.grammar_check_port import GrammarCheckPort
+from src.domain.grammar.grammar_checker import GrammarChecker
 from src.domain.ports.llm_generator_port import LlmGeneratorPort
 from src.domain.quality.quality_analyzer import QualityAnalyzer
 from src.domain.quality.quality_level_resolver import QualityLevelResolver
@@ -64,13 +68,10 @@ class AnalyzeDocumentUseCaseWiring:
 
     def create_use_case(self) -> AnalyzeDocumentUseCase:
         return AnalyzeDocumentUseCase(
-            document_text_port=self._get_document_text_port(),
-            content_extraction_port=self._get_content_extraction_port(),
-            character_count_port=self._get_character_count_port(),
-            citation_extraction_port=self._get_citation_extraction_port(),
-            reference_extraction_port=self._get_reference_extraction_port(),
-            grammar_check_port=self._get_grammar_check_port(),
-            document_format_inspection_port=self._get_document_format_inspection_port(),
+            document_content_extractor=self._get_document_content_extractor(),
+            citation_extractor=self._get_citation_extractor(),
+            document_format_inspector=self._get_document_format_inspector(),
+            grammar_checker=self._get_grammar_checker(),
             apa_validator=self._get_apa_validator(),
             article_classifier=self._get_article_classifier(),
             quality_analyzer=self._get_quality_analyzer(),
@@ -109,6 +110,27 @@ class AnalyzeDocumentUseCaseWiring:
 
     def _get_document_format_inspection_port(self) -> DocumentFormatInspectionPort:
         return DocxEumicAdapter()
+
+    def _get_document_content_extractor(self) -> DocumentContentExtractor:
+        return DocumentContentExtractor(
+            document_text_port=self._get_document_text_port(),
+            content_extraction_port=self._get_content_extraction_port(),
+            character_count_port=self._get_character_count_port(),
+        )
+
+    def _get_citation_extractor(self) -> CitationExtractor:
+        return CitationExtractor(
+            citation_extraction_port=self._get_citation_extraction_port(),
+            reference_extraction_port=self._get_reference_extraction_port(),
+        )
+
+    def _get_document_format_inspector(self) -> DocumentFormatInspector:
+        return DocumentFormatInspector(
+            document_format_inspection_port=self._get_document_format_inspection_port()
+        )
+
+    def _get_grammar_checker(self) -> GrammarChecker:
+        return GrammarChecker(grammar_check_port=self._get_grammar_check_port())
 
     def _get_apa_validator(self) -> ApaValidator:
         return ApaValidator()
