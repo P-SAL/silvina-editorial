@@ -5,11 +5,6 @@ Consolidated inventory of technical debt accumulated during the hexagonal migrat
 Each item lists status as verified against the current codebase, not just the state at the time it was logged.
 ## Confirmed still present
 
-### 3. Accumulated dead-code registry (by design — not to be cleaned per-slice)
-Per convention (Engram #605), dead code found while migrating a legacy module is documented, not removed, and batched for a future dedicated cleanup pass instead of being fixed slice-by-slice:
-- Slice 5 (analyze-quality): `article_type` param of `analyze_quality(document_content, article_type)` (now `QualityAnalyzer.analyze(...)` in `src/domain/quality/quality_analyzer.py`) — never read in the method body.
-- **Source**: Engram #605 (topic `migration/dead-code-registry`).
-
 ### 5. README.md documents the deleted legacy structure
 `README.md` (lines 18, 63-66, 215-236) still describes the old 4-layer legacy root layout (`domain/`, `data_access/`, `business_logic/`, `presentation/`, `apa_validator.py`, `eumic_verifier.py`) that Slice 16 (`cleanup-legacy-packages`) deleted from the repo. The "Project Structure" section shows a directory tree that no longer exists.
 - Update to describe the `src/` hexagonal layout (`src/domain/`, `src/application/`, `src/infrastructure/`) and remove references to the deleted legacy packages/files.
@@ -19,11 +14,17 @@ Per convention (Engram #605), dead code found while migrating a legacy module is
 The current version number (used in UI/reports) is defined in and read from the `.env` file. It should be extracted into a standalone `version.txt` file at the root of the project to decouple software versioning from environment configuration.
 - **Source**: User feedback (2026-07-06).
 
-### 8. Centralized Configuration class to read .env and instantiate settings DTOs
-Wirings in `src/infrastructure/wirings/` currently read configuration variables directly from the environment (e.g. via `getenv` or `load_dotenv`) and construct settings/parameters inline. This logic should be centralized into a single `Configuration` class or helper in the infrastructure layer that parses `.env`, validates config variables, and instantiates the necessary settings DTOs for injection.
-- **Source**: User feedback (2026-07-06).
-
 ## Resolved (was tracked, no longer applies)
+
+### `article_type` parameter of `analyze_quality` in `QualityAnalyzer` (Slice 5 dead-code)
+The unused `article_type` parameter was removed from `QualityAnalyzer.analyze(...)` in `src/domain/quality/quality_analyzer.py` to clean up dead code.
+- **Verified fixed**: 2026-07-06, openspec change `remove-unused-article-type-parameter` — verified cleanly by `sdd-verify`.
+- **Source**: Engram #605 (topic `migration/dead-code-registry`); `openspec/changes/archive/2026-07-06-remove-unused-article-type-parameter/`.
+
+### Centralized Configuration class to read .env and instantiate settings DTOs
+Centralized environment variables loading and DTO instantiation into the `EnvConfig` class in `src/infrastructure/env_config.py`. Wirings now retrieve configurations via `EnvConfig`.
+- **Verified fixed**: 2026-07-07, openspec change `centralize-configuration` — verified cleanly by `sdd-verify`.
+- **Source**: User feedback (2026-07-06); `openspec/changes/archive/2026-07-07-centralize-configuration/`.
 
 ### `DocxCitationAdapter` always emits `location=-1`
 `DocxCitationAdapter` (`src/infrastructure/adapters/document/docx_citation_adapter.py`, lines 90/117/144) always constructed `CitationDTO(location=-1)` — there was no code path that computed the real paragraph index, despite `CitationDTO.location` being documented as "Paragraph index where found". Consequence: `ApaValidator.validate_all_citations`'s bounds check (`0 <= citation.location < len(paragraphs)`, added by `decouple-use-case-ports`) correctly rejected `-1`, so `paragraph_preview` was an empty string for every real AUTHOR_YEAR citation in production.
