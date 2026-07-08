@@ -1,6 +1,9 @@
 from os import getenv
+from pathlib import Path
 
 from src.domain.dtos.recommendation_settings_dto import RecommendationSettingsDTO
+
+_VERSION_FILE_PATH = Path(__file__).resolve().parents[2] / "version.txt"
 
 
 class EnvConfig:
@@ -81,7 +84,7 @@ class EnvConfig:
         self.critical_grammar_threshold: float = float(getenv("CRITICAL_GRAMMAR_THRESHOLD", "5.0"))
 
         self.silvina_app_name: str = getenv("SILVINA_APP_NAME", "Silvina Editorial Assistant")
-        self.silvina_version: str = getenv("SILVINA_VERSION", "0.9")
+        self.silvina_version: str = self._resolve_version()
         self.report_score_high_threshold: float = float(
             getenv("REPORT_SCORE_HIGH_THRESHOLD", "8.0")
         )
@@ -109,3 +112,16 @@ class EnvConfig:
             critical_quality_threshold=self.critical_quality_threshold,
             critical_grammar_threshold=self.critical_grammar_threshold,
         )
+
+    def _resolve_version(self) -> str:
+        """Resolves the application version.
+
+        In testing mode (TESTING env var set to "True"/"true"/"1"), falls
+        back to the SILVINA_VERSION env var (default "0.9") without
+        requiring version.txt to exist. Otherwise, reads version.txt from
+        the project root, letting FileNotFoundError (or other OS errors)
+        propagate if the file is missing or unreadable.
+        """
+        if getenv("TESTING", "").lower() in ("true", "1"):
+            return getenv("SILVINA_VERSION", "0.9")
+        return _VERSION_FILE_PATH.read_text().strip()

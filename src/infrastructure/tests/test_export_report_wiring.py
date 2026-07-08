@@ -23,7 +23,10 @@ class TestExportReportWiring(TestCase):
         self.assertEqual(result._report_export_port._settings.words_per_page, 300)
 
     def test_create_use_case_injects_app_name_and_version_from_env(self):
-        with patch.dict(environ, {"SILVINA_APP_NAME": "Custom App", "SILVINA_VERSION": "1.0"}):
+        with patch.dict(
+            environ,
+            {"TESTING": "True", "SILVINA_APP_NAME": "Custom App", "SILVINA_VERSION": "1.0"},
+        ):
             result = ExportReportWiring().create_use_case()
         settings = result._report_export_port._settings
         self.assertEqual(settings.app_name, "Custom App")
