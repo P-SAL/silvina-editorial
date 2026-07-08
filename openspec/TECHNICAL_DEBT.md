@@ -14,10 +14,6 @@ Each item lists status as verified against the current codebase, not just the st
 The current version number (used in UI/reports) is defined in and read from the `.env` file. It should be extracted into a standalone `version.txt` file at the root of the project to decouple software versioning from environment configuration.
 - **Source**: User feedback (2026-07-06).
 
-### 9. `DocxCitationAdapter` always emits `location=-1`
-`DocxCitationAdapter` (`src/infrastructure/adapters/document/docx_citation_adapter.py`, lines 90/117/144) always constructs `CitationDTO(location=-1)` — there is no code path that computes the real paragraph index, despite `CitationDTO.location` being documented as "Paragraph index where found". Consequence: `ApaValidator.validate_all_citations`'s bounds check (`0 <= citation.location < len(paragraphs)`, added by `decouple-use-case-ports`) correctly rejects `-1`, so `paragraph_preview` is now an empty string for every real AUTHOR_YEAR citation in production. Before that change, `paragraphs[c.location]` used Python negative-index wraparound and silently returned the wrong (but non-empty) last paragraph. Fix belongs in `DocxCitationAdapter` — out of scope for `decouple-use-case-ports` (explicitly excluded "modifying underlying port interfaces or adapter implementations").
-- **Source**: review-reliability lens during the 4R review of `decouple-use-case-ports` (2026-07-08); Engram topic `bug/docx-citation-adapter-location`.
-
 ## Resolved (was tracked, no longer applies)
 
 ### `article_type` parameter of `analyze_quality` in `QualityAnalyzer` (Slice 5 dead-code)
@@ -29,6 +25,11 @@ The unused `article_type` parameter was removed from `QualityAnalyzer.analyze(..
 Centralized environment variables loading and DTO instantiation into the `EnvConfig` class in `src/infrastructure/env_config.py`. Wirings now retrieve configurations via `EnvConfig`.
 - **Verified fixed**: 2026-07-07, openspec change `centralize-configuration` — verified cleanly by `sdd-verify`.
 - **Source**: User feedback (2026-07-06); `openspec/changes/archive/2026-07-07-centralize-configuration/`.
+
+### `DocxCitationAdapter` always emits `location=-1`
+`DocxCitationAdapter` (`src/infrastructure/adapters/document/docx_citation_adapter.py`, lines 90/117/144) always constructed `CitationDTO(location=-1)` — there was no code path that computed the real paragraph index, despite `CitationDTO.location` being documented as "Paragraph index where found". Consequence: `ApaValidator.validate_all_citations`'s bounds check (`0 <= citation.location < len(paragraphs)`, added by `decouple-use-case-ports`) correctly rejected `-1`, so `paragraph_preview` was an empty string for every real AUTHOR_YEAR citation in production.
+- **Verified fixed**: 2026-07-08, openspec change `docx-citation-location-fix` — `DocxCitationAdapter` now scans documents paragraph by paragraph (`enumerate(paragraphs)`), assigning `location=p_idx` to each extracted `CitationDTO`; legacy raw-text/`full_text` fallback maps to `location=0`. No changes to `ApaValidator` or dedup logic. Full suite green (636 passed, aside from pre-existing unrelated failures). Verified independently by `sdd-verify` (0 CRITICAL/WARNING/SUGGESTION).
+- **Source**: review-reliability lens during the 4R review of `decouple-use-case-ports` (2026-07-08); Engram topic `bug/docx-citation-adapter-location`; `openspec/changes/archive/2026-07-08-docx-citation-location-fix/`.
 
 ### Spanish domain-vocabulary enums pending final rename pass
 `ArticleType`'s Spanish member KEYS were renamed to English, and `QualityDimension`/`SectionType` Spanish values were accepted as permanent design choices (matching literal LLM outputs and parallel language requirements).

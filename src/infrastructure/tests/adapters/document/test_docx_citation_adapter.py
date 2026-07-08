@@ -48,3 +48,29 @@ class TestDocxCitationAdapter(TestCase):
         full_text = "Como plantea Rodríguez y Fernández (2020), esto es relevante."
         citations = adapter._extract_citations(full_text=full_text)
         self.assertTrue(any(citation.author == "Rodríguez y Fernández" for citation in citations))
+
+    def test_s7e_citations_get_correct_paragraph_index(self):
+        paragraphs = [
+            "Este texto no tiene citas.",
+            "Como plantea García (2019), esto es relevante.",
+            "Otro párrafo sin citas.",
+            "Martínez (2021) sostiene lo contrario.",
+        ]
+        citations = self.adapter._extract_citations(paragraphs=paragraphs)
+
+        garcia = next(citation for citation in citations if citation.author == "García")
+        martinez = next(citation for citation in citations if citation.author == "Martínez")
+        self.assertEqual(garcia.location, 1)
+        self.assertEqual(martinez.location, 3)
+
+    def test_s7f_raw_text_fallback_assigns_location_zero(self):
+        full_text = "Como plantea García (2019), esto es relevante."
+        citations = self.adapter._extract_citations(full_text=full_text)
+        self.assertTrue(citations)
+        for citation in citations:
+            self.assertEqual(citation.location, 0)
+
+        citations_from_str = self.adapter._extract_citations(paragraphs=full_text)
+        self.assertTrue(citations_from_str)
+        for citation in citations_from_str:
+            self.assertEqual(citation.location, 0)
