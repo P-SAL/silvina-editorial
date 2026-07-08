@@ -10,11 +10,12 @@ Each item lists status as verified against the current codebase, not just the st
 - Update to describe the `src/` hexagonal layout (`src/domain/`, `src/application/`, `src/infrastructure/`) and remove references to the deleted legacy packages/files.
 - **Source**: judgment-day review of `cleanup-legacy-packages` PR2 (2026-07-05) — flagged by Judge B, verified real via grep; deferred by user decision to a later pass.
 
-### 7. Version number loaded from version.txt instead of .env
-The current version number (used in UI/reports) is defined in and read from the `.env` file. It should be extracted into a standalone `version.txt` file at the root of the project to decouple software versioning from environment configuration.
-- **Source**: User feedback (2026-07-06).
-
 ## Resolved (was tracked, no longer applies)
+
+### 7. Version number loaded from version.txt instead of .env
+The current version number (used in UI/reports) was defined in and read from the `.env` file. It has been extracted into a standalone `version.txt` file at the root of the project to decouple software versioning from environment configuration.
+- **Verified fixed**: 2026-07-08, openspec change `load-version-from-file` — `EnvConfig.silvina_version` now reads `version.txt` (resolved relative to `env_config.py`), stripped of whitespace, raising `FileNotFoundError` if missing/unreadable outside testing mode. `TESTING=True` (set globally in `conftest.py`) falls back to `SILVINA_VERSION` env var (default `"0.9"`) to keep the test suite decoupled from the filesystem. `SILVINA_VERSION` removed from `.env`/`.env.example`.
+- **Source**: User feedback (2026-07-06); `openspec/changes/load-version-from-file/`.
 
 ### `article_type` parameter of `analyze_quality` in `QualityAnalyzer` (Slice 5 dead-code)
 The unused `article_type` parameter was removed from `QualityAnalyzer.analyze(...)` in `src/domain/quality/quality_analyzer.py` to clean up dead code.

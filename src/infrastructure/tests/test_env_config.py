@@ -41,13 +41,31 @@ class TestEnvConfig(TestCase):
         self.assertAlmostEqual(config.critical_quality_threshold, 5.0)
         self.assertAlmostEqual(config.critical_grammar_threshold, 5.0)
         self.assertEqual(config.silvina_app_name, "Silvina Editorial Assistant")
-        self.assertEqual(config.silvina_version, "0.9")
+        self.assertEqual(config.silvina_version, "0.95")
         self.assertAlmostEqual(config.report_score_high_threshold, 8.0)
         self.assertAlmostEqual(config.report_score_medium_threshold, 6.0)
         self.assertEqual(config.report_words_per_page, 250)
         self.assertEqual(config.report_max_errors_displayed, 5)
         self.assertEqual(config.report_context_truncation_limit, 150)
         self.assertEqual(config.report_max_replacements, 3)
+
+    def test_raises_file_not_found_when_version_file_missing_outside_testing(self):
+        with patch.dict(environ, {}, clear=True):
+            with patch("pathlib.Path.read_text", side_effect=FileNotFoundError):
+                with self.assertRaises(FileNotFoundError):
+                    EnvConfig()
+
+    def test_testing_mode_falls_back_to_silvina_version_env_var(self):
+        with patch.dict(environ, {"TESTING": "True", "SILVINA_VERSION": "0.99"}):
+            with patch("pathlib.Path.read_text", side_effect=FileNotFoundError):
+                config = EnvConfig()
+        self.assertEqual(config.silvina_version, "0.99")
+
+    def test_testing_mode_uses_default_version_when_silvina_version_unset(self):
+        with patch.dict(environ, {"TESTING": "True"}, clear=True):
+            with patch("pathlib.Path.read_text", side_effect=FileNotFoundError):
+                config = EnvConfig()
+        self.assertEqual(config.silvina_version, "0.9")
 
     def test_env_var_overrides_citation_max_author_name_length(self):
         with patch.dict(environ, {"CITATION_MAX_AUTHOR_NAME_LENGTH": "150"}):
