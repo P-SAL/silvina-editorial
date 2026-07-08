@@ -24,49 +24,65 @@ class DocxCitationAdapter(CitationExtractionPort):
     def __init__(
         self,
         document_text_port: DocumentTextPort,
-        max_author_name_length: int,
+        max_author_name_length: int = 100,
     ) -> None:
         self._document_text_port = document_text_port
         self._max_author_name_length = max_author_name_length
 
     def extract_citations(self, docx_path: str) -> list[CitationDTO]:
         paragraphs = self._document_text_port.read_paragraphs(path=docx_path)
-        return self._extract_citations(full_text=" ".join(paragraphs))
+        return self._extract_citations(paragraphs=paragraphs)
 
-    def _extract_citations(self, full_text: str) -> list[CitationDTO]:
+    def _extract_citations(
+        self,
+        paragraphs: list[str] | str | None = None,
+        full_text: str | None = None,
+    ) -> list[CitationDTO]:
+        if full_text is not None:
+            paragraphs = [full_text]
+        elif isinstance(paragraphs, str):
+            paragraphs = [paragraphs]
+        elif paragraphs is None:
+            paragraphs = []
+
         citations: list[CitationDTO] = []
         seen: set[str] = set()
         multi_author_names: dict[str, set[str]] = {}
         first_authors_by_year: dict[str, set[str]] = {}
-        self._collect_parenthetical(
-            full_text=full_text,
-            citations=citations,
-            seen=seen,
-            first_authors_by_year=first_authors_by_year,
-        )
-        self._collect_multi_author(
-            full_text=full_text,
-            citations=citations,
-            seen=seen,
-            multi_author_names=multi_author_names,
-        )
-        self._collect_single_author(
-            full_text=full_text,
-            citations=citations,
-            seen=seen,
-            first_authors_by_year=first_authors_by_year,
-            multi_author_names=multi_author_names,
-        )
+        for p_idx, p_text in enumerate(paragraphs):
+            self._collect_parenthetical(
+                p_text=p_text,
+                p_idx=p_idx,
+                citations=citations,
+                seen=seen,
+                first_authors_by_year=first_authors_by_year,
+            )
+            self._collect_multi_author(
+                p_text=p_text,
+                p_idx=p_idx,
+                citations=citations,
+                seen=seen,
+                multi_author_names=multi_author_names,
+            )
+            self._collect_single_author(
+                p_text=p_text,
+                p_idx=p_idx,
+                citations=citations,
+                seen=seen,
+                first_authors_by_year=first_authors_by_year,
+                multi_author_names=multi_author_names,
+            )
         return citations
 
     def _collect_parenthetical(
         self,
-        full_text: str,
+        p_text: str,
+        p_idx: int,
         citations: list[CitationDTO],
         seen: set[str],
         first_authors_by_year: dict[str, set[str]],
     ) -> None:
-        for match in _PATTERN_PARENTHETICAL.findall(full_text):
+        for match in _PATTERN_PARENTHETICAL.findall(p_text):
             if _PATTERN_DATE_LIKE.match(match):
                 continue
             year_m = _PATTERN_YEAR.search(match)
@@ -87,7 +103,7 @@ class DocxCitationAdapter(CitationExtractionPort):
                 CitationDTO(
                     text=match,
                     citation_type=CitationType.AUTHOR_YEAR,
-                    location=-1,
+                    location=p_idx,
                     author=author,
                     year=year,
                 )
@@ -95,12 +111,13 @@ class DocxCitationAdapter(CitationExtractionPort):
 
     def _collect_multi_author(
         self,
-        full_text: str,
+        p_text: str,
+        p_idx: int,
         citations: list[CitationDTO],
         seen: set[str],
         multi_author_names: dict[str, set[str]],
     ) -> None:
-        for author, year in _PATTERN_MULTI_AUTHOR.findall(full_text):
+        for author, year in _PATTERN_MULTI_AUTHOR.findall(p_text):
             if len(author) > self._max_author_name_length or author.startswith(_INTRO_PHRASES):
                 continue
             key = f"{author}|{year}"
@@ -114,7 +131,7 @@ class DocxCitationAdapter(CitationExtractionPort):
                 CitationDTO(
                     text=f"{author} ({year})",
                     citation_type=CitationType.AUTHOR_YEAR,
-                    location=-1,
+                    location=p_idx,
                     author=author,
                     year=year,
                 )
@@ -122,13 +139,14 @@ class DocxCitationAdapter(CitationExtractionPort):
 
     def _collect_single_author(
         self,
-        full_text: str,
+        p_text: str,
+        p_idx: int,
         citations: list[CitationDTO],
         seen: set[str],
         first_authors_by_year: dict[str, set[str]],
         multi_author_names: dict[str, set[str]],
     ) -> None:
-        for author, year in _PATTERN_SINGLE_AUTHOR.findall(full_text):
+        for author, year in _PATTERN_SINGLE_AUTHOR.findall(p_text):
             if year in first_authors_by_year and author in first_authors_by_year[year]:
                 continue
             if year in multi_author_names and author in multi_author_names[year]:
@@ -141,7 +159,7 @@ class DocxCitationAdapter(CitationExtractionPort):
                 CitationDTO(
                     text=f"{author} ({year})",
                     citation_type=CitationType.AUTHOR_YEAR,
-                    location=-1,
+                    location=p_idx,
                     author=author,
                     year=year,
                 )
