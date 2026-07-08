@@ -89,15 +89,52 @@ Returns `tuple[list[SectionName], list[SectionName]]`:
 
 ---
 
-## 2. Orchestration — AnalyzeDocumentUseCase._validate_structure()
+## 2. Domain Service — StructureValidator (Enhanced)
 
-> **Superseded (2026-07-04, `refactor_analyze_document_wiring`)**: `ValidateStructureUseCase`
-> and `ValidateStructureWiring` were eliminated as redundant pass-through layers. This
-> orchestration now lives in `AnalyzeDocumentUseCase._validate_structure()`, and the wiring
-> in `AnalyzeDocumentUseCaseWiring._get_structure_validator()` — see
-> `openspec/specs/analyze-document/spec.md`.
+### 2.1 Enhanced Method Signature
 
-### 2.1 Signature
+`StructureValidator` is enhanced to encapsulate the document empty guard and section post-filtering logic:
+
+```python
+def validate_structure(
+    self,
+    document_content: DocumentContentDTO,
+    article_type: ArticleType,
+    has_references: bool,
+) -> StructureValidationResultDTO
+```
+
+### 2.2 Empty Document Guard
+
+If `document_content.paragraphs` is empty, raise `DocumentEmpty` exception.
+
+### 2.3 Domain Service Behavior
+
+1. Calls `validate(document_content, article_type)` to get `(present, missing)` sections.
+2. Filters the `missing` sections list:
+   - Unconditionally remove `SectionName.DEVELOPMENT`.
+   - Remove `SectionName.REFERENCES` if `has_references` is `True`.
+3. Constructs and returns `StructureValidationResultDTO(is_valid=(len(filtered_missing) == 0), missing_sections=filtered_missing)`.
+
+**Scenarios**:
+- Empty paragraphs list raises DocumentEmpty
+  - GIVEN a `DocumentContentDTO` with `paragraphs == []`
+  - WHEN `validate_structure` is called
+  - THEN it raises `DocumentEmpty` exception
+- Post-filtering removes Development and conditionally removes References
+  - GIVEN a scientific article missing `DEVELOPMENT` and `REFERENCES` sections
+  - AND `has_references = True`
+  - WHEN `validate_structure` is called
+  - THEN both `DEVELOPMENT` and `REFERENCES` are omitted from the returned `missing_sections`
+  - AND `is_valid` is computed based on the filtered list
+
+---
+
+## 3. Orchestration — AnalyzeDocumentUseCase._validate_structure()
+
+### 3.1 Simplified Signature
+
+The private method `AnalyzeDocumentUseCase._validate_structure` delegates directly to `StructureValidator.validate_structure` without local post-processing:
 
 ```python
 def _validate_structure(
@@ -108,45 +145,21 @@ def _validate_structure(
 ) -> StructureValidationResultDTO
 ```
 
-### 2.2 Empty Document Guard
+### 3.2 Behavior
 
-If `document_content.paragraphs` is empty (i.e., `len(document_content.paragraphs) == 0`),
-`_validate_structure` MUST raise `DocumentEmpty` (from `src.domain.exceptions.document_errors`)
-BEFORE delegating to the domain service.
+1. Call `self._structure_validator.validate_structure(document_content, article_type, has_references)`.
+2. Return the result directly.
 
-### 2.3 Post-Processing Rules (applied before DTO construction)
-
-After `StructureValidator.validate()` returns `(_, missing)`, `_validate_structure` applies
-these rules in order before building the frozen DTO:
-
-1. **Development removal (unconditional)**: Always remove `SectionName.DEVELOPMENT` from `missing`.
-   Source: `main.py` line 230 — legacy removes it unconditionally after every call.
-2. **References removal (conditional)**: If `has_references is True`, also remove `SectionName.REFERENCES`
-   from `missing`.
-
-The `present_sections` return value from `validate()` is discarded (`_`) — the orchestrator
-only operates on `missing_sections`.
-
-Post-processing is applied BEFORE the final DTO is constructed. The frozen DTO is built once
-and never mutated after construction.
-
-### 2.4 Resulting is_valid Recomputation
-
-After post-processing:
-- `is_valid = len(filtered_missing_sections) == 0`
-
-`is_valid` MUST reflect the filtered list, not the raw domain service result.
-
-### 2.5 Isolation
-
-`_validate_structure` MUST NOT accept or forward `has_references` to `StructureValidator.validate()`.
-The domain service has no knowledge of the `has_references` business rule.
+**Scenario**: Orchestration delegates structure validation
+- GIVEN a valid `DocumentContentDTO`, `article_type`, and `has_references`
+- WHEN `_validate_structure` is called
+- THEN it returns the `StructureValidationResultDTO` produced by `StructureValidator.validate_structure`
 
 ---
 
-## 3. Wiring — AnalyzeDocumentUseCaseWiring._get_structure_validator()
+## 4. Wiring — AnalyzeDocumentUseCaseWiring._get_structure_validator()
 
-### 3.1 Factory Behavior
+### 4.1 Factory Behavior
 
 `AnalyzeDocumentUseCaseWiring` MUST:
 - Create the `StructureValidator` dependency in its own private `_get_structure_validator(self) -> StructureValidator` method.
@@ -168,14 +181,14 @@ class AnalyzeDocumentUseCaseWiring:
         return StructureValidator(max_header_length=max_header_length)
 ```
 
-### 3.2 No Infrastructure Dependencies
+### 4.2 No Infrastructure Dependencies
 
 `_get_structure_validator()` MUST NOT import from `src.infrastructure.adapters`, any port
 interface, or any external library. `StructureValidator` is a pure domain-layer class.
 
 ---
 
-## 4. Package Structure
+## 5. Package Structure
 
 The following packages and files MUST exist after the change is applied:
 
@@ -200,7 +213,7 @@ src/
 
 ---
 
-## 5. Acceptance Scenarios
+## 6. Acceptance Scenarios
 
 ### S-01: Scientific article with all sections — valid
 
@@ -433,7 +446,7 @@ Then a FrozenInstanceError (or equivalent dataclass frozen error) is raised
 
 ---
 
-## 6. Legacy Test Coverage Mapping
+## 7. Legacy Test Coverage Mapping
 
 The 10 tests in `tests/test_structure_validator.py` map to the following acceptance scenarios:
 
@@ -456,7 +469,7 @@ All 10 legacy tests MUST pass against the new domain service.
 
 ---
 
-## 7. Constraints and Invariants
+## 8. Constraints and Invariants
 
 1. `_extract_present_sections` is a non-public method but MUST remain testable directly
    (legacy tests call it directly; it MUST NOT be renamed or made truly private via name mangling).
@@ -473,7 +486,7 @@ All 10 legacy tests MUST pass against the new domain service.
 
 ---
 
-## 8. Out of Scope
+## 9. Out of Scope
 
 - Wiring the new use case into `main.py`
 - Deleting any file under `business_logic/`
@@ -485,7 +498,7 @@ All 10 legacy tests MUST pass against the new domain service.
 
 ---
 
-## 9. Input/Output Contracts
+## 10. Input/Output Contracts
 
 ### Domain service inputs
 - `document_content: DocumentContent` — scans `.paragraphs: list[str]`

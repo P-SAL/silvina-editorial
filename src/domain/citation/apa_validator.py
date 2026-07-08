@@ -1,7 +1,9 @@
 import re
 
 from src.domain.dtos.apa_violation_dto import ApaViolationDTO
+from src.domain.dtos.citation_dto import CitationDTO
 from src.domain.enums.apa_error_type import ApaErrorType
+from src.domain.enums.citation_type import CitationType
 
 
 class ApaValidator:
@@ -28,12 +30,19 @@ class ApaValidator:
         return self._validate_narrative(citation_text, paragraph_index, preview)
 
     def validate_all_citations(
-        self, citations: list[tuple[str, int, str]]
+        self, citations: list[CitationDTO], paragraphs: list[str]
     ) -> list[ApaViolationDTO]:
-        """Validate all citations and return the combined list of APA violations."""
+        """Filter AUTHOR_YEAR citations and validate each against its paragraph text."""
         all_violations = []
-        for citation_text, location, paragraph_text in citations:
-            all_violations.extend(self.validate_citation(citation_text, location, paragraph_text))
+        for citation in citations:
+            if citation.citation_type != CitationType.AUTHOR_YEAR:
+                continue
+            paragraph_text = (
+                paragraphs[citation.location] if 0 <= citation.location < len(paragraphs) else ""
+            )
+            all_violations.extend(
+                self.validate_citation(citation.text, citation.location, paragraph_text)
+            )
         return all_violations
 
     def _validate_parenthetical(

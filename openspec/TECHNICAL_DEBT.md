@@ -23,6 +23,10 @@ The current version number (used in UI/reports) is defined in and read from the 
 Wirings in `src/infrastructure/wirings/` currently read configuration variables directly from the environment (e.g. via `getenv` or `load_dotenv`) and construct settings/parameters inline. This logic should be centralized into a single `Configuration` class or helper in the infrastructure layer that parses `.env`, validates config variables, and instantiates the necessary settings DTOs for injection.
 - **Source**: User feedback (2026-07-06).
 
+### 9. `DocxCitationAdapter` always emits `location=-1`
+`DocxCitationAdapter` (`src/infrastructure/adapters/document/docx_citation_adapter.py`, lines 90/117/144) always constructs `CitationDTO(location=-1)` — there is no code path that computes the real paragraph index, despite `CitationDTO.location` being documented as "Paragraph index where found". Consequence: `ApaValidator.validate_all_citations`'s bounds check (`0 <= citation.location < len(paragraphs)`, added by `decouple-use-case-ports`) correctly rejects `-1`, so `paragraph_preview` is now an empty string for every real AUTHOR_YEAR citation in production. Before that change, `paragraphs[c.location]` used Python negative-index wraparound and silently returned the wrong (but non-empty) last paragraph. Fix belongs in `DocxCitationAdapter` — out of scope for `decouple-use-case-ports` (explicitly excluded "modifying underlying port interfaces or adapter implementations").
+- **Source**: review-reliability lens during the 4R review of `decouple-use-case-ports` (2026-07-08); Engram topic `bug/docx-citation-adapter-location`.
+
 ## Resolved (was tracked, no longer applies)
 
 ### Spanish domain-vocabulary enums pending final rename pass

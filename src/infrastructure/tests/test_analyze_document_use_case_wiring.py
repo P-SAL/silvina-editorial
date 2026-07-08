@@ -12,15 +12,12 @@ class TestAnalyzeDocumentUseCaseWiring(TestCase):
         result = AnalyzeDocumentUseCaseWiring().create_use_case()
         self.assertIsInstance(result, AnalyzeDocumentUseCase)
 
-    def test_create_use_case_wires_all_ports_and_services(self):
+    def test_create_use_case_wires_all_domain_services(self):
         result = AnalyzeDocumentUseCaseWiring().create_use_case()
-        self.assertIsNotNone(result._document_text_port)
-        self.assertIsNotNone(result._content_extraction_port)
-        self.assertIsNotNone(result._character_count_port)
-        self.assertIsNotNone(result._citation_extraction_port)
-        self.assertIsNotNone(result._reference_extraction_port)
-        self.assertIsNotNone(result._grammar_check_port)
-        self.assertIsNotNone(result._document_format_inspection_port)
+        self.assertIsNotNone(result._document_content_extractor)
+        self.assertIsNotNone(result._citation_extractor)
+        self.assertIsNotNone(result._document_format_inspector)
+        self.assertIsNotNone(result._grammar_checker)
         self.assertIsNotNone(result._apa_validator)
         self.assertIsNotNone(result._article_classifier)
         self.assertIsNotNone(result._quality_analyzer)
@@ -103,21 +100,25 @@ class TestAnalyzeDocumentUseCaseWiring(TestCase):
     def test_env_var_overrides_citation_max_author_name_length(self):
         with patch.dict(environ, {"CITATION_MAX_AUTHOR_NAME_LENGTH": "5"}):
             result = AnalyzeDocumentUseCaseWiring().create_use_case()
-        self.assertEqual(result._citation_extraction_port._max_author_name_length, 5)
+        port = result._citation_extractor._citation_extraction_port
+        self.assertEqual(port._max_author_name_length, 5)
 
     def test_default_citation_max_author_name_length_when_env_var_absent(self):
         env_without = {k: v for k, v in environ.items() if k != "CITATION_MAX_AUTHOR_NAME_LENGTH"}
         with patch.dict(environ, env_without, clear=True):
             result = AnalyzeDocumentUseCaseWiring().create_use_case()
-        self.assertEqual(result._citation_extraction_port._max_author_name_length, 100)
+        port = result._citation_extractor._citation_extraction_port
+        self.assertEqual(port._max_author_name_length, 100)
 
     def test_env_var_overrides_grammar_max_replacements(self):
         with patch.dict(environ, {"GRAMMAR_MAX_REPLACEMENTS": "2"}):
             result = AnalyzeDocumentUseCaseWiring().create_use_case()
-        self.assertEqual(result._grammar_check_port._max_replacements, 2)
+        port = result._grammar_checker._grammar_check_port
+        self.assertEqual(port._max_replacements, 2)
 
     def test_default_grammar_max_replacements_when_env_var_absent(self):
         env_without = {k: v for k, v in environ.items() if k != "GRAMMAR_MAX_REPLACEMENTS"}
         with patch.dict(environ, env_without, clear=True):
             result = AnalyzeDocumentUseCaseWiring().create_use_case()
-        self.assertEqual(result._grammar_check_port._max_replacements, 3)
+        port = result._grammar_checker._grammar_check_port
+        self.assertEqual(port._max_replacements, 3)
