@@ -5,12 +5,14 @@ Consolidated inventory of technical debt accumulated during the hexagonal migrat
 Each item lists status as verified against the current codebase, not just the state at the time it was logged.
 ## Confirmed still present
 
-### 5. README.md documents the deleted legacy structure
-`README.md` (lines 18, 63-66, 215-236) still describes the old 4-layer legacy root layout (`domain/`, `data_access/`, `business_logic/`, `presentation/`, `apa_validator.py`, `eumic_verifier.py`) that Slice 16 (`cleanup-legacy-packages`) deleted from the repo. The "Project Structure" section shows a directory tree that no longer exists.
-- Update to describe the `src/` hexagonal layout (`src/domain/`, `src/application/`, `src/infrastructure/`) and remove references to the deleted legacy packages/files.
-- **Source**: judgment-day review of `cleanup-legacy-packages` PR2 (2026-07-05) — flagged by Judge B, verified real via grep; deferred by user decision to a later pass.
+*None.*
 
 ## Resolved (was tracked, no longer applies)
+
+### 5. README.md documents the deleted legacy structure
+`README.md` described the old 4-layer legacy root layout (`domain/`, `data_access/`, `business_logic/`, `presentation/`, `apa_validator.py`, `eumic_verifier.py`) that Slice 16 (`cleanup-legacy-packages`) deleted from the repo. The "Project Structure" section showed a directory tree that no longer exists.
+- **Verified fixed**: 2026-07-09 — Updated `README.md` to describe the `src/` hexagonal layout (`src/domain/`, `src/application/`, `src/infrastructure/`), removed references to all deleted packages/files, bumped version references to `0.95` to match `version.txt`, and updated the installation steps to use `requirements.txt`.
+- **Source**: judgment-day review of `cleanup-legacy-packages` PR2 (2026-07-05) — flagged by Judge B, verified real via grep; resolved on 2026-07-09.
 
 ### 7. Version number loaded from version.txt instead of .env
 The current version number (used in UI/reports) was defined in and read from the `.env` file. It has been extracted into a standalone `version.txt` file at the root of the project to decouple software versioning from environment configuration.

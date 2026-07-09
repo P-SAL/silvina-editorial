@@ -28,7 +28,9 @@ class TestEnvConfig(TestCase):
         self.assertAlmostEqual(config.quality_level_needs_improvement_threshold, 3.0)
         self.assertEqual(config.quality_min_sample_word_count, 400)
         self.assertEqual(config.quality_text_sample_character_limit, 8000)
-        self.assertEqual(config.ollama_model_name, "llama3-gradient:8b-instruct-1048k-q4_K_M")
+        self.assertEqual(
+            config.ollama_model_name, "hf.co/unsloth/gemma-4-26B-A4B-it-GGUF:UD-IQ4_XS"
+        )
         self.assertEqual(config.ollama_base_url, "http://localhost:11434")
         self.assertAlmostEqual(config.publish_threshold, 7.0)
         self.assertAlmostEqual(config.quality_threshold, 7.0)

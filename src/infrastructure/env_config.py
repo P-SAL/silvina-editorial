@@ -62,7 +62,7 @@ class EnvConfig:
         )
 
         self.ollama_model_name: str = getenv(
-            "OLLAMA_MODEL_NAME", "llama3-gradient:8b-instruct-1048k-q4_K_M"
+            "OLLAMA_MODEL_NAME", "hf.co/unsloth/gemma-4-26B-A4B-it-GGUF:UD-IQ4_XS"
         )
         self.ollama_base_url: str = getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 

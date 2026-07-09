@@ -157,7 +157,7 @@ The application version attribute (`silvina_version`) MUST be resolved dynamical
 | `QUALITY_LEVEL_NEEDS_IMPROVEMENT_THRESHOLD` | `float` | `3.0` | `quality_level_needs_improvement_threshold` |
 | `QUALITY_MIN_SAMPLE_WORD_COUNT` | `int` | `400` | `quality_min_sample_word_count` |
 | `QUALITY_TEXT_SAMPLE_CHARACTER_LIMIT` | `int` | `8000` | `quality_text_sample_character_limit` |
-| `OLLAMA_MODEL_NAME` | `str` | `"llama3-gradient:8b-instruct-1048k-q4_K_M"` | `ollama_model_name` |
+| `OLLAMA_MODEL_NAME` | `str` | `"hf.co/unsloth/gemma-4-26B-A4B-it-GGUF:UD-IQ4_XS"` | `ollama_model_name` |
 | `OLLAMA_BASE_URL` | `str` | `"http://localhost:11434"` | `ollama_base_url` |
 | `PUBLISH_THRESHOLD` | `float` | `7.0` | `publish_threshold` |
 | `QUALITY_THRESHOLD` | `float` | `7.0` | `quality_threshold` |

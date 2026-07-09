@@ -10,7 +10,7 @@ from src.infrastructure.adapters.llm_generator.ollama_generator_adapter import (
 class TestOllamaGeneratorAdapter(TestCase):
     def setUp(self):
         self.adapter = OllamaGeneratorAdapter(
-            model_name="llama3-gradient:8b-instruct-1048k-q4_K_M",
+            model_name="hf.co/unsloth/gemma-4-26B-A4B-it-GGUF:UD-IQ4_XS",
             base_url="http://localhost:11434",
         )
 
@@ -48,7 +48,7 @@ class TestOllamaGeneratorAdapter(TestCase):
         self.adapter.generate(prompt="prompt", options={"temperature": 0.1, "num_predict": 300})
 
         mock_client.generate.assert_called_once_with(
-            model="llama3-gradient:8b-instruct-1048k-q4_K_M",
+            model="hf.co/unsloth/gemma-4-26B-A4B-it-GGUF:UD-IQ4_XS",
             prompt="prompt",
             options={"temperature": 0.1, "num_predict": 300},
         )
@@ -61,7 +61,7 @@ class TestOllamaGeneratorAdapter(TestCase):
         self.adapter.generate(prompt="prompt")
 
         mock_client.generate.assert_called_once_with(
-            model="llama3-gradient:8b-instruct-1048k-q4_K_M",
+            model="hf.co/unsloth/gemma-4-26B-A4B-it-GGUF:UD-IQ4_XS",
             prompt="prompt",
             options=None,
         )
