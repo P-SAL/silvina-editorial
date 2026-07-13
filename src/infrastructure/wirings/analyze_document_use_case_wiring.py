@@ -1,3 +1,5 @@
+from os.path import join
+
 from dotenv import load_dotenv
 
 from src.application.analyze_document_use_case import AnalyzeDocumentUseCase
@@ -27,12 +29,12 @@ from src.domain.document.document_format_inspector import DocumentFormatInspecto
 from src.domain.document.document_text_port import DocumentTextPort
 from src.domain.document.reference_extraction_port import ReferenceExtractionPort
 from src.domain.dtos.article_size_thresholds_dto import ArticleSizeThresholdsDTO
-from src.domain.dtos.quality_level_thresholds_dto import QualityLevelThresholdsDTO
 from src.domain.grammar.grammar_check_port import GrammarCheckPort
 from src.domain.grammar.grammar_checker import GrammarChecker
 from src.domain.ports.llm_generator_port import LlmGeneratorPort
+from src.domain.quality.editorial_suitability_analyzer import EditorialSuitabilityAnalyzer
+from src.domain.quality.editorial_suitability_parser import EditorialSuitabilityParser
 from src.domain.quality.quality_analyzer import QualityAnalyzer
-from src.domain.quality.quality_level_resolver import QualityLevelResolver
 from src.domain.quality.quality_response_parser import QualityResponseParser
 from src.domain.quality.quality_text_sampler import QualityTextSampler
 from src.domain.recommendation.recommendation_builder import RecommendationBuilder
@@ -45,6 +47,7 @@ from src.infrastructure.adapters.document.paragraph_content_adapter import Parag
 from src.infrastructure.adapters.document.win32com_word_count_adapter import (
     Win32ComWordCountAdapter,
 )
+from src.infrastructure.adapters.gateway.file_gateway_adapter import FileGatewayAdapter
 from src.infrastructure.adapters.grammar.language_tool_adapter import LanguageToolAdapter
 from src.infrastructure.adapters.llm_generator.ollama_generator_adapter import (
     OllamaGeneratorAdapter,
@@ -188,19 +191,22 @@ class AnalyzeDocumentUseCaseWiring:
             argumentation_conclusions_prompt_template=read_text_resource(
                 directory=QUALITY_PROMPTS_DIR, filename="argumentation_conclusions_prompt.txt"
             ),
-            resolver=self._get_quality_level_resolver(),
+            editorial_suitability_analyzer=self._get_editorial_suitability_analyzer(),
         )
 
-    def _get_quality_level_resolver(self) -> QualityLevelResolver:
-        return QualityLevelResolver(thresholds=self._get_quality_level_thresholds())
-
-    def _get_quality_level_thresholds(self) -> QualityLevelThresholdsDTO:
-        env_config = self._get_env_config()
-        return QualityLevelThresholdsDTO(
-            excellent_threshold=env_config.quality_level_excellent_threshold,
-            good_threshold=env_config.quality_level_good_threshold,
-            acceptable_threshold=env_config.quality_level_acceptable_threshold,
-            needs_improvement_threshold=env_config.quality_level_needs_improvement_threshold,
+    def _get_editorial_suitability_analyzer(self) -> EditorialSuitabilityAnalyzer:
+        return EditorialSuitabilityAnalyzer(
+            llm_generator=self._get_llm_generator(),
+            parser=EditorialSuitabilityParser(),
+            contribution_prompt_template=read_text_resource(
+                directory=QUALITY_PROMPTS_DIR, filename="contribution_prompt.txt"
+            ),
+            alignment_prompt_template=read_text_resource(
+                directory=QUALITY_PROMPTS_DIR, filename="alignment_prompt.txt"
+            ),
+            research_lines=FileGatewayAdapter().read(
+                join(QUALITY_PROMPTS_DIR, "research_lines.txt")
+            ),
         )
 
     def _get_quality_text_sampler(self) -> QualityTextSampler:

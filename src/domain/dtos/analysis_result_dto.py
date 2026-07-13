@@ -42,6 +42,11 @@ class AnalysisResultDTO(BaseDTO):
                 "overall_score": self.quality.overall_score,
                 "quality_level": self.quality.quality_level.value,
                 "dimension_scores": self.quality.dimension_scores,
+                "editorial_suitability": (
+                    self.quality.editorial_suitability.as_dict()
+                    if self.quality.editorial_suitability is not None
+                    else None
+                ),
             },
             "structure": {
                 "is_valid": self.structure.is_valid,
@@ -60,10 +65,14 @@ class AnalysisResultDTO(BaseDTO):
 
     def __str__(self) -> str:
         """Return human-readable analysis summary."""
+        suitability_line = ""
+        if self.quality.editorial_suitability is not None:
+            suitability_line = f"\n  {self.quality.editorial_suitability}"
         return (
             f"Analysis Result for {self.filename}:\n"
             f"  {self.classification}\n"
             f"  {self.quality}\n"
             f"  {self.structure}\n"
             f"  {self.citations}"
+            f"{suitability_line}"
         )

@@ -1,11 +1,12 @@
 from unittest import TestCase
 
 from src.domain.dtos.document_content_dto import DocumentContentDTO
-from src.domain.dtos.quality_level_thresholds_dto import QualityLevelThresholdsDTO
+from src.domain.dtos.editorial_suitability_dto import EditorialSuitabilityDTO
 from src.domain.enums.quality_level import QualityLevel
 from src.domain.exceptions.quality_errors import QualityAnalysisFailed
+from src.domain.quality.editorial_suitability_analyzer import EditorialSuitabilityAnalyzer
+from src.domain.quality.editorial_suitability_parser import EditorialSuitabilityParser
 from src.domain.quality.quality_analyzer import QualityAnalyzer
-from src.domain.quality.quality_level_resolver import QualityLevelResolver
 from src.domain.quality.quality_response_parser import QualityResponseParser
 from src.domain.quality.quality_text_sampler import QualityTextSampler
 from src.domain.tests.quality.fake_llm_generator_adapter import FakeLlmGeneratorAdapter
@@ -39,21 +40,40 @@ TEXTO A ANALIZAR:
 Evalúa Argumentación y Conclusiones."""
 
 
+SUITABILITY_CONTRIBUTION_PROMPT_TEMPLATE = "Evalua contribucion.\n{text_sample}"
+SUITABILITY_ALIGNMENT_PROMPT_TEMPLATE = "Evalua alineacion.\n{research_lines}\n{text_sample}"
+SUITABILITY_RESEARCH_LINES = "1. Linea de prueba uno\n2. Linea de prueba dos"
+
+SUITABILITY_CONTRIBUTION_RESPONSE = (
+    "VEREDICTO: SUSTENTADA\n"
+    "CONTRIBUCION: Propone un marco de analisis original.\n"
+    "OBSERVACION: sera ignorada.\n"
+)
+SUITABILITY_ALIGNMENT_RESPONSE = (
+    "VEREDICTO: ALINEADO\n"
+    "LINEAS: Linea 1 y 2.\n"
+    "JUSTIFICACION: Se relaciona con las lineas mencionadas.\n"
+)
+
+
 def build_analyzer(fake_adapter: FakeLlmGeneratorAdapter) -> QualityAnalyzer:
+    suitability_adapter = FakeLlmGeneratorAdapter(
+        [SUITABILITY_CONTRIBUTION_RESPONSE, SUITABILITY_ALIGNMENT_RESPONSE]
+    )
+    editorial_suitability_analyzer = EditorialSuitabilityAnalyzer(
+        llm_generator=suitability_adapter,
+        parser=EditorialSuitabilityParser(),
+        contribution_prompt_template=SUITABILITY_CONTRIBUTION_PROMPT_TEMPLATE,
+        alignment_prompt_template=SUITABILITY_ALIGNMENT_PROMPT_TEMPLATE,
+        research_lines=SUITABILITY_RESEARCH_LINES,
+    )
     return QualityAnalyzer(
         llm_generator=fake_adapter,
         text_sampler=QualityTextSampler(),
         response_parser=QualityResponseParser(),
         clarity_coherence_prompt_template=CLARITY_COHERENCE_PROMPT_TEMPLATE,
         argumentation_conclusions_prompt_template=ARGUMENTATION_CONCLUSIONS_PROMPT_TEMPLATE,
-        resolver=QualityLevelResolver(
-            thresholds=QualityLevelThresholdsDTO(
-                excellent_threshold=9.0,
-                good_threshold=7.0,
-                acceptable_threshold=5.0,
-                needs_improvement_threshold=3.0,
-            )
-        ),
+        editorial_suitability_analyzer=editorial_suitability_analyzer,
     )
 
 
@@ -183,6 +203,16 @@ Este bloque de claridad nunca deberia usarse porque viene de la llamada dos.
             "Eres un revisor editorial académico experto.", fake_adapter.received_prompts[0]
         )
         self.assertIn(text_sample, fake_adapter.received_prompts[0])
+
+    def test_result_includes_editorial_suitability_dto_from_analyzer(self):
+        fake_adapter = FakeLlmGeneratorAdapter([VALID_RESPONSE_ONE, VALID_RESPONSE_TWO])
+        analyzer = build_analyzer(fake_adapter)
+
+        result = analyzer.analyze(self.document_content)
+
+        self.assertIsInstance(result.editorial_suitability, EditorialSuitabilityDTO)
+        self.assertEqual(result.editorial_suitability.contribution_verdict, "SUSTENTADA")
+        self.assertEqual(result.editorial_suitability.alignment_verdict, "ALINEADO")
 
     def test_quality_analyzer_module_defines_exactly_one_class(self):
         import ast
