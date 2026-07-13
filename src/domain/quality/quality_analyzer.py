@@ -2,7 +2,7 @@ from src.domain.dtos.document_content_dto import DocumentContentDTO
 from src.domain.dtos.parsed_response_dto import ParsedResponseDTO
 from src.domain.dtos.quality_result_dto import QualityResultDTO
 from src.domain.enums.quality_dimension import QualityDimension
-from src.domain.enums.quality_level import get_quality_level_from_score
+from src.domain.enums.quality_level import QualityLevel
 from src.domain.exceptions.quality_errors import QualityAnalysisFailed
 from src.domain.ports.llm_generator_port import LlmGeneratorPort
 from src.domain.quality.editorial_suitability_analyzer import EditorialSuitabilityAnalyzer
@@ -71,7 +71,7 @@ class QualityAnalyzer:
         }
 
         overall_score = sum(d.score for d in dimension_scores.values()) / len(dimension_scores)
-        quality_level = get_quality_level_from_score(overall_score)
+        quality_level = QualityLevel.from_score(overall_score)
 
         editorial_suitability = self._editorial_suitability_analyzer.analyze(
             text_sample=text_sample
