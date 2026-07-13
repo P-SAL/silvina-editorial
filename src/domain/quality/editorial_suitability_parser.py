@@ -1,9 +1,9 @@
 from re import IGNORECASE, Pattern, compile as re_compile
 
-_VEREDICTO_PATTERN = re_compile(r"VEREDICTO:\s*(.+)", IGNORECASE)
-_CONTRIBUCION_PATTERN = re_compile(r"CONTRIBUCI[OÓ]N:\s*(.+)", IGNORECASE)
-_LINEAS_PATTERN = re_compile(r"L[IÍ]NEAS:\s*(.+)", IGNORECASE)
-_JUSTIFICACION_PATTERN = re_compile(r"JUSTIFICACI[OÓ]N:\s*(.+)", IGNORECASE)
+_VERDICT_PATTERN = re_compile(r"VEREDICTO:\s*(.+)", IGNORECASE)
+_CONTRIBUTION_PATTERN = re_compile(r"CONTRIBUCI[OÓ]N:\s*(.+)", IGNORECASE)
+_LINES_PATTERN = re_compile(r"L[IÍ]NEAS:\s*(.+)", IGNORECASE)
+_JUSTIFICATION_PATTERN = re_compile(r"JUSTIFICACI[OÓ]N:\s*(.+)", IGNORECASE)
 _SENTENCE_END_PATTERN = re_compile(r"[.!?]")
 
 _CONTRIBUTION_VERDICTS = ("NO SUSTENTADA", "PARCIAL", "SUSTENTADA")
@@ -14,9 +14,9 @@ _OBSERVATION_MAX_LENGTH = 120
 _JUSTIFICATION_MAX_LENGTH = 120
 _LINES_MAX_LENGTH = 80
 
-_NO_SUSTENTADA_OBSERVATION = "Sin contribución observada o declarada."
-_PARCIAL_OBSERVATION = "Contribución declarada pero no suficientemente sustentada."
-_SUSTENTADA_OBSERVATION_FALLBACK = "Contribución sustentada."
+_NOT_SUSTAINED_OBSERVATION = "Sin contribución observada o declarada."
+_PARTIAL_OBSERVATION = "Contribución declarada pero no suficientemente sustentada."
+_SUSTAINED_OBSERVATION_FALLBACK = "Contribución sustentada."
 
 
 class EditorialSuitabilityParser:
@@ -26,7 +26,7 @@ class EditorialSuitabilityParser:
         """Return (contribution_verdict, contribution_phrase, contribution_observation)."""
         verdict = self._extract_verdict(text, _CONTRIBUTION_VERDICTS)
         phrase = self._truncate_field(
-            self._extract_field(text, _CONTRIBUCION_PATTERN), _PHRASE_MAX_LENGTH
+            self._extract_field(text, _CONTRIBUTION_PATTERN), _PHRASE_MAX_LENGTH
         )
         observation = self._build_contribution_observation(verdict, phrase)
         return verdict, phrase, observation
@@ -34,23 +34,23 @@ class EditorialSuitabilityParser:
     def parse_alignment(self, text: str) -> tuple[str, str, str]:
         """Return (alignment_verdict, alignment_lines, alignment_justification)."""
         verdict = self._extract_verdict(text, _ALIGNMENT_VERDICTS)
-        lines = self._truncate_field(self._extract_field(text, _LINEAS_PATTERN), _LINES_MAX_LENGTH)
+        lines = self._truncate_field(self._extract_field(text, _LINES_PATTERN), _LINES_MAX_LENGTH)
         justification = self._truncate_field(
-            self._extract_field(text, _JUSTIFICACION_PATTERN), _JUSTIFICATION_MAX_LENGTH
+            self._extract_field(text, _JUSTIFICATION_PATTERN), _JUSTIFICATION_MAX_LENGTH
         )
         return verdict, lines, justification
 
     def _build_contribution_observation(self, verdict: str, phrase: str) -> str:
         if verdict == "NO SUSTENTADA":
-            return _NO_SUSTENTADA_OBSERVATION
+            return _NOT_SUSTAINED_OBSERVATION
         if verdict == "PARCIAL":
-            return _PARCIAL_OBSERVATION
+            return _PARTIAL_OBSERVATION
         if not phrase:
-            return _SUSTENTADA_OBSERVATION_FALLBACK
+            return _SUSTAINED_OBSERVATION_FALLBACK
         return self._truncate_field(f"Contribución sustentada — {phrase}", _OBSERVATION_MAX_LENGTH)
 
     def _extract_verdict(self, text: str, candidates: tuple[str, ...]) -> str:
-        match = _VEREDICTO_PATTERN.search(text)
+        match = _VERDICT_PATTERN.search(text)
         raw = match.group(1).upper() if match else ""
         for candidate in candidates:
             if candidate in raw:
