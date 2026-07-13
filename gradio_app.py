@@ -152,6 +152,62 @@ def _render_feedback_html(text: str) -> str:
     return _MARKDOWN_BOLD_PATTERN.sub(r"<strong>\1</strong>", html.escape(text))
 
 
+_SUITABILITY_VERDICT_COLORS = {
+    "SUSTENTADA": EUMIC_COLORS["success"],
+    "ALINEADO": EUMIC_COLORS["success"],
+    "PARCIAL": EUMIC_COLORS["warning"],
+    "PARCIALMENTE ALINEADO": EUMIC_COLORS["warning"],
+    "NO SUSTENTADA": EUMIC_COLORS["danger"],
+    "NO ALINEADO": EUMIC_COLORS["danger"],
+}
+
+
+def _verdict_color(verdict: str) -> str:
+    """Return the status color for a contribution/alignment verdict string."""
+    return _SUITABILITY_VERDICT_COLORS.get(verdict, "#666")
+
+
+def _render_editorial_suitability_html(editorial_suitability) -> str:
+    """Render the Contribución/Pertinencia editorial suitability section, or empty if absent."""
+    if editorial_suitability is None:
+        return ""
+
+    return f"""
+    <div style="background: #f8f9fa; padding: 20px; border-radius: 6px; margin-bottom: 20px;">
+        <h4 style="margin: 0 0 15px 0; color: {
+        EUMIC_COLORS["primary"]
+    };">🎯 Pertinencia Editorial</h4>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+            <div>
+                <div style="font-weight: 500; color: #333; margin-bottom: 4px;">Contribución</div>
+                <span style="display: inline-block; padding: 4px 10px; border-radius: 4px; background: {
+        _verdict_color(editorial_suitability.contribution_verdict)
+    }; color: white; font-size: 13px; font-weight: bold;">
+                    {html.escape(editorial_suitability.contribution_verdict)}
+                </span>
+                <div style="font-size: 13px; color: #666; margin-top: 6px;">{
+        _render_feedback_html(editorial_suitability.contribution_observation)
+    }</div>
+            </div>
+            <div>
+                <div style="font-weight: 500; color: #333; margin-bottom: 4px;">Alineación con líneas de investigación</div>
+                <span style="display: inline-block; padding: 4px 10px; border-radius: 4px; background: {
+        _verdict_color(editorial_suitability.alignment_verdict)
+    }; color: white; font-size: 13px; font-weight: bold;">
+                    {html.escape(editorial_suitability.alignment_verdict)}
+                </span>
+                <div style="font-size: 13px; color: #666; margin-top: 6px;">{
+        _render_feedback_html(editorial_suitability.alignment_justification)
+    }</div>
+                <div style="font-size: 12px; color: #999; margin-top: 4px;">Líneas: {
+        html.escape(editorial_suitability.alignment_lines)
+    }</div>
+            </div>
+        </div>
+    </div>
+    """
+
+
 def create_results_display(report: ReportInputDTO) -> str:
     """
     Creates professional HTML display of analysis results.
@@ -298,6 +354,9 @@ def create_results_display(report: ReportInputDTO) -> str:
         )
     }
         </div>
+
+        <!-- Editorial Suitability -->
+        {_render_editorial_suitability_html(quality.editorial_suitability)}
 
         <!-- Critical Issues -->
         {

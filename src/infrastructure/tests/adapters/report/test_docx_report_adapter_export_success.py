@@ -30,7 +30,7 @@ class TestDocxReportAdapterExportSuccess(TestCase):
         mock_doc.save.assert_called_once_with("output.docx")
 
     @patch("src.infrastructure.adapters.report.docx_report_adapter.Document")
-    def test_export_calls_all_thirteen_add_methods(self, mock_document_class):
+    def test_export_calls_all_fourteen_add_methods(self, mock_document_class):
         mock_document_class.return_value = MagicMock()
 
         adapter = DocxReportAdapter(logo_path=None, settings=ReportFixtures.make_settings())
@@ -44,6 +44,7 @@ class TestDocxReportAdapterExportSuccess(TestCase):
             patch.object(adapter, "_add_document_info") as m_doc_info,
             patch.object(adapter, "_add_classification") as m_class,
             patch.object(adapter, "_add_quality_analysis") as m_quality,
+            patch.object(adapter, "_add_editorial_suitability") as m_suitability,
             patch.object(adapter, "_add_grammar_analysis") as m_grammar,
             patch.object(adapter, "_add_apa_validation") as m_apa,
             patch.object(adapter, "_add_structure_validation") as m_struct,
@@ -60,6 +61,7 @@ class TestDocxReportAdapterExportSuccess(TestCase):
             m_doc_info.assert_called_once()
             m_class.assert_called_once()
             m_quality.assert_called_once()
+            m_suitability.assert_called_once()
             m_grammar.assert_called_once()
             m_apa.assert_called_once()
             m_struct.assert_called_once()

@@ -79,6 +79,7 @@ class DocxReportAdapter(ReportExportPort):
         self._add_document_info(doc=doc, report_input=report_input)
         self._add_classification(doc=doc, report_input=report_input)
         self._add_quality_analysis(doc=doc, report_input=report_input)
+        self._add_editorial_suitability(doc=doc, report_input=report_input)
         self._add_grammar_analysis(doc=doc, report_input=report_input)
         self._add_apa_validation(doc=doc, report_input=report_input)
         self._add_structure_validation(doc=doc, report_input=report_input)
@@ -340,6 +341,42 @@ class DocxReportAdapter(ReportExportPort):
 
                 if dim_data.get("feedback"):
                     self._add_markdown_paragraph(doc=doc, text=dim_data["feedback"])
+
+    def _add_editorial_suitability(self, doc, report_input: ReportInputDTO) -> None:
+        suitability = report_input.quality.editorial_suitability
+        if suitability is None:
+            return
+
+        heading = doc.add_heading("🎯 PERTINENCIA EDITORIAL", 1)
+        for run in heading.runs:
+            run.font.color.rgb = RGBColor(*self._settings.heading_color_rgb)
+
+        doc.add_heading("Contribución", level=3)
+        paragraph = doc.add_paragraph()
+        paragraph.add_run("Veredicto: ").bold = True
+        paragraph.add_run(suitability.contribution_verdict)
+
+        if suitability.contribution_phrase:
+            paragraph = doc.add_paragraph()
+            paragraph.add_run("Aporte identificado: ").bold = True
+            paragraph.add_run(suitability.contribution_phrase)
+
+        paragraph = doc.add_paragraph()
+        paragraph.add_run("Observación: ").bold = True
+        paragraph.add_run(suitability.contribution_observation)
+
+        doc.add_heading("Alineación con líneas de investigación", level=3)
+        paragraph = doc.add_paragraph()
+        paragraph.add_run("Veredicto: ").bold = True
+        paragraph.add_run(suitability.alignment_verdict)
+
+        paragraph = doc.add_paragraph()
+        paragraph.add_run("Líneas relacionadas: ").bold = True
+        paragraph.add_run(suitability.alignment_lines)
+
+        paragraph = doc.add_paragraph()
+        paragraph.add_run("Justificación: ").bold = True
+        paragraph.add_run(suitability.alignment_justification)
 
     def _add_grammar_analysis(self, doc, report_input: ReportInputDTO) -> None:
         heading = doc.add_heading("📝 GRAMÁTICA Y ORTOGRAFÍA", 1)
