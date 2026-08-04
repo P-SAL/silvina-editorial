@@ -1,0 +1,16 @@
+# SDD Configuration — silvina-editorial
+
+project: "silvina-editorial"
+persistence_mode: "hybrid"
+
+testing:
+  runner: "pytest"
+  strict_tdd: true
+  commands:
+    test: ".venv/Scripts/pytest"
+    coverage: ".venv/Scripts/pytest --cov=src tests/"
+  capabilities:
+    framework: "pytest"
+    linter: "ruff"
+    formatter: "ruff"
+    type_checker: "none"
