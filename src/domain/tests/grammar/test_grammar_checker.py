@@ -1,0 +1,34 @@
+from unittest import TestCase
+
+from src.domain.dtos.grammar_error_dto import GrammarErrorDTO
+from src.domain.grammar.grammar_checker import GrammarChecker
+from src.domain.grammar.grammar_score_level import GrammarScoreLevel
+from src.domain.tests.grammar.fake_grammar_check_port import FakeGrammarCheckPort
+
+
+class TestGrammarChecker(TestCase):
+    def test_check_grammar_returns_perfect_score_when_no_errors(self):
+        port = FakeGrammarCheckPort(errors=[])
+        checker = GrammarChecker(grammar_check_port=port)
+
+        result = checker.check_grammar(paragraphs=["Todo bien."])
+
+        self.assertEqual(result.errors, [])
+        self.assertEqual(result.score, GrammarScoreLevel.PERFECT.score)
+        self.assertEqual(result.feedback, GrammarScoreLevel.PERFECT.feedback)
+
+    def test_check_grammar_returns_errors_and_matching_score_level(self):
+        errors = [
+            GrammarErrorDTO(
+                number=i, message="err", context="ctx", offset=0, length=1, replacements=[]
+            )
+            for i in range(6)
+        ]
+        port = FakeGrammarCheckPort(errors=errors)
+        checker = GrammarChecker(grammar_check_port=port)
+
+        result = checker.check_grammar(paragraphs=["Texto con errores."])
+
+        self.assertEqual(len(result.errors), 6)
+        self.assertEqual(result.score, GrammarScoreLevel.MODERATE.score)
+        self.assertEqual(result.feedback, GrammarScoreLevel.MODERATE.feedback)

@@ -15,3 +15,40 @@ test_hf*.py
 Exercise
 rutina_diaria.py
 tips.py
+*.zip
+
+# VSC
+.history
+*.code-workspace
+acme.json
+
+# Pycharm
+.idea
+.idea/
+.venv/
+.venv*/
+.qodo/
+
+# Environment
+.env
+
+# AI tooling — machine-specific paths, not shareable
+.atl/
+# AI and Local Tools
+.claude/
+.pi/
+
+.codegraph/
+
+# Runtime observability artifacts
+logs/
+data/metrics.db*
+
+# JVM Crash Dumps
+hs_err_pid*.log
+replay_pid*.log
+
+# Manual testing results
+sandbox/*/outputs/
+~$*
+data/ollama_server_lease.json

@@ -1,0 +1,13 @@
+{
+  "timestamp": "2026-03-16T07:58:55.912589",
+  "document": "C:\\Users\\usuario\\Documents\\Silvina\\reports\\Escudo cuantico_AB_25092025_analisis.docx",
+  "overall_precision": "El análisis es mayormente correcto, con observaciones menores",
+  "classification_correct": "Sí",
+  "quality_score_fair": "Correcta",
+  "grammar_real_errors": "Muchos son falsos positivos",
+  "structure_correct": "Parcialmente",
+  "citations_correct": "Sí",
+  "weakest_section": "Estructura",
+  "editor_recommendation": "Con revisiones menores",
+  "comments": "Sin comentarios adicionales"
+}

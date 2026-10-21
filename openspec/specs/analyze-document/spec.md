@@ -1,0 +1,581 @@
+# Specification: Document Analysis Orchestrator & Recommendations (Slice 13 + Refactor)
+
+> Normative guide: `.agent/skills/clean-architecture/SKILL.md`
+> Parent proposal: `openspec/changes/analyze-document-orchestrator/proposal.md`
+> Migration plan reference: `docs/plan-migracion-hexagonal.md`
+> **Refactor note**: Slice 14 integration observations caused intentional divergences from the original Slice 13 spec. This document reflects the final implemented state.
+
+---
+
+## Purpose
+
+This specification defines the behavior of the document analysis pipeline orchestrator, the domain service that generates editorial recommendations, and the supporting DTOs and configuration settings in compliance with clean hexagonal architecture guidelines.
+
+---
+
+## Requirements
+
+### Requirement: RecommendationPriority Enum (3 members)
+
+The `RecommendationPriority` enum MUST live in `src/domain/enums/recommendation_priority.py` and carry exactly **three** values representing severity levels for specific editorial recommendations:
+
+- `HIGH` maps to `"alta"`
+- `MEDIUM` maps to `"media"`
+- `LOW` maps to `"baja"`
+
+> **Rationale**: `CRITICAL`, `WARNING`, and `APPROVED` were removed from this enum because they represent a *publication verdict* — a semantically distinct concept. They live in `PublicationVerdict` (see below).
+
+#### Scenario: RecommendationPriority contains exactly three members
+
+- GIVEN the `RecommendationPriority` enum
+- WHEN the list of members is queried
+- THEN it has exactly 3 members: `HIGH`, `MEDIUM`, and `LOW`
+
+#### Scenario: RecommendationPriority values match Spanish strings
+
+- GIVEN the `RecommendationPriority` members
+- WHEN their values are read
+- THEN the values map to `"alta"`, `"media"`, and `"baja"` respectively
+
+---
+
+### Requirement: PublicationVerdict Enum
+
+`PublicationVerdict` MUST live in `src/domain/enums/publication_verdict.py` and carry exactly **three** values representing the final editorial verdict for a document:
+
+- `CRITICAL` maps to `"critica"`
+- `WARNING` maps to `"advertencia"`
+- `APPROVED` maps to `"aprobado"`
+
+#### Scenario: PublicationVerdict contains exactly three members
+
+- GIVEN the `PublicationVerdict` enum
+- WHEN the list of members is queried
+- THEN it has exactly 3 members: `CRITICAL`, `WARNING`, and `APPROVED`
+
+---
+
+### Requirement: PublicationVerdictDTO
+
+`PublicationVerdictDTO` MUST be a frozen data transfer object inheriting from `BaseDTO` in `src/domain/dtos/publication_verdict_dto.py` with fields:
+- `verdict: PublicationVerdict`
+- `message: str`
+
+#### Scenario: PublicationVerdictDTO is immutable
+
+- GIVEN a constructed `PublicationVerdictDTO`
+- WHEN any field is modified or reassigned
+- THEN Python raises `FrozenInstanceError`
+
+---
+
+### Requirement: Immutable RecommendationDTO
+
+`RecommendationDTO` MUST be a frozen data transfer object inheriting from `BaseDTO` in `src/domain/dtos/recommendation_dto.py` with fields:
+- `priority: RecommendationPriority`
+- `message: str`
+
+#### Scenario: RecommendationDTO is immutable
+
+- GIVEN a constructed `RecommendationDTO`
+- WHEN any field is modified or reassigned
+- THEN Python raises `FrozenInstanceError`
+
+---
+
+### Requirement: ClassificationResultDTO IMRyD Override Property
+
+`ClassificationResultDTO` (in `src/domain/dtos/classification_result_dto.py`) MUST expose a read-only property `effective_structure_type: ArticleType` using guard clauses:
+
+1. If `article_type` is NOT `ArticleType.CIENTIFICO`, return `article_type` immediately.
+2. If `"IMRyD"` is in `(self.reasoning or "")` (case-sensitive), return `ArticleType.CIENTIFICO`.
+3. Otherwise return `ArticleType.DIVULGACION`.
+
+#### Scenario: Scientific article with IMRyD reasoning
+
+- GIVEN a `ClassificationResultDTO` with `article_type = ArticleType.CIENTIFICO` and `reasoning` containing `"IMRyD"`
+- WHEN `effective_structure_type` is called
+- THEN it returns `ArticleType.CIENTIFICO`
+
+#### Scenario: Scientific article without IMRyD reasoning
+
+- GIVEN a `ClassificationResultDTO` with `article_type = ArticleType.CIENTIFICO` and `reasoning` not containing `"IMRyD"`
+- WHEN `effective_structure_type` is called
+- THEN it returns `ArticleType.DIVULGACION`
+
+#### Scenario: Non-scientific article type
+
+- GIVEN a `ClassificationResultDTO` with `article_type = ArticleType.DIVULGACION`
+- WHEN `effective_structure_type` is called
+- THEN it returns `ArticleType.DIVULGACION` unchanged
+
+---
+
+### Requirement: RecommendationSettingsDTO DTO (no defaults)
+
+`RecommendationSettingsDTO` MUST be a frozen DTO inheriting from `BaseDTO` in `src/domain/dtos/recommendation_settings_dto.py`. All fields are **required** (no default values). Default values are the responsibility of the infrastructure config layer (`EnvConfig`, backed by `analysis_settings.toml`):
+
+- `publish_threshold: float`
+- `quality_threshold: float`
+- `grammar_threshold: float`
+- `dimension_threshold: float`
+- `citation_match_threshold: float`
+- `critical_citation_match_threshold: float`
+- `citation_count_threshold: int`
+- `classification_confidence_threshold: float`
+- `critical_quality_threshold: float`
+- `critical_grammar_threshold: float`
+
+> **Rationale**: Defaults in domain DTOs introduce hidden dependencies on infrastructure decisions. Defaults belong in `EnvConfig` (infrastructure config layer, backed by `analysis_settings.toml`) and are resolved at wiring time.
+
+---
+
+### Requirement: EnvConfig Infrastructure Config Class
+
+`EnvConfig` MUST reside in `src/infrastructure/env_config.py`. It MUST read the tuning parameters from the versioned `analysis_settings.toml` file in the project root (parsed with `tomllib` by `SettingsFileLoader`) and the deployment and mode parameters from environment variables, cast them, and cache them as typed instance attributes at instantiation. For a value defined in `analysis_settings.toml`, an environment variable of the same name MUST override it, and a key missing from both fails fast with `SettingValueMissing`. A value of the wrong type in the file, or a non-numeric environment variable for a numeric setting, fails fast with `SettingValueInvalid`; a missing or malformed file fails fast with `SettingsFileNotFound` or `SettingsFileInvalid`. These exceptions live in `src/domain/exceptions/settings_errors.py` and extend `BaseSrcError`. The constructor accepts an optional `settings_file_path`, used by tests. Values for `APP_MODE` are `DEBUG` or `PROD` (case-insensitive); any other value fails fast. `METRICS_DATABASE_PATH` and `LOG_FILE_PATH` have no default and MUST be set; a missing or empty value fails fast naming the variable. `OLLAMA_THINK` accepts only `true` or `false` (case-insensitive) and any other value fails fast. `OLLAMA_MODEL_KEEP_ALIVE` accepts duration strings (e.g., `15m`, `1h`) and any invalid format fails fast. `OLLAMA_NUM_CTX` is optional (absent or blank evaluates to `None`); when provided, it MUST parse as a positive integer or fail fast. It MUST expose a method `get_recommendation_settings() -> RecommendationSettingsDTO` to build recommendation settings.
+
+The application version attribute (`silvina_version`) MUST be resolved dynamically:
+- In production/standard mode: `EnvConfig` MUST load the version string from the file `version.txt` located in the project root directory (resolved relative to `EnvConfig` file location: `Path(__file__).resolve().parents[2] / "version.txt"`). The version string MUST be stripped of surrounding whitespace. If the file is missing or unreadable, `EnvConfig` MUST raise `FileNotFoundError` (or standard OS/permission errors).
+- In testing mode (when the environment variable `TESTING` is `"True"`, `"true"`, or `"1"`): `EnvConfig` MUST fall back to loading the version from the environment variable `SILVINA_VERSION` (defaulting to `"0.9"` if the variable is not set), without requiring the `version.txt` file to exist.
+
+| Env var (override) | Type | Source | Default | Attribute |
+|---|---|---|---|---|
+| `CITATION_MAX_AUTHOR_NAME_LENGTH` | `int` | `analysis_settings.toml` `[citation]` `max_author_name_length` | `100` | `citation_max_author_name_length` |
+| `GRAMMAR_MAX_REPLACEMENTS` | `int` | `analysis_settings.toml` `[grammar]` `max_replacements` | `3` | `grammar_max_replacements` |
+| `GRAMMAR_MAX_PARAGRAPHS` | `int` | `analysis_settings.toml` `[grammar]` `max_paragraphs` | `20` | `grammar_max_paragraphs` |
+| `GRAMMAR_MAX_CHARS` | `int` | `analysis_settings.toml` `[grammar]` `max_chars` | `5000` | `grammar_max_chars` |
+| `GRAMMAR_MAX_ERRORS` | `int` | `analysis_settings.toml` `[grammar]` `max_errors` | `10` | `grammar_max_errors` |
+| `STRUCTURE_MAX_HEADER_LENGTH` | `int` | `analysis_settings.toml` `[structure]` `max_header_length` | `100` | `structure_max_header_length` |
+| `ARTICLE_CLASSIFIER_TEMPERATURE` | `float` | `analysis_settings.toml` `[article_classifier]` `temperature` | `0.1` | `article_classifier_temperature` |
+| `ARTICLE_CLASSIFIER_NUM_PREDICT` | `int` | `analysis_settings.toml` `[article_classifier]` `num_predict` | `300` | `article_classifier_num_predict` |
+| `ARTICLE_CLASSIFICATION_SAMPLE_INTRODUCTION_CHARACTER_LIMIT` | `int` | `analysis_settings.toml` `[article_classification]` `sample_introduction_character_limit` | `32000` | `article_classification_sample_introduction_character_limit` |
+| `ARTICLE_CLASSIFICATION_SAMPLE_CONCLUSION_CHARACTER_LIMIT` | `int` | `analysis_settings.toml` `[article_classification]` `sample_conclusion_character_limit` | `2500` | `article_classification_sample_conclusion_character_limit` |
+| `ARTICLE_CLASSIFICATION_SAMPLE_FALLBACK_CHARACTER_LIMIT` | `int` | `analysis_settings.toml` `[article_classification]` `sample_fallback_character_limit` | `6000` | `article_classification_sample_fallback_character_limit` |
+| `ARTICLE_CLASSIFICATION_BIBLIOGRAPHY_HEADER_MAX_LENGTH` | `int` | `analysis_settings.toml` `[article_classification]` `bibliography_header_max_length` | `30` | `article_classification_bibliography_header_max_length` |
+| `ARTICLE_SIZE_SHORT_MIN_CHARS` | `int` | `analysis_settings.toml` `[article_size]` `short_min_chars` | `16000` | `article_size_short_min_chars` |
+| `ARTICLE_SIZE_SHORT_MAX_CHARS` | `int` | `analysis_settings.toml` `[article_size]` `short_max_chars` | `24000` | `article_size_short_max_chars` |
+| `ARTICLE_SIZE_UNDEFINED_MIN_CHARS` | `int` | `analysis_settings.toml` `[article_size]` `undefined_min_chars` | `24001` | `article_size_undefined_min_chars` |
+| `ARTICLE_SIZE_UNDEFINED_MAX_CHARS` | `int` | `analysis_settings.toml` `[article_size]` `undefined_max_chars` | `35999` | `article_size_undefined_max_chars` |
+| `ARTICLE_SIZE_LONG_MIN_CHARS` | `int` | `analysis_settings.toml` `[article_size]` `long_min_chars` | `36000` | `article_size_long_min_chars` |
+| `ARTICLE_SIZE_LONG_MAX_CHARS` | `int` | `analysis_settings.toml` `[article_size]` `long_max_chars` | `40000` | `article_size_long_max_chars` |
+| `QUALITY_LEVEL_EXCELLENT_THRESHOLD` | `float` | `analysis_settings.toml` `[quality_level]` `excellent_threshold` | `9.0` | `quality_level_excellent_threshold` |
+| `QUALITY_LEVEL_GOOD_THRESHOLD` | `float` | `analysis_settings.toml` `[quality_level]` `good_threshold` | `7.0` | `quality_level_good_threshold` |
+| `QUALITY_LEVEL_ACCEPTABLE_THRESHOLD` | `float` | `analysis_settings.toml` `[quality_level]` `acceptable_threshold` | `5.0` | `quality_level_acceptable_threshold` |
+| `QUALITY_LEVEL_NEEDS_IMPROVEMENT_THRESHOLD` | `float` | `analysis_settings.toml` `[quality_level]` `needs_improvement_threshold` | `3.0` | `quality_level_needs_improvement_threshold` |
+| `QUALITY_MIN_SAMPLE_WORD_COUNT` | `int` | `analysis_settings.toml` `[quality]` `min_sample_word_count` | `10000` | `quality_min_sample_word_count` |
+| `QUALITY_TEXT_SAMPLE_CHARACTER_LIMIT` | `int` | `analysis_settings.toml` `[quality_text_sample]` `character_limit` | `32000` | `quality_text_sample_character_limit` |
+| `QUALITY_TEXT_SAMPLE_REFERENCE_LINE_PREFIX_LENGTH` | `int` | `analysis_settings.toml` `[quality_text_sample]` `reference_line_prefix_length` | `80` | `quality_text_sample_reference_line_prefix_length` |
+| `QUALITY_TEXT_SAMPLE_INTRODUCTION_PARAGRAPH_COUNT` | `int` | `analysis_settings.toml` `[quality_text_sample]` `introduction_paragraph_count` | `3` | `quality_text_sample_introduction_paragraph_count` |
+| `QUALITY_TEXT_SAMPLE_MIDDLE_PARAGRAPH_COUNT` | `int` | `analysis_settings.toml` `[quality_text_sample]` `middle_paragraph_count` | `2` | `quality_text_sample_middle_paragraph_count` |
+| `QUALITY_TEXT_SAMPLE_CONCLUSION_PARAGRAPH_LIMIT` | `int` | `analysis_settings.toml` `[quality_text_sample]` `conclusion_paragraph_limit` | `3` | `quality_text_sample_conclusion_paragraph_limit` |
+| `QUALITY_TEXT_SAMPLE_FALLBACK_TAIL_PARAGRAPH_COUNT` | `int` | `analysis_settings.toml` `[quality_text_sample]` `fallback_tail_paragraph_count` | `2` | `quality_text_sample_fallback_tail_paragraph_count` |
+| `QUALITY_TEXT_SAMPLE_CONCLUSION_HEADER_MARKER` | `str` | `analysis_settings.toml` `[quality_text_sample]` `conclusion_header_marker` | `"conclusi"` | `quality_text_sample_conclusion_header_marker` |
+| `OLLAMA_MODEL_NAME` | `str` | `.env` | `— (required)` | `ollama_model_name` |
+| `OLLAMA_BASE_URL` | `str` | `.env` | `— (required)` | `ollama_base_url` |
+| `OLLAMA_THINK` | `bool` | `.env` | `— (required)` | `ollama_think` |
+| `OLLAMA_MODEL_KEEP_ALIVE` | `str` | `.env` | `— (required)` | `ollama_model_keep_alive` |
+| `OLLAMA_NUM_CTX` | `int \| None` | `.env` | `None` | `ollama_num_ctx` |
+| `OLLAMA_WARMUP_ON_STARTUP` | `bool` | `.env` | `— (required)` | `ollama_warmup_on_startup` |
+| `USE_EXTERNAL_LLM` | `bool` | `.env` | `— (required)` | `use_external_llm` |
+| `EXTERNAL_LLM_THINK` | `bool` | `.env` | `— (required)` | `external_llm_think` |
+| `APP_MODE` | `AppMode` | `.env` | `— (required)` | `app_mode` |
+| `METRICS_DATABASE_PATH` | `str` | `.env` | `— (required)` | `metrics_database_path` |
+| `LOG_FILE_PATH` | `str` | `.env` | `— (required)` | `log_file_path` |
+| `LOG_LEVEL` | `str` | `.env` | `— (required)` | `log_level` |
+| `LOG_RETENTION_DAYS` | `int` | `.env` | `— (required)` | `log_retention_days` |
+| `PUBLISH_THRESHOLD` | `float` | `analysis_settings.toml` `[recommendation]` `publish_threshold` | `7.0` | `publish_threshold` |
+| `QUALITY_THRESHOLD` | `float` | `analysis_settings.toml` `[recommendation]` `quality_threshold` | `7.0` | `quality_threshold` |
+| `GRAMMAR_THRESHOLD` | `float` | `analysis_settings.toml` `[recommendation]` `grammar_threshold` | `7.0` | `grammar_threshold` |
+| `DIMENSION_THRESHOLD` | `float` | `analysis_settings.toml` `[recommendation]` `dimension_threshold` | `6.0` | `dimension_threshold` |
+| `CITATION_MATCH_THRESHOLD` | `float` | `analysis_settings.toml` `[recommendation]` `citation_match_threshold` | `90.0` | `citation_match_threshold` |
+| `CRITICAL_CITATION_MATCH_THRESHOLD` | `float` | `analysis_settings.toml` `[recommendation]` `critical_citation_match_threshold` | `50.0` | `critical_citation_match_threshold` |
+| `CITATION_COUNT_THRESHOLD` | `int` | `analysis_settings.toml` `[recommendation]` `citation_count_threshold` | `10` | `citation_count_threshold` |
+| `CLASSIFICATION_CONFIDENCE_THRESHOLD` | `float` | `analysis_settings.toml` `[recommendation]` `classification_confidence_threshold` | `0.7` | `classification_confidence_threshold` |
+| `CRITICAL_QUALITY_THRESHOLD` | `float` | `analysis_settings.toml` `[recommendation]` `critical_quality_threshold` | `5.0` | `critical_quality_threshold` |
+| `CRITICAL_GRAMMAR_THRESHOLD` | `float` | `analysis_settings.toml` `[recommendation]` `critical_grammar_threshold` | `5.0` | `critical_grammar_threshold` |
+| `SILVINA_APP_NAME` | `str` | `.env` | `"Silvina Editorial Assistant"` | `silvina_app_name` |
+| `REPORT_SCORE_HIGH_THRESHOLD` | `float` | `analysis_settings.toml` `[report]` `score_high_threshold` | `8.0` | `report_score_high_threshold` |
+| `REPORT_SCORE_MEDIUM_THRESHOLD` | `float` | `analysis_settings.toml` `[report]` `score_medium_threshold` | `6.0` | `report_score_medium_threshold` |
+| `REPORT_WORDS_PER_PAGE` | `int` | `analysis_settings.toml` `[report]` `words_per_page` | `250` | `report_words_per_page` |
+| `REPORT_MAX_ERRORS_DISPLAYED` | `int` | `analysis_settings.toml` `[report]` `max_errors_displayed` | `5` | `report_max_errors_displayed` |
+| `REPORT_CONTEXT_TRUNCATION_LIMIT` | `int` | `analysis_settings.toml` `[report]` `context_truncation_limit` | `150` | `report_context_truncation_limit` |
+| `REPORT_MAX_REPLACEMENTS` | `int` | `analysis_settings.toml` `[report]` `max_replacements` | `3` | `report_max_replacements` |
+| `UPLOAD_MAX_SIZE_BYTES` | `int` | `analysis_settings.toml` `[upload]` `max_size_bytes` | `26214400` | `upload_max_size_bytes` |
+| `EUMIC_MIN_WORDS_FOR_ABSTRACT_CHECK` | `int` | `analysis_settings.toml` `[eumic_check]` `min_words_for_abstract_check` | `1000` | `eumic_min_words_for_abstract_check` |
+
+> **Naming note**: the `PUBLISH_THRESHOLD` … `CRITICAL_GRAMMAR_THRESHOLD` variables (recommendation thresholds) carry no `RECOMMENDATION_` prefix. In `analysis_settings.toml` they are grouped under the `[recommendation]` section, and in `.env.example` under a section comment (e.g. `# Recommendation thresholds`), instead of relying on a name prefix for grouping.
+
+**Required parameters**: every parameter whose Source is `.env` and whose Default is `— (required)` has no default value in code. If it is not set, or is blank, `EnvConfig` fails fast with `SettingValueMissing` naming the variable, so a missing parameter never falls back silently. The exceptions are `OLLAMA_NUM_CTX` (optional, absent means `None`), `LLM_PROVIDER` and `EXTERNAL_LLM_MODEL_NAME` (required only when the external LLM is active in `DEBUG`), `SILVINA_APP_NAME` (keeps its default `"Silvina Editorial Assistant"`, by user decision) and the testing-mode fallback `SILVINA_VERSION`.
+
+**Source note**: `analysis_settings.toml` is versioned and carries the values in use. A variable that is also present in the local `.env` overrides the file on that machine. `.env` and `.env.example` are not edited by the migration to `analysis_settings.toml`.
+
+#### Scenario: EnvConfig values are loaded from analysis_settings.toml when env is empty and version.txt exists
+
+- GIVEN an environment where every required `.env` parameter is set and a valid `version.txt` file with content `"1.2.3"`
+- WHEN `EnvConfig` is instantiated
+- THEN attributes match the values in the table above
+- AND `env_config.silvina_version` is `"1.2.3"`
+
+#### Scenario: EnvConfig parses and casts environment variables
+
+- GIVEN environment contains `CITATION_MAX_AUTHOR_NAME_LENGTH=150`
+- AND a valid `version.txt` file exists
+- WHEN `EnvConfig` is instantiated
+- THEN `env_config.citation_max_author_name_length == 150`
+
+#### Scenario: Environment variable overrides analysis_settings.toml
+
+- GIVEN `analysis_settings.toml` sets `[grammar]` `max_paragraphs = 20`
+- AND the environment contains `GRAMMAR_MAX_PARAGRAPHS=42`
+- WHEN `EnvConfig` is instantiated
+- THEN `env_config.grammar_max_paragraphs == 42`
+
+#### Scenario: EnvConfig reads a value from a custom settings file
+
+- GIVEN a settings file that sets `[grammar]` `max_paragraphs = 7`
+- AND the environment does not contain `GRAMMAR_MAX_PARAGRAPHS`
+- WHEN `EnvConfig` is instantiated with that `settings_file_path`
+- THEN `env_config.grammar_max_paragraphs == 7`
+
+#### Scenario: EnvConfig fails fast when a setting is missing
+
+- GIVEN a settings file without the key `max_paragraphs` in `[grammar]`
+- AND the environment does not contain `GRAMMAR_MAX_PARAGRAPHS`
+- WHEN `EnvConfig` is instantiated
+- THEN `SettingValueMissing` is raised naming the key, the section and the environment variable
+
+#### Scenario: EnvConfig fails fast when the settings file does not exist
+
+- GIVEN the given `settings_file_path` does not exist
+- WHEN `EnvConfig` is instantiated
+- THEN `SettingsFileNotFound` is raised naming the path
+
+#### Scenario: EnvConfig fails fast when a required .env parameter is missing
+
+- GIVEN every required `.env` parameter is set except `OLLAMA_BASE_URL`
+- WHEN `EnvConfig` is instantiated
+- THEN `SettingValueMissing` is raised and its message names `OLLAMA_BASE_URL`
+- AND no default value is used
+
+#### Scenario: EnvConfig fails fast when version.txt is missing
+
+- GIVEN the `version.txt` file is missing in the root directory
+- AND `TESTING` environment variable is not set to `"True"`, `"true"`, or `"1"`
+- WHEN `EnvConfig` is instantiated
+- THEN a `FileNotFoundError` is raised
+
+#### Scenario: EnvConfig falls back to environment variable in testing mode
+
+- GIVEN `TESTING` environment variable is set to `"True"`
+- AND `SILVINA_VERSION` environment variable is set to `"0.99"`
+- AND `version.txt` is missing
+- WHEN `EnvConfig` is instantiated
+- THEN `env_config.silvina_version` is `"0.99"`
+
+#### Scenario: EnvConfig uses testing default version when not specified in env
+
+- GIVEN `TESTING` environment variable is set to `"True"`
+- AND `SILVINA_VERSION` environment variable is not set
+- AND `version.txt` is missing
+- WHEN `EnvConfig` is instantiated
+- THEN `env_config.silvina_version` is `"0.9"`
+
+---
+
+### Requirement: Editorial Norms Loader
+
+The editorial norms (document format, figure and table caption prefixes, abstract and keyword limits, required sections per article type, and section aliases) MUST be read from `editorial_norms.toml` in the project root. The wiring resolves the path from its own module (`parents[3]`). `EditorialNormsLoader` (`src/infrastructure/editorial_norms_loader.py`) reads the file with `tomllib`, validates it, and returns an `EditorialNormsDTO` (`src/domain/dtos/editorial_norms_dto.py`) whose sections are `[document_format]`, `[figures]`, `[tables]`, `[abstract]`, `[keywords]`, `[required_sections]` and `[section_aliases]`.
+
+The load MUST run at wiring time, when `AnalyzeDocumentUseCaseWiring.create_use_case()` builds the use case, and MUST fail fast. Environment variables MUST NOT override any value in `editorial_norms.toml`. A missing file raises `EditorialNormsFileNotFound` naming the path; a file that is not valid TOML raises `EditorialNormsFileInvalid`; a missing section or key raises `EditorialNormMissing`; a value of the wrong type, out of range or inconsistent (for example `min_word_count` greater than `max_word_count`, or an unknown article type or section name) raises `EditorialNormInvalid`. The last two MUST name the section and, when applicable, the key. These exceptions live in `src/domain/exceptions/editorial_norms_errors.py` and extend `EditorialNormsError`. The norms reach their consumers by constructor injection from the wiring (for example `DocxEumicAdapter` and `StructureValidator`); no consumer reads the file itself.
+
+#### Scenario: Norms are loaded from editorial_norms.toml when the use case is created
+
+- GIVEN a valid `editorial_norms.toml` in the project root
+- WHEN `AnalyzeDocumentUseCaseWiring().create_use_case()` is called
+- THEN the `EditorialNormsDTO` built from the file is injected into the EUMIC format adapter and into `StructureValidator`
+
+#### Scenario: Environment variables do not override editorial norms
+
+- GIVEN the environment contains `MIN_WORD_COUNT=50`
+- AND `editorial_norms.toml` sets `[abstract]` `min_word_count = 100`
+- WHEN the editorial norms are loaded
+- THEN `min_word_count` is `100`
+
+#### Scenario: A missing key fails fast naming the section and key
+
+- GIVEN `editorial_norms.toml` has no `max_word_count` in `[abstract]`
+- WHEN `AnalyzeDocumentUseCaseWiring().create_use_case()` is called
+- THEN `EditorialNormMissing` is raised and its detail names `max_word_count` and `[abstract]`
+
+#### Scenario: An invalid value fails fast naming the section and key
+
+- GIVEN `editorial_norms.toml` sets `[abstract]` `min_word_count = 400` and `max_word_count = 300`
+- WHEN `AnalyzeDocumentUseCaseWiring().create_use_case()` is called
+- THEN `EditorialNormInvalid` is raised and its detail names `max_word_count` and `[abstract]`
+
+---
+
+### Requirement: AnalysisContext Value Object
+
+`AnalysisContext` MUST reside in `src/domain/recommendation/analysis_context.py` as a frozen dataclass grouping all analysis inputs and settings required by recommendation rules:
+
+- `classification: ClassificationResultDTO`
+- `quality: QualityResultDTO`
+- `structure: StructureValidationResultDTO`
+- `citations: CitationAnalysisResultDTO`
+- `apa_validation: ApaValidationResultDTO`
+- `grammar: GrammarCheckResultDTO`
+- `settings: RecommendationSettingsDTO`
+
+It MUST expose a computed property `citation_match_rate: float` returning `100.0` when `total_citations == 0`, otherwise `matched_count / total_citations * 100.0`.
+
+---
+
+### Requirement: RecommendationRule Abstract Base
+
+`RecommendationRule` MUST reside in `src/domain/recommendation/recommendation_rule.py` as an abstract base class with a single abstract method:
+
+```python
+def evaluate(self, context: AnalysisContext) -> list[RecommendationDTO]: ...
+```
+
+---
+
+### Requirement: Concrete Recommendation Rules
+
+Seven concrete rule classes MUST reside in `src/domain/recommendation/`, one class per file, each implementing `RecommendationRule`:
+
+1. **`QualityRule`** (`quality_rule.py`) — `HIGH` when `quality.overall_score < settings.quality_threshold`
+2. **`GrammarRule`** (`grammar_rule.py`) — `HIGH` when `grammar.score < settings.grammar_threshold`
+3. **`DimensionRule`** (`dimension_rule.py`) — `MEDIUM` for each dimension score below `settings.dimension_threshold`
+4. **`StructureRule`** (`structure_rule.py`) — `HIGH` for each missing section when `structure.is_valid is False`
+5. **`CitationMatchRule`** (`citation_match_rule.py`) — `HIGH` when match rate below `citation_match_threshold`; `MEDIUM` when unmatched count > 0 but above threshold
+6. **`CitationCountRule`** (`citation_count_rule.py`) — `MEDIUM` when `total_citations < settings.citation_count_threshold`
+7. **`ConfidenceRule`** (`confidence_rule.py`) — `LOW` when `classification.confidence` is not `None` and below `settings.classification_confidence_threshold`
+
+---
+
+### Requirement: PublicationVerdictEvaluator Domain Service
+
+`PublicationVerdictEvaluator` MUST reside in `src/domain/recommendation/publication_verdict_evaluator.py`. Its method `evaluate(context: AnalysisContext) -> PublicationVerdictDTO` determines the final publication verdict:
+
+- **`CRITICAL`** if any of: `quality < 5.0`, `grammar < 5.0`, `structure.is_valid is False`, `match_rate < critical_citation_match_threshold`, OR `total_citations == 0`
+- **`WARNING`** if any of: `quality < publish_threshold`, `grammar < publish_threshold`, `match_rate < citation_match_threshold`, `len(apa_validation.violations) > 0`
+- **`APPROVED`** otherwise
+
+---
+
+### Requirement: RecommendationBuilder Domain Service (Rule Pattern)
+
+`RecommendationBuilder` MUST reside in `src/domain/recommendation/recommendation_builder.py`. Its constructor accepts:
+- `recommendation_settings: RecommendationSettingsDTO`
+- `rules: list[RecommendationRule] | None` (defaults to the 7 concrete rules)
+- `verdict_evaluator: PublicationVerdictEvaluator | None` (defaults to a new instance)
+
+Its method `build(...) -> tuple[list[RecommendationDTO], PublicationVerdictDTO]` MUST:
+1. Build an `AnalysisContext` from the inputs and settings.
+2. Call `rule.evaluate(context)` for each rule and concatenate results.
+3. Call `verdict_evaluator.evaluate(context)` to get the verdict.
+4. Return `(recommendations, verdict)`.
+
+> **Rationale**: The Rule pattern makes each recommendation rule independently testable and eliminates long `if/elif` chains. The verdict is a distinct return value (not a recommendation) to reflect its semantic difference.
+
+#### Scenario: All thresholds satisfied — APPROVED verdict, empty recommendations
+
+- GIVEN `RecommendationBuilder` with default rules and all analysis inputs satisfying thresholds
+- WHEN `build()` is executed
+- THEN it returns `([], PublicationVerdictDTO(verdict=PublicationVerdict.APPROVED, ...))`
+
+#### Scenario: Quality below threshold — HIGH recommendation + WARNING verdict
+
+- GIVEN a quality score of `6.5` (above critical but below `quality_threshold=7.0`)
+- WHEN `build()` is executed
+- THEN the list contains a `HIGH` recommendation for quality AND the verdict is `WARNING`
+
+#### Scenario: Critical quality issue — CRITICAL verdict
+
+- GIVEN a quality score of `4.5` (below critical threshold `5.0`)
+- WHEN `build()` is executed
+- THEN the verdict is `CRITICAL`
+
+#### Scenario: Zero citations — CRITICAL verdict
+
+- GIVEN `total_citations == 0`
+- WHEN `build()` is executed
+- THEN the verdict is `CRITICAL` with a message about missing APA citations
+
+---
+
+### Requirement: DocumentContentExtractor Domain Service
+
+The `DocumentContentExtractor` domain service MUST reside in `src/domain/document/document_content_extractor.py`. It SHALL extract document content from a DOCX file using ports and handle count fallback logic.
+- Constructor MUST inject: `document_text_port: DocumentTextPort`, `content_extraction_port: ContentExtractionPort`, and `character_count_port: CharacterCountPort`.
+- Method `extract_content(docx_path: str) -> DocumentContentDTO`:
+  1. Calls `document_text_port.read_paragraphs(path=docx_path)` to load paragraphs.
+  2. Calls `content_extraction_port.extract(paragraphs, docx_path)` to get a base DTO.
+  3. Calls `character_count_port.count(docx_path)`. On `CharacterCountUnavailable` or if result is `None`, returns the base DTO. Otherwise, returns a new DTO replacing word, char, and paragraph counts with the counted values.
+
+#### Scenario: Content extraction executes successfully with count fallback
+- GIVEN a valid DOCX path and `character_count_port` raises `CharacterCountUnavailable`
+- WHEN `extract_content` is called
+- THEN it returns a `DocumentContentDTO` containing text-based fallback counts
+
+---
+
+### Requirement: CitationExtractor Domain Service
+
+The `CitationExtractor` domain service MUST reside in `src/domain/citation/citation_extractor.py`. It SHALL extract citations and references from a DOCX file.
+- Constructor MUST inject: `citation_extraction_port: CitationExtractionPort` and `reference_extraction_port: ReferenceExtractionPort`.
+- Method `extract_citations_and_references(docx_path: str) -> tuple[list[CitationDTO], list[ReferenceDTO], str]`:
+  1. Calls `citation_extraction_port.extract_citations(docx_path=docx_path)`.
+  2. Calls `reference_extraction_port.extract_references(docx_path=docx_path)`.
+  3. Returns the tuple `(citations, references, section_type)`.
+
+#### Scenario: Citations and references are extracted
+- GIVEN a valid DOCX path
+- WHEN `extract_citations_and_references` is called
+- THEN it returns a tuple of citations, references, and references section type
+
+---
+
+### Requirement: DocumentFormatInspector Domain Service
+
+The `DocumentFormatInspector` domain service MUST reside in `src/domain/document/document_format_inspector.py`. It SHALL inspect formatting rules.
+- Constructor MUST inject: `document_format_inspection_port: DocumentFormatInspectionPort`.
+- Method `inspect(docx_path: str, word_count: int) -> list[EumicViolationDTO]`:
+  1. Calls `document_format_inspection_port.inspect(docx_path=docx_path, word_count=word_count)`.
+
+#### Scenario: Format inspection finds violations
+- GIVEN a document path and word count
+- WHEN `inspect` is called
+- THEN it returns a list of formatting violations
+
+---
+
+### Requirement: GrammarChecker Domain Service
+
+The `GrammarChecker` domain service MUST reside in `src/domain/grammar/grammar_checker.py`. It SHALL perform grammar checks and compute score level.
+- Constructor MUST inject: `grammar_check_port: GrammarCheckPort`.
+- Method `check_grammar(paragraphs: list[str]) -> GrammarCheckResultDTO`:
+  1. Calls `grammar_check_port.check(paragraphs=paragraphs)`.
+  2. Maps error count using `GrammarScoreLevel.from_error_count(error_count=len(errors))`.
+  3. Returns `GrammarCheckResultDTO(score=level.score, feedback=level.feedback, errors=errors)`.
+
+#### Scenario: Grammar check returns errors and level
+- GIVEN a list of paragraphs
+- WHEN `check_grammar` is called
+- THEN it returns a `GrammarCheckResultDTO` with grammar score and feedback
+
+---
+
+### Requirement: AnalyzeDocumentUseCase Orchestrator
+
+`AnalyzeDocumentUseCase` MUST live in `src/application/analyze_document_use_case.py` and coordinate the document analysis steps. It accepts its 10 domain service dependencies via constructor injection:
+- Domain services: `document_content_extractor`, `citation_extractor`, `document_format_inspector`, `grammar_checker`, `apa_validator`, `article_classifier`, `quality_analyzer`, `structure_validator`, `citation_matcher`, `recommendation_builder`.
+(Previously: Accepted 7 ports, 5 domain services, and 1 builder — 13 dependencies total.)
+
+Method `execute(document_path: str, document_name: str | None = None) -> ReportInputDTO` MUST be wrapped with `@generic_error_handler` and perform:
+When `document_name` is provided, it is used as the display name for analysis tracking and the returned `ReportInputDTO.filename`. When `document_name` is omitted or `None`, it falls back to `document_path`. The file-reading stages continue to use `document_path`.
+1. Extract content via `document_content_extractor.extract_content(document_path)`.
+2. Extract citations/references via `citation_extractor.extract_citations_and_references(document_path)`.
+3. Validate APA citations via `apa_validator.validate_all_citations(citations, document_content.paragraphs)`.
+4. Grammar check via `grammar_checker.check_grammar(document_content.paragraphs)`.
+5. Classify article via `article_classifier.classify(document_content)`.
+6. Analyze quality via `quality_analyzer.analyze(document_content)`.
+7. Validate structure via `structure_validator.validate_structure(document_content, classification.effective_structure_type, len(references) > 0)`.
+8. Parse references section type to `SectionName`, falling back to `REFERENCES` on `ValueError`.
+9. Match citations via `citation_matcher.match_citations_to_references(citations, references, section_name)`.
+10. Verify format/EUMIC via `document_format_inspector.inspect(document_path, document_content.word_count)`.
+11. Call `recommendation_builder.build(...)` -> `(recommendations, verdict)`.
+12. Return `ReportInputDTO`.
+
+#### Scenario: Orchestrator executes all pipeline steps sequentially
+- GIVEN a valid `document_path`
+- WHEN `execute(document_path)` is called
+- THEN each of the 10 domain service dependencies is invoked and a `ReportInputDTO` is returned
+
+#### Scenario: Orchestrator uses custom document name for telemetry and report
+- GIVEN a valid `document_path` and a custom `document_name`
+- WHEN `execute(document_path, document_name)` is called
+- THEN analysis tracking and the returned `ReportInputDTO` use `document_name` while extraction stages receive `document_path`
+
+#### Scenario: Orchestrator falls back to document path when document name omitted
+- GIVEN a valid `document_path` and `document_name` is None
+- WHEN `execute(document_path)` is called
+- THEN analysis tracking and the returned `ReportInputDTO` fall back to `document_path`
+
+#### Scenario: Structure validation uses effective structure type
+- GIVEN a scientific article without "IMRyD" in reasoning
+- WHEN structure validation is invoked
+- THEN the orchestrator calls `structure_validator.validate_structure` with `article_type=ArticleType.DIVULGACION`
+
+---
+
+### Requirement: AnalyzeDocumentUseCaseWiring Assembly Factory
+
+`AnalyzeDocumentUseCaseWiring` MUST reside in `src/infrastructure/wirings/analyze_document_use_case_wiring.py`. It MUST follow the private-method wiring pattern where:
+- `create_use_case()` instantiates `EnvConfig` and delegates dependency injection to `_get_xxx()` private methods, injecting the configurations from the `EnvConfig` instance.
+- Port helper methods instantiate and memoize/return infrastructure adapters.
+- Domain service helper methods build the 10 domain services directly, wrapping ports or LLM generator dependencies as required.
+- `_get_document_content_extractor()` returns `DocumentContentExtractor(self._get_document_text_port(), self._get_content_extraction_port(), self._get_character_count_port())`.
+- `_get_citation_extractor()` returns `CitationExtractor(self._get_citation_extraction_port(), self._get_reference_extraction_port())`.
+- `_get_document_format_inspector()` returns `DocumentFormatInspector(self._get_document_format_inspection_port())`.
+- `_get_grammar_check_port()` returns `LanguageToolAdapter(language_tool_settings=self._get_env_config().get_language_tool_settings())`.
+- `_get_grammar_checker()` returns `GrammarChecker(self._get_grammar_check_port())`.
+- `_get_article_classifier()` instantiates `ArticleClassificationTextSampler(classification_text_sampling_settings=env_config.get_classification_text_sampling_settings())`.
+- `_get_quality_text_sampler()` returns `QualityTextSampler(quality_text_sampling_settings=self._get_env_config().get_quality_text_sampling_settings())`.
+(Previously: Constructed and injected 7 ports and 5 domain services directly into the orchestrator.)
+
+#### Scenario: Wiring constructs correct dependency graph
+- GIVEN the wiring configuration
+- WHEN `AnalyzeDocumentUseCaseWiring().create_use_case()` is called
+- THEN it returns a valid `AnalyzeDocumentUseCase` with all 10 domain service dependencies injected
+
+#### Scenario: Settings objects group configurable limits at wiring time
+- GIVEN the wiring configuration
+- WHEN `AnalyzeDocumentUseCaseWiring().create_use_case()` is called
+- THEN `LanguageToolAdapter` is constructed with `LanguageToolSettings` from `EnvConfig.get_language_tool_settings()`
+- AND `ArticleClassificationTextSampler` is constructed with `ClassificationTextSamplingSettingsDTO` from `EnvConfig.get_classification_text_sampling_settings()`
+- AND `QualityTextSampler` is constructed with `QualityTextSamplingSettingsDTO` from `EnvConfig.get_quality_text_sampling_settings()`
+
+#### Scenario: Article classifier and quality analyzer share one LLM generator instance
+- GIVEN `AnalyzeDocumentUseCaseWiring().create_use_case()`
+- WHEN `result._article_classifier._llm_generator` and `result._quality_analyzer._llm_generator` are compared
+- THEN they are the exact same object (`is`), not merely equal instances
+
+#### Scenario: Environment variable overrides threshold at wiring time
+- GIVEN `QUALITY_THRESHOLD=6.5` is set in the environment before `create_use_case()` instantiates `EnvConfig`
+- WHEN `create_use_case()` is called
+- THEN `recommendation_builder._settings.quality_threshold` equals `6.5`
+
+---
+
+### Requirement: Cooperative Analysis Cancellation
+
+Analysis execution MUST support cooperative cancellation upon client disconnection to avoid occupying single-slot AI resources with orphan analyses.
+- `AnalysisCancellationPort` (in `src/domain/metrics/analysis_cancellation_port.py`) defines the interface: `bind_new_cancellation_signal()`, `request_cancellation()`, `is_cancellation_requested()`, and `clear_cancellation_signal()`.
+- `AnalysisCancellationAdapter` (in `src/infrastructure/adapters/metrics/analysis_cancellation_adapter.py`) manages context-local state using a class-level `ContextVar[threading.Event | None]`, ensuring signals are shared across instances and propagated to thread pool worker tasks.
+- `AnalysisCancelled` (in `src/domain/exceptions/analysis_errors.py`) inherits from `SrcBaseWarning` with message `"The analysis was cancelled because the client disconnected."`.
+- `ExecutionStatus` includes `CANCELLED = "cancelled"`.
+- `AnalysisTracker.track_stage` checks `is_cancellation_requested()` before invoking the stage operation. If requested, it raises `AnalysisCancelled` immediately without executing the stage or recording stage latency.
+- `AnalysisTracker.track_analysis` catches `AnalysisCancelled`, records completion telemetry with status `ExecutionStatus.CANCELLED`, logs an INFO message with elapsed milliseconds (not ERROR), re-raises `AnalysisCancelled`, and clears the cancellation signal in `finally`.
+- The FastAPI upload endpoint `/analyze` runs as an asynchronous handler (`async def`), binds a fresh cancellation signal, executes analysis in a thread pool via `anyio.to_thread.run_sync`, concurrently watches for `http.disconnect` events via `request.receive()`, requests cancellation upon disconnect, and clears the signal in `finally`.
+
+#### Scenario: Cancellation requested before stage boundary stops pipeline
+- GIVEN an active analysis where cancellation has been requested via `AnalysisCancellationPort`
+- WHEN `AnalysisTracker.track_stage` is invoked for a subsequent stage
+- THEN it raises `AnalysisCancelled` before executing the stage
+- AND no duration telemetry is recorded for the skipped stage
+
+#### Scenario: Cancelled analysis records CANCELLED execution status and logs at INFO
+- GIVEN an active analysis pipeline that raises `AnalysisCancelled`
+- WHEN `AnalysisTracker.track_analysis` catches the exception
+- THEN it records completion telemetry with status `ExecutionStatus.CANCELLED` and null metrics
+- AND it emits an INFO log containing the elapsed time
+- AND it re-raises `AnalysisCancelled` without emitting ERROR logs
+
+#### Scenario: Pipeline completes successfully when no cancellation is requested
+- GIVEN an active analysis where no cancellation signal is requested
+- WHEN all pipeline stages execute to completion
+- THEN completion telemetry is recorded with status `ExecutionStatus.SUCCESS`
+- AND the cancellation signal is cleared upon exit

@@ -1,12 +1,12 @@
-# Silvina Editorial Assistant v0.9
+# Silvina Editorial Assistant v0.100
 
-[![Version](https://img.shields.io/badge/version-v0.9-blue)](https://github.com/P-SAL/silvina-editorial)
+[![Version](https://img.shields.io/badge/version-v0.100-blue)](https://github.com/P-SAL/silvina-editorial)
 [![Python](https://img.shields.io/badge/python-3.12-blue)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Status](https://img.shields.io/badge/status-Active%20Development-yellow)](https://github.com/P-SAL/silvina-editorial)
-[![Branch](https://img.shields.io/badge/dev%20branch-silvina__editorial__v09-orange)](https://github.com/P-SAL/silvina-editorial/tree/silvina_editorial_v09)
+[![Branch](https://img.shields.io/badge/dev%20branch-silvina__editorial__v100-orange)](https://github.com/P-SAL/silvina-editorial/tree/silvina_editorial_v100)
 
-**AI-powered manuscript review for Spanish academic journals** | EUMIC compliance • APA 7 validation • Modular architecture • LLM-powered quality analysis • Gradio web interface
+**AI-powered manuscript review for Spanish academic journals** | EUMIC compliance • APA 7 validation • Modular architecture • LLM-powered quality analysis • FastAPI web interface
 
 ---
 
@@ -14,10 +14,10 @@
 
 Silvina is an intelligent editorial assistant for **Revista Visión Conjunta** (Facultad Militar Conjunta - Universidad de la Defensa Nacional, Argentina). It automates academic manuscript review using **deterministic structural validation** and **selective AI-powered analysis**.
 
-**Current Version:** v0.9 (Q2 2026)  
-**Architecture:** Modular 4-layer design (Domain → Data Access → Business Logic → Presentation)  
-**LLM Integration:** Ollama (llama3-gradient:8b-instruct-1048k-q4_K_M)  
-**Interface:** Gradio web UI + CLI  
+**Current Version:** v0.100 (Q4 2026)
+**Architecture:** Hexagonal Architecture (Domain → Application → Infrastructure)
+**LLM Integration:** Ollama (gemma4-26b-adapted, built from hf.co/unsloth/gemma-4-26B-A4B-it-GGUF:UD-IQ4_XS)
+**Interface:** FastAPI + HTMX web UI + CLI
 **Output Location:** `Documents\Silvina\reports\` (Word report, JSON data)
 
 ---
@@ -26,7 +26,9 @@ Silvina is an intelligent editorial assistant for **Revista Visión Conjunta** (
 
 ```
 main                    ← Production branch — stable, merged from dev
-silvina_editorial_v09   ← Active development branch ← ALL work goes here
+silvina_editorial_v100  ← Active development branch ← ALL work goes here
+silvina_editorial_v09   ← Historical reference (read-only)
+silvina_editorial_v08   ← Historical reference (read-only)
 ```
 
 **Development workflow:**
@@ -37,31 +39,29 @@ silvina_editorial_v09   ← Active development branch ← ALL work goes here
 
 **Setup on development machine:**
 ```bash
-git checkout silvina_editorial_v09
-cd silvina_editorial_v09
+git checkout silvina_editorial_v100
+cd silvina_editorial
 source ../venv312/Scripts/activate  # Windows Git Bash
 ```
 
-**Primary development machine:** DESKTOP-OE2SEGH (32GB RAM, Ryzen 7 8700G)  
+**Primary development machine:** DESKTOP-OE2SEGH (32GB RAM, Ryzen 7 8700G)
 **Secondary machine:** DESKTOP-LN7Q8I6 (8GB RAM) — code editing only, no LLM inference
 
 ---
 
 ## ✨ Key Features
 
-### 🎨 **Gradio Web Interface**
+### 🎨 **Web Interface**
 - Drag-and-drop file upload
 - Interactive result visualization
 - One-click Word/JSON download
-- Structured expert feedback panel (8 evaluation fields)
 - Clean shutdown button
 
-### 🏗️ **Modular 4-Layer Architecture**
+### 🏗️ **Hexagonal Architecture**
 ```
-domain/           # Core models & enums
-data_access/      # Document parsing
-business_logic/   # Analysis engines
-presentation/     # Output formatting
+src/domain/         # Entities, DTOs, enums, exceptions, and ports
+src/application/    # Use cases (orchestrate domain behavior)
+src/infrastructure/ # Adapters (docx, ollama, win32com, language_tool), wiring, and configuration
 ```
 
 ---
@@ -73,7 +73,7 @@ presentation/     # Output formatting
 1. **📖 Document Reading** — Extracts paragraphs from .docx
 2. **🔍 Content Extraction** — Title, authors, sections, word count
 3. **📚 Citation & Reference Parsing** — In-text citations, bibliography, APA 7 validation
-4. **🏷️ Article Classification** — Hybrid signal system (S1–S6)
+4. **🏷️ Article Classification** — Hybrid signal system (S1–S5)
 5. **⭐ Quality Analysis** — 4 semantic dimensions via LLM
 6. **📋 Structure Validation** — Required sections per article type
 7. **🔗 Citation Matching** — Links citations to references
@@ -84,9 +84,9 @@ presentation/     # Output formatting
 
 ### Signal Architecture
 
-| Signal | Type | Criterion | Role |
-|--------|------|-----------|------|
-| S1 — IMRyD override | Deterministic | Complete IMRyD structure | Immediate CIENTÍFICO (0.95) |
+| Signal | Type | Criteria | Role |
+|--------|------|----------|------|
+| S1 — IMRyD sections | Deterministic | Title/section structure matches IMRyD | Direct path to CIENTÍFICO (0.95) |
 | S2a — Reference count | Deterministic | ≥ 12 references | Confidence modulator |
 | S2b — Reference recency | Deterministic | ≥ 50% within last 4 years | Confidence modulator |
 | S3 — Methodological vocab | Deterministic | ≥ 4 terms + ≥ 1 hard term | Mandatory gate for CIENTÍFICO |
@@ -98,7 +98,7 @@ presentation/     # Output formatting
 
 **S3 vocabulary covers:** quantitative methodology, qualitative/social science, experimental/simulation design, systematic review/meta-analysis, validation and results markers, metrics and measurement — in Spanish and English.
 
-**S4 detects:** verbs of intent, scope markers, problem markers, experimental objective expressions, research questions/hypotheses (single or multiple, numbered or sequential).
+**S4 detects:** explicit goals or objectives, hypotheses posed, research questions, methodologies declared, and systematic processes outlined.
 
 **S5 detects:** findings from systematic process, frameworks/models/taxonomies proposed, evidence-based recommendations, knowledge gaps addressed, synthesis beyond description, quantitative experimental results, hypothesis confirmation.
 
@@ -165,27 +165,9 @@ presentation/     # Output formatting
 
 ## 📊 Multi-Format Reports
 
-**3 Output Files** saved to `C:\Users\[user]\Documents\Silvina\reports\`:
+**2 Output Files** saved to `C:\Users\[user]\Documents\Silvina\reports\`:
 1. **📘 Word Report** (`_analisis.docx`)
 2. **📊 JSON Data** (`_analisis.json`)
-3. **💬 Feedback File** (`_feedback.json`) — via Gradio
-
----
-
-## 🔒 Security Module
-
-`security.py` provides the following protections (integrated in v0.9, pending full wiring in v1.0):
-
-| Component | Protection |
-|-----------|------------|
-| `FileValidator` | Extension whitelist, magic bytes, size limit (10 MB), ZIP bomb, XXE entity detection |
-| `PathGuard` | Path traversal prevention — resolves and validates against allowed directories |
-| `RateLimiter` | In-memory sliding-window rate limiter (5 requests / 5 min per key) |
-| `PromptInjectionDetector` | Regex-based injection pattern scan + text truncation before LLM calls |
-| `auto_cleanup()` | Context manager — deletes temp files on exit regardless of outcome |
-| `defusedxml` | Patches stdlib XML parsers at import time |
-
-Install: `pip install defusedxml`
 
 ---
 
@@ -194,13 +176,12 @@ Install: `pip install defusedxml`
 | Component | Technology |
 |-----------|------------|
 | Language | Python 3.12 |
-| Web Interface | Gradio |
+| Web Interface | FastAPI + HTMX |
 | Document Parsing | python-docx |
 | Word Automation | win32com (Windows COM) |
 | LLM Integration | Ollama (local inference) |
 | Grammar Checking | LanguageTool |
-| Security | defusedxml, custom security.py |
-| Architecture | Modular 4-layer design |
+| Architecture | Hexagonal Architecture |
 
 ---
 
@@ -212,19 +193,79 @@ git clone https://github.com/P-SAL/silvina-editorial.git
 cd silvina-editorial
 
 # 2. Switch to development branch
-git checkout silvina_editorial_v09
-cd silvina_editorial_v09
+git checkout silvina_editorial_v100
+cd silvina_editorial_v100
 
 # 3. Create virtual environment
 python -m venv ../venv312
 source ../venv312/Scripts/activate  # Windows Git Bash
 
 # 4. Install dependencies
-pip install python-docx ollama pywin32 gradio language-tool-python defusedxml
+pip install -r requirements.txt
 
-# 5. Pull LLM model
-ollama pull llama3-gradient:8b-instruct-1048k-q4_K_M
+# 5. Install the LLM model (requires Ollama 0.35.0 or newer)
+scripts\create_ollama_model.bat
 ```
+
+The application uses `gemma4-26b-adapted`, a local Ollama model built from the Unsloth GGUF `hf.co/unsloth/gemma-4-26B-A4B-it-GGUF:UD-IQ4_XS` with the versioned Modelfile in `src/infrastructure/resources/ollama/`. The raw GGUF declares no thinking capability, so `OLLAMA_THINK=false` cannot work on it and thinking tags leak into the answers; the adapted model adds the `gemma4` renderer and parser. The script pulls the base only when it is missing and then runs `ollama create`. The manual equivalent is:
+
+```bash
+ollama pull hf.co/unsloth/gemma-4-26B-A4B-it-GGUF:UD-IQ4_XS
+ollama create gemma4-26b-adapted -f src/infrastructure/resources/ollama/gemma4-26b-adapted.Modelfile
+```
+
+The base GGUF tag is published by a third party and can change upstream, so a model rebuilt later may use different weights bytes than an earlier build.
+
+### Configuration files
+
+Silvina reads its configuration from three places:
+
+- `analysis_settings.toml` (project root, versioned): the tuning parameters, grouped by section (`[grammar]`, `[article_size]`, `[quality_text_sample]`, `[recommendation]`, `[report]`, `[upload]`, and others). Edit it to adjust thresholds, sampling limits and size bands.
+- `editorial_norms.toml` (project root, versioned): the editorial norms that Silvina checks documents against: the document format (`[document_format]`: margins, font size, allowed fonts and the unjustified paragraph ratio), the caption prefixes for figures and tables (`[figures]`, `[tables]`), the abstract and keyword limits (`[abstract]`, `[keywords]`), and the sections required by each article type with their aliases (`[required_sections]`, `[section_aliases]`).
+- `.env` (not versioned, see `.env.example`): the values that depend on the machine or the deployment, such as `APP_MODE`, `METRICS_DATABASE_PATH`, `LOG_FILE_PATH` and the Ollama connection.
+
+An environment variable with the same name as a setting (for example `GRAMMAR_MAX_PARAGRAPHS`) overrides the value in `analysis_settings.toml`, so a line left in your local `.env` wins over the file on that machine. If a setting is missing from both, or has the wrong type, the application stops at startup with a message naming the section and key. The parameters that live in `.env` have no default in the code: if one is missing or blank, the application stops at startup naming the variable (`OLLAMA_NUM_CTX` is the only optional one: without it Ollama decides the context size).
+
+No environment variable overrides `editorial_norms.toml`; its values are read only from the file. Silvina reads it once, when it starts. If the file is missing or is not valid TOML, or if a key is missing or has an invalid value, the application stops at startup with a message that names the file, or the section and key.
+
+To change a norm, edit its value in `editorial_norms.toml`, keep the type of the value (numbers without quotes, text in double quotes, lists in square brackets), and restart the application. The labels must match the existing names:
+
+- The keys of `[required_sections]` are article types: `"científico"`, `"divulgación"` and `"opinión"`. All three must be present.
+- Each list in `[required_sections]` names sections from the list below, and each of those sections must have an entry in `[section_aliases]`.
+- The keys of `[section_aliases]` are section names: `"Resumen"`, `"Introducción"`, `"Metodología"`, `"Resultados"`, `"Discusión"`, `"Argumentación"`, `"Desarrollo"`, `"Conclusiones"` and `"Referencias"`.
+- An alias is the word that identifies a section header. Aliases are compared in lowercase, and the order of the entries in `[section_aliases]` matters: the first section whose alias matches a header wins.
+
+### Ollama warm-up and keep_alive
+
+When the web server starts (`launch_silvina.bat` or `python web_main.py`) and Ollama is the language model in use, Silvina loads the model in the background so the first analysis does not pay the load time (about a minute for the 26B model). The server answers while the model loads, and a failed warm-up only writes a warning to the log. Every request also asks Ollama to keep the model loaded for a while after its last use, instead of the 5 minutes of the Ollama default.
+
+| Variable | Value in `.env.example` | Meaning |
+|----------|---------|---------|
+| `OLLAMA_WARMUP_ON_STARTUP` | `true` | `true` or `false`. Loads the model when the server starts |
+| `OLLAMA_MODEL_KEEP_ALIVE` | `15m` | How long the model stays loaded after each request. A duration with a unit (`15m`, `1h`, `90s`); a negative one such as `-1m` keeps it loaded indefinitely |
+| `OLLAMA_SERVER_IDLE_SHUTDOWN` | `5m` | Inactivity duration before closing a server started by the CLI. A strictly positive duration with a unit (`5m`, `90s`, `1h`) |
+
+The warm-up is skipped when the external LLM (Claude, `APP_MODE=DEBUG` only) is in use; when a local Ollama model is used, the warm-up runs in the web interface on startup and also in the command line as its own announced step. While loaded, the 26B model holds about 14 GB of VRAM: if the same GPU is shared with other applications, lower `OLLAMA_MODEL_KEEP_ALIVE` or set `OLLAMA_WARMUP_ON_STARTUP=false`. `OLLAMA_MODEL_KEEP_ALIVE` is Silvina's setting and is independent from the `OLLAMA_KEEP_ALIVE` variable of the Ollama server.
+
+### Optional: external LLM for debugging (Claude)
+
+In `APP_MODE=DEBUG` the analysis can use Claude through the Claude Agent SDK instead of Ollama, with a Claude subscription (no API key):
+
+```bash
+pip install -r requirements-debug.txt
+claude login
+```
+
+Then set in `.env`:
+
+```dotenv
+APP_MODE=DEBUG
+USE_EXTERNAL_LLM=true
+LLM_PROVIDER=claude
+EXTERNAL_LLM_MODEL_NAME=<claude model name>
+```
+
+`USE_EXTERNAL_LLM` (`true` or `false`, required) enables the external LLM instead of Ollama. `LLM_PROVIDER` names only the external provider (`claude`) and `EXTERNAL_LLM_MODEL_NAME` is its model, independent from `OLLAMA_MODEL_NAME`; both are required when the flag is `true`. `EXTERNAL_LLM_THINK` (`true` or `false`, required) controls the model's reasoning: with `false` the Claude adapter disables it, which cut a classification call from about 16 s and 1600 output tokens to about 4 s and 17 tokens. With the flag `false`, or with `APP_MODE=PROD`, Ollama is used and `LLM_PROVIDER` and `EXTERNAL_LLM_MODEL_NAME` are ignored. The Ollama generation options (`temperature`, `num_predict`) are not applied to external providers.
 
 ---
 
@@ -232,51 +273,116 @@ ollama pull llama3-gradient:8b-instruct-1048k-q4_K_M
 
 ### Web Interface
 ```bash
-python gradio_app.py
+python web_main.py
 ```
 
 ### Command Line
 ```bash
-python main.py
+python main.py <document.docx>
+```
+
+The document is read from the current directory unless `--input-dir` is given. Only `.docx` files are accepted. If the document name is omitted, the console asks for it. The console shows the start and the end of each step, and the paths of the generated reports at the end.
+
+| Option | Description |
+|--------|-------------|
+| `--input-dir <dir>` | Directory where the document is read (default: current directory) |
+| `--output-dir <dir>` | Directory for the reports (default: `<document folder>/análisis`, created when missing) |
+| `--ollama-model-name <name>` | Overrides `OLLAMA_MODEL_NAME` |
+| `--use-external-llm true\|false` | Overrides `USE_EXTERNAL_LLM` |
+| `--llm-provider <name>` | Overrides `LLM_PROVIDER` |
+| `--external-llm-model-name <name>` | Overrides `EXTERNAL_LLM_MODEL_NAME` |
+| `--app-mode DEBUG\|PROD` | Overrides `APP_MODE` |
+| `--s4-s5-s6-signal-prompt <dir>` | Directory containing `s4_s5_s6_signal_prompt.txt` to override default signal prompt |
+| `--alignment-prompt <dir>` | Directory containing `alignment_prompt.txt` to override default alignment prompt |
+| `--argumentation-conclusions-prompt <dir>` | Directory containing `argumentation_conclusions_prompt.txt` to override default argumentation prompt |
+| `--clarity-coherence-prompt <dir>` | Directory containing `clarity_coherence_prompt.txt` to override default clarity and coherence prompt |
+| `--contribution-prompt <dir>` | Directory containing `contribution_prompt.txt` to override default contribution prompt |
+| `--research-lines <dir>` | Directory containing `research_lines.txt` to override default research lines |
+
+The external LLM is only used when the mode is `DEBUG`, as with the `.env` settings.
+
+When a local Ollama model is used, the CLI verifies that the language model server is reachable in its own announced step (`Verificando el servidor del modelo de lenguaje`). If the local Ollama server is not running, the CLI starts the system `ollama serve` process and waits up to the timeout limit. The executable is looked up in the PATH, then in the system-wide persistent PATH, then in `%LOCALAPPDATA%\Programs\Ollama`, so a terminal opened before installing Ollama still works. A server started by the CLI is closed after 5 minutes without use by a background watcher process (configurable through `OLLAMA_SERVER_IDLE_SHUTDOWN`), while a server that was already running is never touched; a second CLI run within the window restarts the count. Next, when warm-up is enabled (`OLLAMA_WARMUP_ON_STARTUP=true`), the model is preloaded before the analysis in its own announced step (`Precargando el modelo de lenguaje`). When using an external model, both server check and warm-up steps are skipped.
+
+Each run writes three reports, `<document>_analisis_<model>.docx`, `.json` and `.html`, overwriting any previous files with the same names.
+
+```bash
+python main.py documento.docx --input-dir C:\Trabajos --output-dir C:\Informes --app-mode PROD
+```
+
+Prompt files can be overridden individually by pointing to a directory that contains the matching `.txt` file:
+
+```bash
+python main.py documento.docx --alignment-prompt C:\mis_prompts
 ```
 
 ---
 
 ## 📁 Project Structure
 ```
-silvina_editorial_v09/
+silvina_editorial_v100/
 ├── main.py
-├── gradio_app.py
-├── security.py
-├── apa_validator.py
-├── eumic_verifier.py
-├── domain/
-│   ├── models.py
-│   └── enums.py
-├── data_access/
-│   ├── word_reader.py
-│   ├── content_extractor.py
-│   ├── citation_parser.py
-│   └── reference_parser.py
-├── business_logic/
-│   ├── article_classifier.py
-│   ├── quality_analyzer.py
-│   ├── gramatica_checker.py
-│   ├── structure_validator.py
-│   ├── citation_matcher.py
-│   └── vocab/
-│       ├── __init__.py
-│       └── methodological_terms.py
-└── presentation/
-    ├── word_exporter.py
-    └── config.py
+├── web_main.py
+├── version.txt
+├── requirements.txt
+├── analysis_settings.toml
+├── editorial_norms.toml
+├── src/
+│   ├── domain/                  # Entities, DTOs, enums, exceptions, and ports
+│   │   ├── citation/
+│   │   ├── classification/
+│   │   ├── document/
+│   │   ├── dtos/
+│   │   ├── entities/
+│   │   ├── enums/
+│   │   ├── exceptions/
+│   │   ├── gateway/
+│   │   ├── grammar/
+│   │   ├── ports/
+│   │   ├── quality/
+│   │   ├── recommendation/
+│   │   ├── report/
+│   │   └── structure/
+│   ├── application/             # Use cases (orchestrate domain behavior)
+│   │   ├── analyze_document_use_case.py
+│   │   └── export_report_use_case.py
+│   └── infrastructure/          # Adapters, config, and wirings
+│       ├── adapters/
+│       │   ├── document/
+│       │   ├── gateway/
+│       │   ├── grammar/
+│       │   ├── llm_generator/
+│       │   └── report/
+│       ├── config/
+│       ├── env_config.py
+│       └── wirings/
+└── tests/                       # Integration and unit tests
+    ├── e2e/
+    ├── fixtures/
+    ├── smoke/
+    └── test_main_cli_args.py
 ```
 
 ---
 
 ## 🔄 Version History
 
-### v0.9 (Q2 2026) — Current
+### v0.100 (Q4 2026) — Current
+
+- 🌐 **FastAPI + HTMX web interface** replaces Gradio (`web_main.py`, started by `launch_silvina.bat`).
+- 📄 **JSON report export** next to the Word report.
+- 📊 **Internal metrics and AI audit** in SQLite: per-analysis and per-stage durations, and every language model call with its token usage and `done_reason`.
+- 🤖 **Ollama**: reasoning disabled by default through `OLLAMA_THINK`; the official model is `gemma4-26b-adapted`, built from a versioned Modelfile with `scripts/create_ollama_model.bat`.
+- 🧪 **External LLM for debugging (Claude)** in `APP_MODE=DEBUG`.
+- 🔧 **FIXED:** classification signals S2a/S2b could never be satisfied because references were not extracted; reports keep the uploaded file name and a unique folder per analysis; specific language model error messages; concurrent analyses are cancelled or serialized; feedback rendering in the Word report.
+- ♻️ **Refactor:** the feedback, quality and editorial suitability parsers were rebuilt on single-purpose collaborators.
+- **Editorial norms file:** the EUMIC format, abstract and keyword limits, required sections per article type and section aliases are read from `editorial_norms.toml` instead of the code. A missing or invalid norm stops the application at startup.
+- **Tuning file renamed:** the tuning parameters live in `analysis_settings.toml`. The Word report takes the publication threshold from it (`PUBLISH_THRESHOLD`), the same value used for the recommendations.
+
+### v0.95 (Q2 2026)
+
+- 🏗️ **Hexagonal Architecture migration**: Clean hexagonal codebase reorganization moving from the legacy 4-layer structure to Domain, Application, and Infrastructure layers.
+
+### v0.9 (Q2 2026)
 
 **Classification System — S6 Revision (May 2026):**
 - ✨ **NEW:** S6 (Justificación teórica) — sixth signal detecting theoretical framework justification and knowledge gap identification, added to the combined S4/S5 LLM call (now S4/S5/S6, single call, zero extra latency)
@@ -321,21 +427,23 @@ silvina_editorial_v09/
 
 ## 🗺️ Roadmap
 
-### v0.9 (Q2 2026) — Active Development
+### v0.100 (Q4 2026) — Active Development
 - ✅ Classification system S6 revision — 19-case table, 0.83 threshold
 - ✅ S3 vocabulary expansion
 - ✅ Confidence calibration (0.83/0.85/0.86/0.90/0.95)
 - ✅ Structure validator path-aware fix
 - ✅ APA validator false positive fix
 - ✅ Author extraction multi-line fix
-- ✅ security.py module (FileValidator, PathGuard, RateLimiter, PromptInjectionDetector)
-- ⬜ Security integration into gradio_app.py, word_reader.py, article_classifier.py, main.py
-- ⬜ gradio_app.py alignment with v0.9 classification changes
+- ✅ Citation matcher improvements
+- ✅ Branch-based workflow established
+- ⬜ Security measures (file validation, authentication, rate limiting)
 - ⬜ Web deployment preparation
 
-### v0.9 → v1.0 (Security & Deployment)
-- 🔒 Full security module wiring across all entry points
-- 🔒 nginx + HTTPS deployment
+### v0.100 → v1.0 (Security & Deployment)
+- 🔒 File validation, defusedxml, path traversal protection
+- 🔒 Authentication and rate limiting
+- 🔒 Prompt injection detection
+- 🌐 nginx + HTTPS deployment
 - 🌐 Supervised availability model (institutional server)
 
 ### v1.0 (Q3 2026)
@@ -356,8 +464,6 @@ silvina_editorial_v09/
 | Issue | Status | Notes |
 |-------|--------|-------|
 | S4/S5/S6 non-determinism on CPU | Known hardware limitation | GPU inference (v1.0) resolves this |
-| Security module not yet wired | In progress | security.py built; integration into entry points pending |
-| gradio_app.py not yet aligned with v0.9 | In progress | Pending session |
 | Misspelling not detected | Deferred | LanguageTool filter excludes misspellings to avoid false positives on proper nouns |
 | Pleonasm/wordiness not detected | Deferred | No free Spanish deterministic engine available |
 | Citation matching on institutional refs | Partial | NIST, MITRE, arXiv-style citations have low match rates by design |
@@ -368,9 +474,9 @@ silvina_editorial_v09/
 
 ## 🤝 Contributing
 
-**Contact:** Pablo Salonio (P-SAL) — plsalonio@gmail.com  
-**Repository:** https://github.com/P-SAL/silvina-editorial  
-**Active branch:** `silvina_editorial_v09`
+**Contact:** Pablo Salonio (P-SAL) — plsalonio@gmail.com
+**Repository:** https://github.com/P-SAL/silvina-editorial
+**Active branch:** `silvina_editorial_v100`
 
 ---
 
@@ -389,7 +495,7 @@ MIT License
 
 ---
 
-**Last Updated:** May 2026  
-**Version:** 0.9  
-**Active Branch:** silvina_editorial_v09  
+**Last Updated:** October 2026
+**Version:** 0.100
+**Active Branch:** silvina_editorial_v100
 **Status:** Active Development 🚀

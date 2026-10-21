@@ -1,0 +1,11 @@
+python-docx
+ollama
+language-tool-python
+Pillow
+pywin32; sys_platform == 'win32'
+pytest
+python-dotenv
+fastapi
+uvicorn
+jinja2
+python-multipart

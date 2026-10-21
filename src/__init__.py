@@ -1,0 +1,1 @@
+# Required marker: without it, pytest's --import-mode=importlib registers tests as top-level `domain.tests`, shadowing the legacy root `domain/` package (see openspec/changes/resolve-pytest-domain-collision/design.md).
